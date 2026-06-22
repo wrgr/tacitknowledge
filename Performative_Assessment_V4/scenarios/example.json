@@ -1,0 +1,38 @@
+{
+  "id": "scenario_001",
+  "title": "Customer Complaint — Delayed Order",
+  "description": "The learner must demonstrate how to handle an upset customer whose order arrived three days late.",
+  "situation": "You are a customer service representative. A customer named Alex has just reached you on chat. Their message reads: 'My order was supposed to arrive three days ago — I needed it for an event this weekend and it never showed up. I already sent an email two days ago and nobody got back to me. This is completely unacceptable.'",
+  "user_role": "customer service representative",
+  "max_turns": 6,
+  "constraints": [
+    "Acknowledge the customer's frustration before moving to solutions",
+    "Offer a concrete next step — investigate the order, contact the carrier, or escalate",
+    "Do not make promises you cannot keep",
+    "Present a resolution option (replacement or refund) proactively"
+  ],
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "Apologise sincerely and acknowledge the impact of the delay before anything else. Look up the order immediately and check its current status with the carrier. Keep the customer informed at each step, and proactively offer the choice of a full refund or a priority replacement before they have to ask. If the carrier cannot provide an update within 24 hours, escalate and follow up directly with the customer.",
+      "key_points": [
+        "apologise",
+        "look up the order",
+        "contact carrier",
+        "refund or replacement",
+        "follow up"
+      ],
+      "rubric": {
+        "apologise": 2,
+        "look up the order": 2,
+        "contact carrier": 1,
+        "refund or replacement": 3,
+        "follow up": 2
+      }
+    }
+  ],
+  "metadata": {
+    "domain": "customer_service",
+    "difficulty": "easy"
+  }
+}

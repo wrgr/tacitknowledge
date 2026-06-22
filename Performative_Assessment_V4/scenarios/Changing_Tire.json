@@ -1,0 +1,50 @@
+{
+  "id": "scenario_000",
+  "title": "Flat Tire — Roadside Emergency",
+  "description": "The learner must demonstrate the correct and safe process for changing a flat tire.",
+  "situation": "You are driving alone on a rural highway at dusk when you hear a loud bang and your car begins pulling sharply to the right. You slow down, steer safely onto the shoulder, and stop. You get out and confirm the rear passenger tire is completely flat. It is getting dark, there is light traffic passing, and you have a full spare tire kit in the trunk — spare tire, car jack, lug wrench, and owner's manual.",
+  "user_role": "driver",
+  "max_turns": 10,
+  "constraints": [
+    "Safety must be established first: vehicle fully off the road, hazard lights on, parking brake set",
+    "Lug nuts must be loosened before the vehicle is jacked up",
+    "The jack must be placed at the vehicle manufacturer's designated jack point",
+    "Lug nuts must be tightened in a star/cross pattern",
+    "The learner must check the spare tire's pressure before driving",
+    "The learner must acknowledge the spare tire's speed and distance limitations"
+  ],
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "Move the vehicle completely off the road onto a stable, flat surface. Turn on hazard lights immediately and apply the parking brake. Retrieve the spare tire, jack, and lug wrench from the trunk. With the flat still on the ground, break the lug nuts loose — do not remove them yet. Locate the manufacturer's designated jack point under the frame (consult the owner's manual if needed) and position the jack there. Raise the vehicle until the flat tire is a few inches off the ground. Remove the lug nuts fully and pull off the flat. Mount the spare tire and hand-tighten the lug nuts in a star pattern. Lower the vehicle until the spare just contacts the ground, then torque the lug nuts fully in a star pattern. Lower completely and remove the jack. Check the spare's pressure with a gauge before driving. Stow all equipment and the flat in the trunk. Drive at or below 50 mph and reach a tire shop within 50–70 miles — compact spares are not rated for extended use.",
+      "key_points": [
+        "hazard lights",
+        "parking brake",
+        "loosen lug nuts before jacking",
+        "jack point",
+        "raise the vehicle",
+        "remove flat tire",
+        "mount spare",
+        "star pattern",
+        "check spare tire pressure",
+        "spare tire speed and distance limit"
+      ],
+      "rubric": {
+        "hazard lights": 2,
+        "parking brake": 2,
+        "loosen lug nuts before jacking": 4,
+        "jack point": 3,
+        "raise the vehicle": 1,
+        "remove flat tire": 1,
+        "mount spare": 1,
+        "star pattern": 3,
+        "check spare tire pressure": 2,
+        "spare tire speed and distance limit": 2
+      }
+    }
+  ],
+  "metadata": {
+    "domain": "automotive_safety",
+    "difficulty": "medium"
+  }
+}

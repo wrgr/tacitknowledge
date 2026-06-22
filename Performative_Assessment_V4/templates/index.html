@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Performative Assessment</title>
+<!-- set theme before CSS paints to avoid flash of wrong theme -->
+<script>(function(){const t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');if(t&&t!=='light')document.documentElement.dataset.theme=t;}());</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --blue:      #3b82f6;
+  --blue-dk:   #1d4ed8;
+  --green:     #10b981;
+  --amber:     #f59e0b;
+  --red:       #ef4444;
+  --bg:        #f1f5f9;
+  --card:      #ffffff;
+  --border:    #e2e8f0;
+  --text:      #1e293b;
+  --muted:     #64748b;
+  --radius:    12px;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────── */
+header {
+  background: var(--blue);
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+}
+header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
+#model-badge {
+  font-size: .75rem;
+  background: rgba(255,255,255,.2);
+  padding: 3px 10px;
+  border-radius: 99px;
+}
+#theme-select {
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.35);
+  color: #fff;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: .8rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+}
+#theme-select:focus { box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
+[data-theme="ultra-dark"] #theme-select { background: rgba(0,255,65,.1); border-color: #00ff41; color: #00ff41; }
+
+/* ── Views ───────────────────────────────────── */
+.view { flex: 1; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
+.hidden { display: none !important; }
+
+/* ── Scenario picker ─────────────────────────── */
+#view-scenarios { padding: 32px 20px; }
+#scenario-inner { max-width: 640px; margin: 0 auto; width: 100%; }
+#view-scenarios h2 { font-size: 1.2rem; margin-bottom: 20px; }
+
+.scenario-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.scenario-card:hover {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+.scenario-card .icon {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  background: #eff6ff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem; flex-shrink: 0;
+}
+.scenario-card .info { flex: 1; }
+.scenario-card .info h3 { font-size: .95rem; font-weight: 600; margin-bottom: 4px; }
+.scenario-card .info p  { font-size: .83rem; color: var(--muted); line-height: 1.5; }
+.scenario-card .meta    { font-size: .75rem; color: var(--muted); margin-top: 6px; }
+
+.warning-bar {
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  font-size: .82rem;
+  margin-bottom: 20px;
+}
+
+/* ── Chat / assessment ───────────────────────── */
+#view-assess { display: flex; flex-direction: column; min-height: 0; }
+
+#assess-header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+#assess-title { font-weight: 600; font-size: .9rem; }
+#assess-meta  { font-size: .78rem; color: var(--muted); }
+
+#chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.bubble-wrap { display: flex; gap: 8px; max-width: 82%; }
+.bubble-wrap.examiner { align-self: flex-start; }
+.bubble-wrap.user     { align-self: flex-end; flex-direction: row-reverse; }
+
+.bubble {
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: .88rem;
+  line-height: 1.55;
+}
+.bubble.examiner {
+  background: #f1f5f9;
+  border-bottom-left-radius: 4px;
+  color: var(--text);
+}
+.bubble.user {
+  background: var(--blue);
+  border-bottom-right-radius: 4px;
+  color: #fff;
+}
+
+.avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .75rem; font-weight: 700;
+  flex-shrink: 0; align-self: flex-end;
+}
+.avatar.examiner { background: #dbeafe; color: var(--blue-dk); }
+.avatar.user     { background: #bfdbfe; color: var(--blue-dk); }
+
+.typing-bubble {
+  display: flex; align-items: center; gap: 4px;
+  padding: 12px 16px;
+  background: #f1f5f9;
+  border-radius: 18px;
+  border-bottom-left-radius: 4px;
+}
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: bounce 1.1s ease-in-out infinite;
+}
+.dot:nth-child(2) { animation-delay: .18s; }
+.dot:nth-child(3) { animation-delay: .36s; }
+@keyframes bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%            { transform: translateY(-6px); }
+}
+
+#input-area {
+  padding: 12px 16px;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+#user-input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: .88rem;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  max-height: 120px;
+  line-height: 1.5;
+  transition: border-color .15s;
+}
+#user-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+
+.btn {
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  font-size: .83rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--blue-dk); }
+.btn-ghost   { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover:not(:disabled) { background: var(--bg); }
+.btn-outline { background: transparent; color: var(--blue); border: 1px solid var(--blue); }
+.btn-outline:hover:not(:disabled) { background: #eff6ff; }
+
+/* ── Results ─────────────────────────────────── */
+#view-results { padding: 28px 20px; }
+#results-inner { max-width: 640px; margin: 0 auto; width: 100%; }
+#view-results h2 { font-size: 1.2rem; margin-bottom: 22px; }
+
+.score-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 28px 24px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.score-number {
+  font-size: 3.2rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+.score-bar-bg {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 99px;
+  overflow: hidden;
+  max-width: 280px;
+  margin: 0 auto;
+}
+.score-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  width: 0;
+  transition: width .8s ease;
+}
+
+.result-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 18px 20px;
+  margin-bottom: 12px;
+}
+.result-section h3 {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 12px;
+}
+
+.feedback-text { font-size: .88rem; line-height: 1.65; }
+
+.result-list { list-style: none; }
+.result-list li {
+  font-size: .87rem;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.result-list li:last-child { border-bottom: none; }
+.result-list li .bullet { flex-shrink: 0; font-size: .8rem; padding-top: 1px; }
+.result-list.strengths .bullet { color: var(--green); }
+.result-list.gaps      .bullet { color: var(--amber); }
+
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  font-size: .78rem;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-weight: 500;
+}
+.tag.good { background: #d1fae5; color: #065f46; }
+.tag.miss { background: #fee2e2; color: #991b1b; }
+
+.action-bar  { display: flex; gap: 10px; margin-top: 20px; }
+#report-note { font-size: .82rem; color: var(--muted); margin-top: 10px; }
+
+/* ── Creator ─────────────────────────────────── */
+#view-create { padding: 28px 20px; }
+#create-inner { max-width: 680px; margin: 0 auto; width: 100%; }
+#create-inner h2 { font-size: 1.2rem; margin-bottom: 20px; }
+
+.ai-box {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.ai-box p {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--blue-dk);
+  margin-bottom: 8px;
+}
+.ai-box textarea {
+  width: 100%;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: .87rem;
+  font-family: inherit;
+  outline: none;
+  background: #fff;
+  resize: vertical;
+  min-height: 64px;
+  margin-bottom: 10px;
+  display: block;
+}
+.ai-box textarea:focus { border-color: var(--blue); }
+
+.form-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+.form-section h3 {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 14px;
+}
+.field { margin-bottom: 13px; }
+.field:last-child { margin-bottom: 0; }
+.field label {
+  display: block;
+  font-size: .79rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.field input[type="text"],
+.field input[type="number"],
+.field textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: .87rem;
+  font-family: inherit;
+  outline: none;
+  background: var(--bg);
+  transition: border-color .15s;
+}
+.field input:focus, .field textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+  background: #fff;
+}
+.field textarea { resize: vertical; min-height: 80px; }
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+
+.dynamic-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.dynamic-item { display: flex; gap: 8px; align-items: center; }
+.dynamic-item input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: .86rem;
+  font-family: inherit;
+  outline: none;
+  background: var(--bg);
+}
+.dynamic-item input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+  background: #fff;
+}
+.dynamic-item select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: .84rem;
+  font-family: inherit;
+  background: var(--bg);
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.btn-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+.btn-remove:hover { color: var(--red); }
+.btn-add {
+  width: 100%;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: .82rem;
+  font-family: inherit;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+}
+.btn-add:hover { border-color: var(--blue); color: var(--blue); background: #eff6ff; }
+.create-actions { display: flex; gap: 10px; margin-top: 8px; }
+#create-note { font-size: .82rem; color: var(--muted); margin-top: 10px; }
+
+/* ── Spinner ──────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Thinking Profile ────────────────────────── */
+.profile-frameworks { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.profile-card {
+  flex: 1; min-width: 140px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.profile-card-label {
+  font-size: .7rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px;
+}
+.profile-card-value {
+  font-size: .92rem; font-weight: 600; color: var(--blue-dk); margin-bottom: 4px;
+}
+.profile-card-evidence { font-size: .78rem; color: var(--muted); line-height: 1.5; }
+.profile-patterns { list-style: none; margin: 4px 0 10px; }
+.profile-patterns li { font-size: .85rem; padding: 3px 0; display: flex; gap: 8px; }
+.profile-patterns li::before { content: "◆"; color: var(--blue); font-size: .6rem; margin-top: 4px; flex-shrink: 0; }
+.profile-note {
+  font-size: .82rem; color: var(--muted); font-style: italic;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+/* ── Provider / model selectors ───────────────── */
+#provider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+#provider-row label {
+  font-size: .85rem;
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+#provider-select, #model-select {
+  padding: 6px 14px 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: .88rem;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  appearance: auto;
+}
+#provider-select:focus, #model-select:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+#api-key-input {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: .88rem;
+  color: var(--text);
+  font-family: inherit;
+  width: 200px;
+  letter-spacing: .05em;
+}
+#api-key-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+#api-key-input:disabled { opacity: .5; cursor: not-allowed; background: var(--bg); }
+
+/* ── Dark mode ───────────────────────────────── */
+[data-theme="dark"] {
+  --bg:      #0f172a;
+  --card:    #1e293b;
+  --border:  #334155;
+  --text:    #f1f5f9;
+  --muted:   #94a3b8;
+  --blue-dk: #60a5fa;
+}
+/* form elements don't always inherit color from body — set explicitly */
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select { color: var(--text); color-scheme: dark; }
+
+[data-theme="dark"] .bubble.examiner,
+[data-theme="dark"] .typing-bubble       { background: #273549; color: var(--text); }
+[data-theme="dark"] .avatar.examiner     { background: #1e3a58; color: #93c5fd; }
+[data-theme="dark"] .avatar.user         { background: #1e3a58; color: #93c5fd; }
+[data-theme="dark"] .warning-bar         { background: #422006; border-color: #713f12; color: #fcd34d; }
+[data-theme="dark"] .tag.good            { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .tag.miss            { background: #4c0519; color: #fca5a5; }
+[data-theme="dark"] .score-bar-bg        { background: #334155; }
+[data-theme="dark"] .scenario-card .icon { background: #1e3a58; }
+[data-theme="dark"] #user-input          { background: var(--card); }
+[data-theme="dark"] .ai-box              { background: #162032; border-color: #1e3a58; }
+[data-theme="dark"] .ai-box p            { color: #93c5fd; }
+[data-theme="dark"] .ai-box textarea     { background: var(--bg); border-color: #334155; }
+[data-theme="dark"] .btn-outline:hover:not(:disabled) { background: #162032; }
+
+/* ── Newspaper ───────────────────────────────── */
+[data-theme="rustic"] {
+  --bg:      #f0e4c8;
+  --card:    #f8f0dc;
+  --border:  #c4a97a;
+  --text:    #1a0f05;
+  --muted:   #6b4f35;
+  --blue:    #4a2f0d;
+  --blue-dk: #2e1c06;
+  --green:   #3d5c35;
+  --amber:   #9a7000;
+  --red:     #7a1e0e;
+}
+[data-theme="rustic"] body                 { font-family: Georgia, 'Times New Roman', serif; }
+[data-theme="rustic"] .bubble.examiner,
+[data-theme="rustic"] .typing-bubble       { background: #ede0c4; color: #1a0f05; }
+[data-theme="rustic"] .avatar.examiner     { background: #d9c9a8; color: #2e1c06; }
+[data-theme="rustic"] .avatar.user         { background: #2e1c06; color: #f0e4c8; }
+[data-theme="rustic"] .warning-bar         { background: #f5e4a0; border-color: #c4a000; color: #4a3000; }
+[data-theme="rustic"] .tag.good            { background: #d4e8c8; color: #1a3512; }
+[data-theme="rustic"] .tag.miss            { background: #f0d0c0; color: #5a1500; }
+[data-theme="rustic"] .score-bar-bg        { background: #ddd0b4; }
+[data-theme="rustic"] .scenario-card .icon { background: #e8d5b0; }
+[data-theme="rustic"] #user-input          { background: var(--card); }
+[data-theme="rustic"] .ai-box              { background: #f5ead0; border-color: #c4a97a; }
+[data-theme="rustic"] .ai-box p            { color: #2e1c06; }
+[data-theme="rustic"] .ai-box textarea     { background: #fdf6e3; border-color: #c4a97a; color: #1a0f05; }
+[data-theme="rustic"] .btn-outline:hover:not(:disabled) { background: #ede0c4; }
+
+/* ── Ultra-Light ─────────────────────────────── */
+[data-theme="ultra-light"] {
+  --bg:      #ffffff;
+  --card:    #ffffff;
+  --border:  #000000;
+  --text:    #000000;
+  --muted:   #222222;
+  --blue:    #0000ff;
+  --blue-dk: #0000cc;
+  --green:   #006600;
+  --amber:   #cc6600;
+  --red:     #cc0000;
+  --radius:  0px;
+}
+[data-theme="ultra-light"] body        { font-weight: 700; }
+[data-theme="ultra-light"] header      { background: #0000ff; box-shadow: none; border-bottom: 3px solid #000; }
+[data-theme="ultra-light"] .scenario-card          { border: 2px solid #000; }
+[data-theme="ultra-light"] .scenario-card:hover    { box-shadow: 4px 4px 0 #000; border-color: #0000ff; }
+[data-theme="ultra-light"] .scenario-card .icon    { background: #ffff00; border-radius: 0; }
+[data-theme="ultra-light"] .bubble.examiner,
+[data-theme="ultra-light"] .typing-bubble          { background: #eeeeee; color: #000; border: 2px solid #000; }
+[data-theme="ultra-light"] .avatar.examiner        { background: #dddddd; color: #000; }
+[data-theme="ultra-light"] .avatar.user            { background: #0000ff; color: #fff; }
+[data-theme="ultra-light"] .warning-bar            { background: #ffff00; border: 2px solid #000; color: #000; }
+[data-theme="ultra-light"] .tag.good               { background: #00ff00; color: #000; }
+[data-theme="ultra-light"] .tag.miss               { background: #ff0000; color: #fff; }
+[data-theme="ultra-light"] .score-bar-bg           { background: #cccccc; border: 1px solid #000; }
+[data-theme="ultra-light"] .ai-box                 { background: #ffff99; border: 2px solid #000; }
+[data-theme="ultra-light"] .ai-box p               { color: #000; }
+[data-theme="ultra-light"] .ai-box textarea        { background: #fff; border: 2px solid #000; color: #000; }
+[data-theme="ultra-light"] .result-section         { border: 2px solid #000; }
+[data-theme="ultra-light"] .profile-card           { border: 2px solid #000; background: #f0f0f0; }
+[data-theme="ultra-light"] .btn                    { border-radius: 0; }
+[data-theme="ultra-light"] .btn-ghost              { border: 2px solid #000; color: #000; }
+[data-theme="ultra-light"] .btn-ghost:hover:not(:disabled)   { background: #eeeeee; }
+[data-theme="ultra-light"] .btn-outline:hover:not(:disabled) { background: #e0e0ff; }
+[data-theme="ultra-light"] input,
+[data-theme="ultra-light"] textarea,
+[data-theme="ultra-light"] select                  { color: #000; border-color: #000 !important; }
+
+/* ── Ultra-Dark ──────────────────────────────── */
+[data-theme="ultra-dark"] {
+  --bg:      #000000;
+  --card:    #080808;
+  --border:  #00ff41;
+  --text:    #00ff41;
+  --muted:   #008f11;
+  --blue:    #00ffff;
+  --blue-dk: #00cccc;
+  --green:   #00ff41;
+  --amber:   #ffff00;
+  --red:     #ff0040;
+  --radius:  3px;
+}
+[data-theme="ultra-dark"] body         { font-family: 'Courier New', monospace; }
+[data-theme="ultra-dark"] header       { background: #000; border-bottom: 2px solid #00ff41; box-shadow: 0 0 20px #00ff4144; }
+[data-theme="ultra-dark"] h1           { text-shadow: 0 0 12px #00ff41; }
+[data-theme="ultra-dark"] h2, [data-theme="ultra-dark"] h3 { text-shadow: 0 0 8px currentColor; }
+[data-theme="ultra-dark"] #model-badge { background: rgba(0,255,65,.15); color: #00ff41; }
+[data-theme="ultra-dark"] .scenario-card          { border-color: #00ff41; }
+[data-theme="ultra-dark"] .scenario-card:hover    { border-color: #00ff41; box-shadow: 0 0 14px #00ff4155; }
+[data-theme="ultra-dark"] .scenario-card .icon    { background: #001a00; }
+[data-theme="ultra-dark"] #assess-header          { border-bottom-color: #00ff41; }
+[data-theme="ultra-dark"] #input-area             { border-top-color: #00ff41; }
+[data-theme="ultra-dark"] .bubble.examiner,
+[data-theme="ultra-dark"] .typing-bubble          { background: #001100; color: #00ff41; border: 1px solid #00ff41; }
+[data-theme="ultra-dark"] .bubble.user            { background: #001a1a; color: #00ffff; border: 1px solid #00ffff; }
+[data-theme="ultra-dark"] .avatar.examiner        { background: #001100; color: #00ff41; }
+[data-theme="ultra-dark"] .avatar.user            { background: #001a1a; color: #00ffff; }
+[data-theme="ultra-dark"] .dot                    { background: #00ff41; }
+[data-theme="ultra-dark"] .warning-bar            { background: #1a0000; border-color: #ff0040; color: #ff0040; }
+[data-theme="ultra-dark"] .tag.good               { background: #001a00; color: #00ff41; border: 1px solid #00ff41; }
+[data-theme="ultra-dark"] .tag.miss               { background: #1a0010; color: #ff0040; border: 1px solid #ff0040; }
+[data-theme="ultra-dark"] .score-bar-bg           { background: #001100; border: 1px solid #00ff41; }
+[data-theme="ultra-dark"] .ai-box                 { background: #000d1a; border-color: #00ffff; }
+[data-theme="ultra-dark"] .ai-box p               { color: #00ffff; text-shadow: 0 0 8px #00ffff; }
+[data-theme="ultra-dark"] .ai-box textarea        { background: #000; border-color: #00ffff; color: #00ff41; }
+[data-theme="ultra-dark"] .result-section         { border-color: #00ff41; }
+[data-theme="ultra-dark"] .profile-card           { background: #000d00; border-color: #00ff41; }
+[data-theme="ultra-dark"] .btn-primary            { background: #00ffff; color: #000; }
+[data-theme="ultra-dark"] .btn-primary:hover:not(:disabled)  { background: #00cccc; }
+[data-theme="ultra-dark"] .btn-ghost              { border-color: #00ff41; color: #00ff41; }
+[data-theme="ultra-dark"] .btn-ghost:hover:not(:disabled)    { background: #001100; }
+[data-theme="ultra-dark"] .btn-outline            { border-color: #00ffff; color: #00ffff; }
+[data-theme="ultra-dark"] .btn-outline:hover:not(:disabled)  { background: #001a1a; }
+[data-theme="ultra-dark"] input,
+[data-theme="ultra-dark"] textarea,
+[data-theme="ultra-dark"] select                  { color: #00ff41; color-scheme: dark; border-color: #00ff41 !important; background-color: #000; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Performative Assessment</h1>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="model-badge">loading…</span>
+    <select id="theme-select" title="Choose theme">
+      <option value="ultra-light">🔆 Ultra-Light</option>
+      <option value="light">☀️ Light</option>
+      <option value="rustic">📰 Rustic</option>
+      <option value="dark">🌙 Dark</option>
+      <option value="ultra-dark">☠️ Ultra-Dark</option>
+    </select>
+    {% if is_admin %}
+    <a href="/admin" style="font-size:.78rem;color:rgba(255,255,255,.85);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.35);border-radius:6px;white-space:nowrap">Dashboard</a>
+    {% endif %}
+    <span style="font-size:.78rem;background:rgba(255,255,255,.18);padding:3px 10px;border-radius:99px;white-space:nowrap">{{ current_user }}</span>
+    <a href="/logout" style="font-size:.78rem;color:rgba(255,180,180,.9);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,100,100,.35);border-radius:6px;white-space:nowrap">Sign out</a>
+  </div>
+</header>
+
+<!-- Scenario picker -->
+<div id="view-scenarios" class="view">
+  <div id="scenario-inner">
+    <div id="ollama-warning" class="warning-bar hidden">
+      No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key above to enable LLM scoring.
+    </div>
+    <div id="provider-row" class="hidden">
+      <label for="provider-select">AI Provider</label>
+      <select id="provider-select"></select>
+      <label for="model-select">Model</label>
+      <select id="model-select"></select>
+      <label for="api-key-input">API Key</label>
+      <input type="password" id="api-key-input" autocomplete="new-password">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="margin-bottom:0">Choose a scenario</h2>
+      <button class="btn btn-outline" onclick="showCreate()">+ Create Scenario</button>
+    </div>
+    <div id="scenario-list"></div>
+  </div>
+</div>
+
+<!-- Assessment chat -->
+<div id="view-assess" class="view hidden">
+  <div id="assess-header">
+    <span id="assess-title"></span>
+    <span id="assess-meta"></span>
+  </div>
+  <div id="chat-area"></div>
+  <div id="input-area">
+    <textarea id="user-input" rows="1" placeholder="Describe what you would do…"></textarea>
+    <button class="btn btn-ghost"   id="btn-finish">Finish</button>
+    <button class="btn btn-primary" id="btn-send">Send</button>
+  </div>
+</div>
+
+<!-- Create Scenario -->
+<div id="view-create" class="view hidden">
+  <div id="create-inner">
+    <h2>Create Scenario</h2>
+
+    <!-- AI generation box -->
+    <div class="ai-box">
+      <p>Describe your scenario in plain English</p>
+      <textarea id="ai-description" placeholder="e.g. A nursing student must respond to a patient showing signs of a stroke while on a hospital ward…"></textarea>
+      <button class="btn btn-primary" id="btn-fill-ai">Fill with AI</button>
+    </div>
+
+    <!-- Basic info -->
+    <div class="form-section">
+      <h3>Basic Info</h3>
+      <div class="field">
+        <label>Title</label>
+        <input type="text" id="f-title" placeholder="e.g. Stroke Response">
+      </div>
+      <div class="field">
+        <label>One-sentence description (shown in the scenario list)</label>
+        <input type="text" id="f-description" placeholder="e.g. The learner must demonstrate the correct response to a suspected stroke.">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Learner's role</label>
+          <input type="text" id="f-role" value="participant" placeholder="e.g. nurse, driver, technician">
+        </div>
+        <div class="field">
+          <label>Max turns</label>
+          <input type="number" id="f-turns" value="8" min="2" max="20">
+        </div>
+      </div>
+    </div>
+
+    <!-- Situation -->
+    <div class="form-section">
+      <h3>Situation</h3>
+      <div class="field">
+        <label>Scene text shown to the learner at the start</label>
+        <textarea id="f-situation" style="min-height:100px" placeholder="You are on duty when…"></textarea>
+      </div>
+    </div>
+
+    <!-- Constraints -->
+    <div class="form-section">
+      <h3>Constraints &nbsp;<span style="font-weight:400;color:var(--muted);text-transform:none;font-size:.78rem;letter-spacing:0">— rules shown in reports (optional)</span></h3>
+      <div class="dynamic-list" id="constraint-list"></div>
+      <button class="btn-add" id="btn-add-constraint">+ Add constraint</button>
+    </div>
+
+    <!-- Expert answer -->
+    <div class="form-section">
+      <h3>Expert Answer</h3>
+      <div class="field">
+        <label>The complete ideal response — used as reference in reports</label>
+        <textarea id="f-answer" style="min-height:110px" placeholder="Describe the correct process step by step…"></textarea>
+      </div>
+    </div>
+
+    <!-- Key points -->
+    <div class="form-section">
+      <h3>Key Points &amp; Weights</h3>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Short phrases the learner must mention. Weight = how many points each is worth when scoring.</p>
+      <div class="dynamic-list" id="keypoint-list"></div>
+      <button class="btn-add" id="btn-add-keypoint">+ Add key point</button>
+    </div>
+
+    <div class="create-actions">
+      <button class="btn btn-primary" id="btn-save-scenario">Save Scenario</button>
+      <button class="btn btn-ghost"   id="btn-cancel-create">Cancel</button>
+    </div>
+    <div id="create-note"></div>
+  </div>
+</div>
+
+<!-- Results -->
+<div id="view-results" class="view hidden">
+  <div id="results-inner">
+    <h2>Assessment Results</h2>
+    <div id="results-content"></div>
+
+    <!-- Thinking profile — populated asynchronously after scoring -->
+    <div id="profile-section" class="hidden">
+      <div class="result-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <h3 style="margin-bottom:0">Thinking Profile</h3>
+          <span id="profile-session-label" style="font-size:.75rem;color:var(--muted)"></span>
+        </div>
+        <div id="profile-content"></div>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button class="btn btn-outline" id="btn-report">Generate Report</button>
+      <button class="btn btn-ghost"   id="btn-again">Try Another Scenario</button>
+    </div>
+    <div id="report-note"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────
+const S = { sessionId: null, maxTurns: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
+
+// ── Helpers ────────────────────────────────────
+const $  = id => document.getElementById(id);
+const show = id => $(id).classList.remove('hidden');
+const hide = id => $(id).classList.add('hidden');
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+// ── Chat ───────────────────────────────────────
+function addBubble(role, text) {
+  const area = $('chat-area');
+  const wrap = document.createElement('div');
+  wrap.className = `bubble-wrap ${role}`;
+
+  const av = document.createElement('div');
+  av.className = `avatar ${role}`;
+  av.textContent = role === 'examiner' ? 'E' : 'You';
+
+  const b = document.createElement('div');
+  b.className = `bubble ${role}`;
+  b.textContent = text;
+
+  wrap.appendChild(av);
+  wrap.appendChild(b);
+  area.appendChild(wrap);
+  area.scrollTop = area.scrollHeight;
+}
+
+let _typing = null;
+function showTyping() {
+  if (_typing) return;
+  const area = $('chat-area');
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble-wrap examiner';
+  const av = document.createElement('div');
+  av.className = 'avatar examiner';
+  av.textContent = 'E';
+  const tb = document.createElement('div');
+  tb.className = 'typing-bubble';
+  tb.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  wrap.appendChild(av);
+  wrap.appendChild(tb);
+  area.appendChild(wrap);
+  area.scrollTop = area.scrollHeight;
+  _typing = wrap;
+}
+function hideTyping() {
+  if (_typing) { _typing.remove(); _typing = null; }
+}
+
+function updateMeta() {
+  $('assess-meta').textContent = `Turn ${S.turn} of ${S.maxTurns}`;
+}
+
+function lock(on) {
+  S.busy = on;
+  $('user-input').disabled = on;
+  $('btn-send').disabled   = on;
+  $('btn-finish').disabled = on;
+}
+
+// ── Scenarios ──────────────────────────────────
+const ICONS = ['🚗','🏥','🔥','⚡','🧪','🛠️','📋','🌊','🚨','🏗️'];
+
+function updateBadge() {
+  const model = $('model-select').value || S.model;
+  $('model-badge').textContent = S.provider && model
+    ? `${S.provider} — ${model}`
+    : (S.provider || 'Keyword mode');
+}
+
+async function fetchModels(providerName) {
+  const sel = $('model-select');
+  sel.innerHTML = '<option disabled>Loading…</option>';
+  try {
+    const data = await api('/api/models', { provider: providerName });
+    sel.innerHTML = '';
+    data.models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (m === data.default) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (!sel.value && data.models.length) sel.value = data.models[0];
+    S.model = sel.value;
+  } catch (_) {
+    sel.innerHTML = '<option value="">—</option>';
+    S.model = null;
+  }
+  updateBadge();
+}
+
+// keyed by provider name — populated when /api/scenarios loads
+let _providerMeta = {};
+
+function updateKeyField() {
+  const meta     = _providerMeta[S.provider] || {};
+  const keyInput = $('api-key-input');
+
+  if (!meta.needs_key) {
+    // Ollama — no API key needed
+    keyInput.disabled    = true;
+    keyInput.value       = '';
+    keyInput.placeholder = 'No key required';
+  } else if (meta.is_configured) {
+    keyInput.disabled    = false;
+    keyInput.placeholder = 'Key on file — enter to override';
+  } else {
+    keyInput.disabled    = false;
+    keyInput.placeholder = 'Enter API key';
+  }
+
+  S.apiKey               = keyInput.value.trim();
+  S.providerIsConfigured = !meta.needs_key || meta.is_configured;
+
+  // show the warning only when neither a stored key nor a typed key is available
+  if (S.apiKey || S.providerIsConfigured) {
+    hide('ollama-warning');
+  } else {
+    show('ollama-warning');
+  }
+}
+
+async function loadScenarios() {
+  const data = await api('/api/scenarios', {});
+
+  // build provider dropdown from the full list (configured + unconfigured)
+  if (data.providers && data.providers.length > 0) {
+    _providerMeta = {};
+    const sel = $('provider-select');
+    sel.innerHTML = '';
+    data.providers.forEach(p => {
+      _providerMeta[p.name] = p;
+      const opt = document.createElement('option');
+      opt.value       = p.name;
+      opt.textContent = p.name;
+      if (p.name === data.default_provider) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    S.provider = sel.value;
+    await fetchModels(S.provider);
+    updateKeyField();
+
+    sel.addEventListener('change', async () => {
+      S.provider = sel.value;
+      $('api-key-input').value = '';   // clear typed key when switching providers
+      updateKeyField();
+      await fetchModels(S.provider);
+    });
+
+    $('api-key-input').addEventListener('input', function () {
+      S.apiKey = this.value.trim();
+      const meta = _providerMeta[S.provider] || {};
+      if (S.apiKey || S.providerIsConfigured) hide('ollama-warning');
+      else show('ollama-warning');
+    });
+
+    $('model-select').addEventListener('change', () => {
+      S.model = $('model-select').value;
+      updateBadge();
+    });
+
+    show('provider-row');
+  } else {
+    show('ollama-warning');
+    $('model-badge').textContent = 'Keyword mode';
+  }
+
+  const list = $('scenario-list');
+  data.scenarios.forEach((s) => {
+    const card = document.createElement('div');
+    card.className = 'scenario-card';
+    card.innerHTML = `
+      <div class="icon">${ICONS[s.index % ICONS.length]}</div>
+      <div class="info">
+        <h3>${s.title}</h3>
+        <p>${s.description}</p>
+        <div class="meta">${s.max_turns} turns</div>
+      </div>`;
+    card.addEventListener('click', () => startScenario(s.index, s.title, s.max_turns));
+    list.appendChild(card);
+  });
+}
+
+// ── Start assessment ───────────────────────────
+async function startScenario(index, title) {
+  $('chat-area').innerHTML = '';
+  $('assess-title').textContent = title;
+  S.turn = 0;
+
+  const data = await api('/api/start', { index, provider: S.provider, model: S.model, api_key: S.apiKey || undefined });
+  S.sessionId = data.session_id;
+  S.maxTurns  = data.max_turns;
+  updateMeta();
+
+  hide('view-scenarios');
+  show('view-assess');
+  addBubble('examiner', data.opening);
+  $('user-input').focus();
+}
+
+// ── Send a response ────────────────────────────
+async function send() {
+  const el   = $('user-input');
+  const text = el.value.trim();
+  if (!text || S.busy) return;
+
+  addBubble('user', text);
+  el.value = '';
+  el.style.height = 'auto';
+  lock(true);
+  showTyping();
+
+  try {
+    const data = await api('/api/respond', { session_id: S.sessionId, user_input: text });
+    hideTyping();
+    S.turn++;
+    updateMeta();
+    if (data.narration) addBubble('examiner', data.narration);
+    if (data.concluded) {
+      await evaluate();
+    } else {
+      lock(false);
+      $('user-input').focus();
+    }
+  } catch (err) {
+    hideTyping();
+    addBubble('examiner', `⚠ ${err.message}`);
+    lock(false);
+  }
+}
+
+// ── Evaluate ───────────────────────────────────
+async function evaluate() {
+  addBubble('examiner', 'Assessment complete — evaluating your responses…');
+  showTyping();
+  try {
+    const data = await api('/api/evaluate', { session_id: S.sessionId });
+    hideTyping();
+    hide('view-assess');
+    renderResults(data);
+    show('view-results');
+    // kick off profile analysis in the background — shows when ready
+    fetchThinkingProfile();
+  } catch (err) {
+    hideTyping();
+    addBubble('examiner', `⚠ Evaluation error: ${err.message}`);
+    lock(false);
+  }
+}
+
+// ── Thinking Profile ───────────────────────────
+async function fetchThinkingProfile() {
+  // show a subtle loading placeholder while the async call runs
+  $('profile-content').innerHTML = '<p class="profile-loading"><span class="spinner"></span>Analysing thinking style…</p>';
+  show('profile-section');
+  try {
+    const data = await api('/api/thinking-profile', { session_id: S.sessionId });
+    if (data.profile) {
+      renderProfile(data.profile);
+    } else {
+      hide('profile-section');
+    }
+  } catch (_) {
+    hide('profile-section');  // silently hide if unavailable (no LLM key, etc.)
+  }
+}
+
+function renderProfile(p) {
+  $('profile-session-label').textContent = 'This session';
+
+  let html = `<div class="profile-frameworks">
+    <div class="profile-card">
+      <div class="profile-card-label">Honey &amp; Mumford</div>
+      <div class="profile-card-value">${p.honey_mumford_style || '—'}</div>
+      <div class="profile-card-evidence">${p.honey_mumford_evidence || ''}</div>
+    </div>
+    <div class="profile-card">
+      <div class="profile-card-label">SOLO Level</div>
+      <div class="profile-card-value">${p.solo_level || '—'}</div>
+      <div class="profile-card-evidence">${p.solo_evidence || ''}</div>
+    </div>
+  </div>`;
+
+  const patterns = p.observed_patterns || [];
+  if (patterns.length) {
+    html += '<ul class="profile-patterns">' +
+      patterns.map(pat => `<li>${pat}</li>`).join('') +
+      '</ul>';
+  }
+
+  if (p.instructor_note) {
+    html += `<p class="profile-note"><strong>For instructors:</strong> ${p.instructor_note}</p>`;
+  }
+
+  $('profile-content').innerHTML = html;
+}
+
+// ── Finish button ──────────────────────────────
+$('btn-finish').addEventListener('click', async () => {
+  if (S.busy) return;
+  if (!confirm('End the assessment now and see your results?')) return;
+  const text = $('user-input').value.trim();
+  if (text) {
+    addBubble('user', text);
+    $('user-input').value = '';
+    lock(true);
+    showTyping();
+    try { await api('/api/respond', { session_id: S.sessionId, user_input: text }); } catch (_) {}
+    hideTyping();
+  } else {
+    lock(true);
+  }
+  await evaluate();
+});
+
+// ── Input wiring ───────────────────────────────
+$('btn-send').addEventListener('click', send);
+
+$('user-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+$('user-input').addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ── Results ────────────────────────────────────
+function scoreColor(s) {
+  if (s >= 0.75) return 'var(--green)';
+  if (s >= 0.5)  return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function renderResults(data) {
+  const ev  = data.evaluations[0] || {};
+  const pct = Math.round((ev.score || 0) * 100);
+  const col = scoreColor(ev.score || 0);
+
+  let html = `
+    <div class="score-card">
+      <div class="score-number" style="color:${col}">${pct}%</div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill" id="score-fill" style="background:${col}"></div>
+      </div>
+    </div>`;
+
+  if (ev.feedback) {
+    html += `<div class="result-section">
+      <h3>Feedback</h3>
+      <p class="feedback-text">${ev.feedback}</p>
+    </div>`;
+  }
+
+  if (ev.strengths?.length) {
+    html += `<div class="result-section"><h3>Strengths</h3><ul class="result-list strengths">`;
+    ev.strengths.forEach(s => {
+      html += `<li><span class="bullet">✓</span>${s}</li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  if (ev.gaps?.length) {
+    html += `<div class="result-section"><h3>Areas to improve</h3><ul class="result-list gaps">`;
+    ev.gaps.forEach(g => {
+      html += `<li><span class="bullet">△</span>${g}</li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  if (ev.matched_points?.length || ev.missed_points?.length) {
+    html += `<div class="result-section"><h3>Key points</h3><div class="tag-list">`;
+    (ev.matched_points || []).forEach(p => { html += `<span class="tag good">✓ ${p}</span>`; });
+    (ev.missed_points  || []).forEach(p => { html += `<span class="tag miss">✗ ${p}</span>`; });
+    html += `</div></div>`;
+  }
+
+  $('results-content').innerHTML = html;
+  $('report-note').textContent   = '';
+  $('btn-report').disabled       = false;
+  $('btn-report').textContent    = 'Generate Report';
+
+  // Animate score bar after paint
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { $('score-fill').style.width = pct + '%'; });
+  });
+}
+
+$('btn-report').addEventListener('click', async () => {
+  $('btn-report').disabled    = true;
+  $('btn-report').innerHTML   = '<span class="spinner"></span>Generating…';
+  $('report-note').textContent = '';
+  try {
+    const data = await api('/api/report', { session_id: S.sessionId });
+    $('report-note').textContent = `Saved → ${data.path}`;
+  } catch (err) {
+    $('report-note').textContent = `Error: ${err.message}`;
+  } finally {
+    $('btn-report').disabled    = false;
+    $('btn-report').textContent = 'Generate Report';
+  }
+});
+
+$('btn-again').addEventListener('click', () => {
+  hide('view-results');
+  hide('profile-section');
+  $('profile-content').innerHTML = '';
+  show('view-scenarios');
+});
+
+// ── Scenario Creator ───────────────────────────
+
+function showCreate() {
+  // clear the form before showing it
+  $('ai-description').value  = '';
+  $('f-title').value         = '';
+  $('f-description').value   = '';
+  $('f-situation').value     = '';
+  $('f-role').value          = 'participant';
+  $('f-turns').value         = '8';
+  $('f-answer').value        = '';
+  $('constraint-list').innerHTML = '';
+  $('keypoint-list').innerHTML   = '';
+  $('create-note').textContent   = '';
+  hide('view-scenarios');
+  show('view-create');
+}
+
+function addConstraintRow(value) {
+  // add one editable row to the constraints list
+  const list = $('constraint-list');
+  const item = document.createElement('div');
+  item.className = 'dynamic-item';
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.placeholder = 'e.g. Safety must be established first';
+  input.value       = value || '';
+  const remove = document.createElement('button');
+  remove.className = 'btn-remove';
+  remove.title     = 'Remove';
+  remove.textContent = '×';
+  remove.addEventListener('click', () => item.remove());
+  item.appendChild(input);
+  item.appendChild(remove);
+  list.appendChild(item);
+}
+
+function addKeyPointRow(value, weight) {
+  // add one editable key point row with a weight dropdown
+  const list = $('keypoint-list');
+  const item = document.createElement('div');
+  item.className = 'dynamic-item';
+
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.placeholder = 'e.g. hazard lights';
+  input.value       = value || '';
+
+  const sel = document.createElement('select');
+  sel.title = 'Point weight';
+  [['1','Low (1pt)'],['2','Medium (2pt)'],['3','High (3pt)'],['4','Critical (4pt)']].forEach(([v, label]) => {
+    const opt = document.createElement('option');
+    opt.value       = v;
+    opt.textContent = label;
+    if (parseInt(v) === (weight || 2)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  const remove = document.createElement('button');
+  remove.className   = 'btn-remove';
+  remove.title       = 'Remove';
+  remove.textContent = '×';
+  remove.addEventListener('click', () => item.remove());
+
+  item.appendChild(input);
+  item.appendChild(sel);
+  item.appendChild(remove);
+  list.appendChild(item);
+}
+
+$('btn-add-constraint').addEventListener('click', () => addConstraintRow());
+$('btn-add-keypoint').addEventListener('click',   () => addKeyPointRow());
+
+$('btn-cancel-create').addEventListener('click', () => {
+  hide('view-create');
+  show('view-scenarios');
+});
+
+// Ask the AI to fill in the form fields from the description
+$('btn-fill-ai').addEventListener('click', async () => {
+  const desc = $('ai-description').value.trim();
+  if (!desc) { alert('Please describe your scenario first.'); return; }
+
+  const btn = $('btn-fill-ai');
+  btn.innerHTML = '<span class="spinner"></span>Generating…';
+  btn.disabled  = true;
+  $('create-note').textContent = '';
+
+  try {
+    const data = await api('/api/generate-scenario', { description: desc, provider: S.provider, model: S.model, api_key: S.apiKey || undefined });
+    const s    = data.scenario;
+
+    // populate each form field with the AI draft
+    $('f-title').value       = s.title        || '';
+    $('f-description').value = s.description  || '';
+    $('f-situation').value   = s.situation    || '';
+    $('f-role').value        = s.user_role    || 'participant';
+    $('f-turns').value       = s.max_turns    || 8;
+    $('f-answer').value      = s.expert_answer|| '';
+
+    $('constraint-list').innerHTML = '';
+    (s.constraints || []).forEach(c => addConstraintRow(c));
+
+    $('keypoint-list').innerHTML = '';
+    (s.key_points || []).forEach(p => addKeyPointRow(p, s.rubric ? s.rubric[p] : 2));
+
+    $('create-note').textContent = 'AI draft loaded — review and edit each field before saving.';
+  } catch (err) {
+    $('create-note').textContent = 'Generation failed: ' + err.message;
+  } finally {
+    btn.innerHTML = 'Fill with AI';
+    btn.disabled  = false;
+  }
+});
+
+// Save the form as a new scenario JSON file
+$('btn-save-scenario').addEventListener('click', async () => {
+  const title     = $('f-title').value.trim();
+  const situation = $('f-situation').value.trim();
+  const answer    = $('f-answer').value.trim();
+
+  if (!title || !situation || !answer) {
+    alert('Title, Situation, and Expert Answer are required.');
+    return;
+  }
+
+  // collect key points and their weights from the dynamic rows
+  const keyPoints = [];
+  const rubric    = {};
+  $('keypoint-list').querySelectorAll('.dynamic-item').forEach(item => {
+    const text   = item.querySelector('input').value.trim();
+    const weight = parseInt(item.querySelector('select').value);
+    if (text) { keyPoints.push(text); rubric[text] = weight; }
+  });
+
+  // collect constraints from the dynamic rows
+  const constraints = [];
+  $('constraint-list').querySelectorAll('.dynamic-item input').forEach(input => {
+    if (input.value.trim()) constraints.push(input.value.trim());
+  });
+
+  const btn = $('btn-save-scenario');
+  btn.innerHTML = '<span class="spinner"></span>Saving…';
+  btn.disabled  = true;
+
+  try {
+    const data = await api('/api/save-scenario', {
+      title:         title,
+      description:   $('f-description').value.trim(),
+      situation:     situation,
+      user_role:     $('f-role').value.trim() || 'participant',
+      max_turns:     parseInt($('f-turns').value) || 8,
+      constraints:   constraints,
+      expert_answer: answer,
+      key_points:    keyPoints,
+      rubric:        rubric,
+    });
+
+    $('create-note').textContent = 'Saved — returning to scenario list…';
+
+    // reload the scenario list so the new scenario appears immediately
+    $('scenario-list').innerHTML = '';
+    await loadScenarios();
+
+    // go back to the picker after a short pause
+    setTimeout(() => { hide('view-create'); show('view-scenarios'); }, 1000);
+  } catch (err) {
+    $('create-note').textContent = 'Save failed: ' + err.message;
+  } finally {
+    btn.innerHTML = 'Save Scenario';
+    btn.disabled  = false;
+  }
+});
+
+// ── Theme ──────────────────────────────────────
+function applyTheme(id) {
+  document.documentElement.dataset.theme = id === 'light' ? '' : id;
+  $('theme-select').value = id;
+}
+
+$('theme-select').addEventListener('change', function () {
+  applyTheme(this.value);
+  localStorage.setItem('theme', this.value);
+});
+
+// ── Boot ───────────────────────────────────────
+(function () {
+  const saved = localStorage.getItem('theme');
+  const id    = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  applyTheme(id);
+}());
+
+loadScenarios().catch(err => {
+  $('scenario-list').textContent = `Failed to load: ${err.message}`;
+});
+</script>
+</body>
+</html>

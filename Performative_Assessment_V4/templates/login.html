@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — Performative Assessment</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --blue:    #3b82f6;
+  --blue-dk: #1d4ed8;
+  --red:     #ef4444;
+  --bg:      #f1f5f9;
+  --card:    #ffffff;
+  --border:  #e2e8f0;
+  --text:    #1e293b;
+  --muted:   #64748b;
+  --radius:  12px;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login-wrap {
+  width: 100%;
+  max-width: 380px;
+}
+
+.login-logo {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.login-logo h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--blue-dk);
+  margin-bottom: 4px;
+}
+
+.login-logo p {
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+.login-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 28px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.06);
+}
+
+.login-card h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 22px;
+  color: var(--text);
+}
+
+.error-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: .84rem;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: .92rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.field input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+  background: #fff;
+}
+
+.field input[type="password"] {
+  letter-spacing: .08em;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 11px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: .92rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: background .15s;
+}
+
+.btn-submit:hover { background: var(--blue-dk); }
+.btn-submit:active { transform: scale(.99); }
+
+.login-footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: .78rem;
+  color: var(--muted);
+}
+</style>
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="login-logo">
+    <h1>Performative Assessment</h1>
+    <p>Sign in to continue</p>
+  </div>
+
+  <div class="login-card">
+    <h2>Sign in</h2>
+
+    {% if error %}
+    <div class="error-banner" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" autocomplete="off" novalidate>
+      <!--
+        CSRF token — generated fresh on every GET, verified on POST.
+        This prevents cross-site form submission attacks.
+      -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="field">
+        <label for="username">Username</label>
+        <!--
+          maxlength caps input length server-side as well.
+          autocomplete="off" / spellcheck="false" reduce credential leakage
+          through browser extensions.
+        -->
+        <input
+          type="text"
+          id="username"
+          name="username"
+          value="{{ username_val | e }}"
+          maxlength="64"
+          required
+          autofocus
+          autocomplete="off"
+          spellcheck="false"
+          autocorrect="off"
+          autocapitalize="off">
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          maxlength="128"
+          required
+          autocomplete="current-password">
+      </div>
+
+      <button type="submit" class="btn-submit">Sign In</button>
+    </form>
+  </div>
+
+  <div class="login-footer">
+    Performative Assessment System
+  </div>
+</div>
+
+</body>
+</html>

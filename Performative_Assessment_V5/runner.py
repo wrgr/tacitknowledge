@@ -44,8 +44,7 @@ class ScenarioRunner:
             prompt = (
                 "Scenario: " + self.scenario["situation"] + "\n\n"
                 'The learner said: "' + user_input + '"\n\n'
-                "Write one short sentence for the examiner inviting the learner to add "
-                "anything else they might have missed. Write only the sentence, no extra text."
+                "Write one short sentence for the examiner inviting the learner to add anything else they might have missed. Write only the sentence, no extra text. Make sure to not lead the learner to any specific action or answer."
             )
             fallback = FALLBACK_CLOSING
         else:
@@ -54,7 +53,7 @@ class ScenarioRunner:
                 "Scenario: " + self.scenario["situation"] + "\n\n"
                 'The learner said: "' + user_input + '"\n\n'
                 'Write one short sentence for the examiner that starts with "You\'ve" and '
-                "acknowledges what the learner just did. Write only the sentence, no extra text."
+                "acknowledges what the learner just did. Write only the sentence, no extra text. Make sure to not lead the learner to any specific action or answer."
             )
             fallback = FALLBACK_PROMPTS[(self.turn - 1) % len(FALLBACK_PROMPTS)]
 

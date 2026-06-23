@@ -858,7 +858,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <!-- Mode selector (home) -->
 <div id="view-home" class="view">
   <div id="home-inner">
-    <h2>How would you like to be assessed?</h2>
+    <h2>What type of assessment are you taking?</h2>
     <div id="mode-cards">
       <div class="mode-card" id="mode-scenario">
         <div class="mode-icon">🎭</div>
@@ -1096,6 +1096,10 @@ const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null 
 const $  = id => document.getElementById(id);
 const show = id => $(id).classList.remove('hidden');
 const hide = id => $(id).classList.add('hidden');
+
+function llmAvailable() {
+  return !!(S.apiKey || S.providerIsConfigured);
+}
 
 async function api(path, body) {
   const r = await fetch(path, {
@@ -1561,9 +1565,10 @@ function renderResults(data) {
   }
 
   $('results-content').innerHTML = html;
-  $('report-note').textContent   = '';
-  $('btn-report').disabled       = false;
+  const canReport = llmAvailable();
+  $('btn-report').disabled       = !canReport;
   $('btn-report').textContent    = 'Generate Report';
+  $('report-note').textContent   = canReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
 
   // Animate score bar after paint
   requestAnimationFrame(() => {
@@ -1768,9 +1773,10 @@ function renderFrResults(ev) {
   }
 
   $('fr-results-content').innerHTML = html;
-  $('fr-report-note').textContent   = '';
-  $('btn-fr-report').disabled       = false;
+  const canFrReport = llmAvailable();
+  $('btn-fr-report').disabled       = !canFrReport;
   $('btn-fr-report').textContent    = 'Generate Report';
+  $('fr-report-note').textContent   = canFrReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {

@@ -1,0 +1,162 @@
+/*
+  themes.css — shared across all Performative Assessment pages.
+  Each page links this after its own inline <style> block.
+  The page's :root block defines the base (light) variables;
+  these selectors override them for alternate themes.
+*/
+
+/* ── Dark ─────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:      #0f172a;
+  --card:    #1e293b;
+  --border:  #334155;
+  --text:    #f1f5f9;
+  --muted:   #94a3b8;
+  --blue-dk: #60a5fa;
+}
+[data-theme="dark"] body {
+  background: var(--bg);
+  color: var(--text);
+}
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  color: var(--text);
+  color-scheme: dark;
+  background: var(--card);
+  border-color: var(--border);
+}
+
+/* ── Rustic (newspaper) ───────────────────────────────────────── */
+[data-theme="rustic"] {
+  --bg:      #f0e4c8;
+  --card:    #f8f0dc;
+  --border:  #c4a97a;
+  --text:    #1a0f05;
+  --muted:   #6b4f35;
+  --blue:    #4a2f0d;
+  --blue-dk: #2e1c06;
+  --green:   #3d5c35;
+  --amber:   #9a7000;
+  --red:     #7a1e0e;
+}
+[data-theme="rustic"] body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* ── Ultra-Light ──────────────────────────────────────────────── */
+[data-theme="ultra-light"] {
+  --bg:      #ffffff;
+  --card:    #ffffff;
+  --border:  #000000;
+  --text:    #000000;
+  --muted:   #222222;
+  --blue:    #0000ff;
+  --blue-dk: #0000cc;
+  --green:   #006600;
+  --amber:   #cc6600;
+  --red:     #cc0000;
+  --radius:  0px;
+}
+[data-theme="ultra-light"] body {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 700;
+}
+[data-theme="ultra-light"] input,
+[data-theme="ultra-light"] textarea,
+[data-theme="ultra-light"] select {
+  color: #000;
+  border-color: #000 !important;
+}
+
+/* ── Ultra-Dark ───────────────────────────────────────────────── */
+[data-theme="ultra-dark"] {
+  --bg:      #000000;
+  --card:    #080808;
+  --border:  #00ff41;
+  --text:    #00ff41;
+  --muted:   #008f11;
+  --blue:    #00ffff;
+  --blue-dk: #00cccc;
+  --green:   #00ff41;
+  --amber:   #ffff00;
+  --red:     #ff0040;
+  --radius:  3px;
+}
+[data-theme="ultra-dark"] body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+}
+[data-theme="ultra-dark"] input,
+[data-theme="ultra-dark"] textarea,
+[data-theme="ultra-dark"] select {
+  color: #00ff41;
+  color-scheme: dark;
+  border-color: #00ff41 !important;
+  background-color: #000;
+}
+
+/* ── Theme selector — appears in every page header ────────────── */
+.theme-sel {
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.35);
+  color: #fff;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: .8rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+}
+.theme-sel:focus { box-shadow: 0 0 0 2px rgba(255,255,255,.4); }
+[data-theme="ultra-dark"] .theme-sel {
+  background: rgba(0,255,65,.1);
+  border-color: #00ff41;
+  color: #00ff41;
+}
+
+/* ── Guest theme selector (login / locked pages) ──────────────── */
+.guest-theme-wrap {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 100;
+}
+.guest-theme-sel {
+  background: rgba(59,130,246,.12);
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: .78rem;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+}
+.guest-theme-sel:focus { box-shadow: 0 0 0 2px rgba(59,130,246,.2); }
+[data-theme="dark"] .guest-theme-sel {
+  background: rgba(255,255,255,.08);
+  border-color: #334155;
+  color: #94a3b8;
+}
+[data-theme="ultra-dark"] .guest-theme-sel {
+  background: rgba(0,255,65,.08);
+  border-color: #00ff41;
+  color: #00ff41;
+}
+[data-theme="rustic"] .guest-theme-sel {
+  background: rgba(74,47,13,.08);
+  border-color: #c4a97a;
+  color: #4a2f0d;
+}
+[data-theme="ultra-light"] .guest-theme-sel {
+  background: #fff;
+  border-color: #000;
+  color: #000;
+  border-radius: 0;
+  font-weight: 700;
+}

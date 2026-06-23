@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# SQLite database (auto-seeded on first run)
+*.db
+*.db-shm
+*.db-wal
+
+# Flask secret key (generated per-deployment)
+.secret_key
+
+# Reports (student data, not source code)
+reports/

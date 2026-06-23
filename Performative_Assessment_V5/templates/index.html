@@ -1,11 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ user_theme if user_theme != 'light' else '' }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Performative Assessment</title>
-<!-- set theme before CSS paints to avoid flash of wrong theme -->
-<script>(function(){const t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');if(t&&t!=='light')document.documentElement.dataset.theme=t;}());</script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -834,6 +832,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 }
 .back-home-link:hover { color: var(--text); }
 </style>
+<link rel="stylesheet" href="/static/themes.css">
 </head>
 <body>
 
@@ -841,7 +840,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   <h1>Performative Assessment</h1>
   <div style="display:flex;align-items:center;gap:10px">
     <span id="model-badge">loading…</span>
-    <select id="theme-select" title="Choose theme">
+    <select id="theme-select" class="theme-sel" title="Choose theme">
       <option value="ultra-light">🔆 Ultra-Light</option>
       <option value="light">☀️ Light</option>
       <option value="rustic">📰 Rustic</option>
@@ -1179,7 +1178,7 @@ function updateBadge() {
     : (S.provider || 'Keyword mode');
 }
 
-async function fetchModels(providerName) {
+async function fetchModels(providerName, preferredModel) {
   const sel = $('model-select');
   sel.innerHTML = '<option disabled>Loading…</option>';
   try {
@@ -1189,7 +1188,8 @@ async function fetchModels(providerName) {
       const opt = document.createElement('option');
       opt.value = m;
       opt.textContent = m;
-      if (m === data.default) opt.selected = true;
+      // prefer the user's saved model, otherwise fall back to provider default
+      if (m === (preferredModel || data.default)) opt.selected = true;
       sel.appendChild(opt);
     });
     if (!sel.value && data.models.length) sel.value = data.models[0];
@@ -1199,6 +1199,14 @@ async function fetchModels(providerName) {
     S.model = null;
   }
   updateBadge();
+}
+
+function saveModelPref(provider, model) {
+  fetch('/api/save-model-pref', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model }),
+  }).catch(() => {});
 }
 
 // keyed by provider name — populated when /api/scenarios loads
@@ -1240,24 +1248,28 @@ async function loadScenarios() {
     _providerMeta = {};
     const sel = $('provider-select');
     sel.innerHTML = '';
+    const preferredProvider = data.user_preferred_provider;
+    const preferredModel    = data.user_preferred_model;
     data.providers.forEach(p => {
       _providerMeta[p.name] = p;
       const opt = document.createElement('option');
       opt.value       = p.name;
       opt.textContent = p.name;
-      if (p.name === data.default_provider) opt.selected = true;
+      // prefer saved provider, then API default
+      if (p.name === (preferredProvider || data.default_provider)) opt.selected = true;
       sel.appendChild(opt);
     });
 
     S.provider = sel.value;
-    await fetchModels(S.provider);
+    await fetchModels(S.provider, preferredProvider === S.provider ? preferredModel : '');
     updateKeyField();
 
     sel.addEventListener('change', async () => {
       S.provider = sel.value;
-      $('api-key-input').value = '';   // clear typed key when switching providers
+      $('api-key-input').value = '';
       updateKeyField();
       await fetchModels(S.provider);
+      saveModelPref(S.provider, $('model-select').value);
     });
 
     $('api-key-input').addEventListener('input', function () {
@@ -1270,6 +1282,7 @@ async function loadScenarios() {
     $('model-select').addEventListener('change', () => {
       S.model = $('model-select').value;
       updateBadge();
+      saveModelPref(S.provider, S.model);
     });
 
     show('provider-row');
@@ -1951,18 +1964,19 @@ function applyTheme(id) {
 
 $('theme-select').addEventListener('change', function () {
   applyTheme(this.value);
-  localStorage.setItem('theme', this.value);
+  fetch('/api/save-theme', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ theme: this.value }),
+  }).catch(() => {});
 });
 
 // ── Boot ───────────────────────────────────────
 (function () {
-  const saved = localStorage.getItem('theme');
-  const id    = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  applyTheme(id);
+  // Theme is server-rendered on <html data-theme> — just sync the selector.
+  const t = document.documentElement.dataset.theme || 'light';
+  $('theme-select').value = t;
 
-  // Pre-load scenario data (provider dropdown, model list) in the background.
-  // The home screen is shown first; view-scenarios only appears when the user
-  // clicks "Scenario-Based", by which point the data is ready.
   loadScenarios().catch(err => {
     $('scenario-list').textContent = `Failed to load: ${err.message}`;
   });

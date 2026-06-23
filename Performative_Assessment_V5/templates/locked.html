@@ -4,13 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Access Locked — Performative Assessment</title>
+<script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');if(t&&t!=='light')document.documentElement.dataset.theme=t;}());</script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --bg:     #f1f5f9;
+  --card:   #ffffff;
+  --border: #e2e8f0;
+  --text:   #1e293b;
+  --muted:  #64748b;
+  --red:    #ef4444;
+  --radius: 12px;
+}
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background: #f1f5f9;
-  color: #1e293b;
+  background: var(--bg);
+  color: var(--text);
   min-height: 100dvh;
   display: flex;
   align-items: center;
@@ -19,9 +30,9 @@ body {
 }
 
 .lock-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 40px 36px;
   max-width: 420px;
   width: 100%;
@@ -29,24 +40,9 @@ body {
   box-shadow: 0 4px 16px rgba(0,0,0,.06);
 }
 
-.lock-icon {
-  font-size: 2.8rem;
-  margin-bottom: 18px;
-}
-
-h1 {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: #991b1b;
-  margin-bottom: 14px;
-}
-
-p {
-  font-size: .88rem;
-  color: #64748b;
-  line-height: 1.65;
-  margin-bottom: 10px;
-}
+.lock-icon   { font-size: 2.8rem; margin-bottom: 18px; }
+h1           { font-size: 1.15rem; font-weight: 700; color: #991b1b; margin-bottom: 14px; }
+p            { font-size: .88rem; color: var(--muted); line-height: 1.65; margin-bottom: 10px; }
 
 .warning-box {
   background: #fef2f2;
@@ -55,22 +51,38 @@ p {
   padding: 14px 16px;
   margin: 18px 0;
 }
+.warning-box p { color: #7f1d1d; margin: 0; font-size: .85rem; }
 
-.warning-box p {
-  color: #7f1d1d;
-  margin: 0;
-  font-size: .85rem;
-}
+.footer-note { font-size: .78rem; color: #94a3b8; margin-top: 18px; margin-bottom: 0; }
 
-.footer-note {
-  font-size: .78rem;
-  color: #94a3b8;
-  margin-top: 18px;
-  margin-bottom: 0;
-}
+/* ── Dark ── */
+[data-theme="dark"] .lock-card    { background: var(--card); border-color: var(--border); }
+[data-theme="dark"] .warning-box  { background: #3b0a0a; border-color: #7f1d1d; }
+[data-theme="dark"] .warning-box p { color: #fca5a5; }
+
+/* ── Ultra-Dark ── */
+[data-theme="ultra-dark"] .lock-card   { border-color: #ff0040; box-shadow: 0 0 20px #ff004033; }
+[data-theme="ultra-dark"] .warning-box { background: #1a0000; border-color: #ff0040; }
+[data-theme="ultra-dark"] .warning-box p { color: #ff0040; }
+[data-theme="ultra-dark"] h1           { color: #ff0040; text-shadow: 0 0 10px #ff0040; }
+
+/* ── Ultra-Light ── */
+[data-theme="ultra-light"] .lock-card { border: 2px solid #000; border-radius: 0; box-shadow: 4px 4px 0 #000; }
+[data-theme="ultra-light"] .warning-box { border: 2px solid #000; border-radius: 0; }
 </style>
+<link rel="stylesheet" href="/static/themes.css">
 </head>
 <body>
+
+<div class="guest-theme-wrap">
+  <select id="theme-select" class="guest-theme-sel" title="Choose theme">
+    <option value="ultra-light">🔆</option>
+    <option value="light">☀️</option>
+    <option value="rustic">📰</option>
+    <option value="dark">🌙</option>
+    <option value="ultra-dark">☠️</option>
+  </select>
+</div>
 
 <div class="lock-card">
   <div class="lock-icon">🔒</div>
@@ -86,5 +98,15 @@ p {
   <p class="footer-note">Performative Assessment System</p>
 </div>
 
+<script>
+const sel = document.getElementById('theme-select');
+const t = document.documentElement.dataset.theme || 'light';
+sel.value = t;
+sel.addEventListener('change', function () {
+  const v = this.value;
+  document.documentElement.dataset.theme = v === 'light' ? '' : v;
+  localStorage.setItem('theme', v);
+});
+</script>
 </body>
 </html>

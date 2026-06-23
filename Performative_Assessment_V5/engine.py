@@ -34,6 +34,7 @@ from scoring import (
 from runner import (
     ScenarioRunner,
     generate_scenario_draft,
+    generate_prompt_draft,
     FALLBACK_PROMPTS,
     FALLBACK_CLOSING,
 )

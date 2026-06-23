@@ -925,7 +925,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <div class="ai-box">
       <p>Describe your scenario in plain English</p>
       <textarea id="ai-description" placeholder="e.g. A nursing student must respond to a patient showing signs of a stroke while on a hospital ward…"></textarea>
-      <button class="btn btn-primary" id="btn-fill-ai">Fill with AI</button>
+      <button class="btn btn-primary" id="btn-fill-ai" disabled title="Add an API key to enable AI generation">Fill with AI</button>
     </div>
 
     <!-- Basic info -->
@@ -1021,8 +1021,81 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <div id="view-fr-prompts" class="view hidden">
   <div id="fr-prompts-inner">
     <span class="back-home-link" onclick="showHome()">← Change mode</span>
-    <h2>Choose a prompt</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="margin-bottom:0">Choose a prompt</h2>
+      <button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>
+    </div>
     <div id="fr-prompt-list"></div>
+  </div>
+</div>
+
+<!-- Free Response: Create Prompt -->
+<div id="view-fr-create" class="view hidden">
+  <div id="create-inner">
+    <h2>Create Prompt</h2>
+
+    <!-- AI generation box -->
+    <div class="ai-box">
+      <p>Describe your prompt in plain English</p>
+      <textarea id="fr-ai-description" placeholder="e.g. A paragraph-length response asking students to explain the causes of World War I with at least two specific examples…"></textarea>
+      <button class="btn btn-primary" id="btn-fr-fill-ai" disabled title="Add an API key to enable AI generation">Fill with AI</button>
+    </div>
+
+    <!-- Basic info -->
+    <div class="form-section">
+      <h3>Basic Info</h3>
+      <div class="field">
+        <label>Title</label>
+        <input type="text" id="fp-title" placeholder="e.g. WWI Causes Essay">
+      </div>
+      <div class="field">
+        <label>One-sentence description (shown in the prompt list)</label>
+        <input type="text" id="fp-description" placeholder="e.g. The learner must explain the key causes of World War I.">
+      </div>
+      <div class="field">
+        <label>Word limit (optional)</label>
+        <input type="number" id="fp-word-limit" min="50" max="2000" placeholder="e.g. 200">
+      </div>
+    </div>
+
+    <!-- Prompt text -->
+    <div class="form-section">
+      <h3>Prompt Text</h3>
+      <div class="field">
+        <label>The task shown to the learner</label>
+        <textarea id="fp-prompt-text" style="min-height:100px" placeholder="In one well-developed paragraph, explain…"></textarea>
+      </div>
+    </div>
+
+    <!-- Constraints -->
+    <div class="form-section">
+      <h3>Constraints &nbsp;<span style="font-weight:400;color:var(--muted);text-transform:none;font-size:.78rem;letter-spacing:0">— rules shown in the sidebar (optional)</span></h3>
+      <div class="dynamic-list" id="fp-constraint-list"></div>
+      <button class="btn-add" id="btn-fp-add-constraint">+ Add constraint</button>
+    </div>
+
+    <!-- Expert answer -->
+    <div class="form-section">
+      <h3>Expert Answer</h3>
+      <div class="field">
+        <label>The complete ideal response — used as reference in reports</label>
+        <textarea id="fp-answer" style="min-height:110px" placeholder="Describe the correct response in full…"></textarea>
+      </div>
+    </div>
+
+    <!-- Key points -->
+    <div class="form-section">
+      <h3>Key Points &amp; Weights</h3>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Short phrases the learner must mention. Weight = how many points each is worth when scoring.</p>
+      <div class="dynamic-list" id="fp-keypoint-list"></div>
+      <button class="btn-add" id="btn-fp-add-keypoint">+ Add key point</button>
+    </div>
+
+    <div class="create-actions">
+      <button class="btn btn-primary" id="btn-save-prompt">Save Prompt</button>
+      <button class="btn btn-ghost"   id="btn-cancel-fr-create">Cancel</button>
+    </div>
+    <div id="fr-create-note"></div>
   </div>
 </div>
 
@@ -1101,6 +1174,17 @@ function llmAvailable() {
   return !!(S.apiKey || S.providerIsConfigured);
 }
 
+function updateFillAiButtons() {
+  const available = llmAvailable();
+  const tip = available ? '' : 'Add an API key to enable AI generation';
+  ['btn-fill-ai', 'btn-fr-fill-ai'].forEach(id => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.disabled = !available;
+    btn.title    = tip;
+  });
+}
+
 async function api(path, body) {
   const r = await fetch(path, {
     method: 'POST',
@@ -1115,7 +1199,7 @@ async function api(path, body) {
 // ── Mode navigation ────────────────────────────
 function showHome() {
   ['view-scenarios','view-assess','view-results','view-create',
-   'view-fr-prompts','view-fr-write','view-fr-results','view-reports'].forEach(hide);
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports'].forEach(hide);
   show('view-home');
 }
 
@@ -1301,6 +1385,7 @@ function updateKeyField() {
   } else {
     show('ollama-warning');
   }
+  updateFillAiButtons();
 }
 
 async function loadScenarios() {
@@ -1340,6 +1425,7 @@ async function loadScenarios() {
       const meta = _providerMeta[S.provider] || {};
       if (S.apiKey || S.providerIsConfigured) hide('ollama-warning');
       else show('ollama-warning');
+      updateFillAiButtons();
     });
 
     $('model-select').addEventListener('change', () => {
@@ -2017,6 +2103,163 @@ $('btn-save-scenario').addEventListener('click', async () => {
     $('create-note').textContent = 'Save failed: ' + err.message;
   } finally {
     btn.innerHTML = 'Save Scenario';
+    btn.disabled  = false;
+  }
+});
+
+// ── Prompt Creator ─────────────────────────────
+
+function showFrCreate() {
+  $('fr-ai-description').value    = '';
+  $('fp-title').value             = '';
+  $('fp-description').value       = '';
+  $('fp-prompt-text').value       = '';
+  $('fp-word-limit').value        = '';
+  $('fp-answer').value            = '';
+  $('fp-constraint-list').innerHTML = '';
+  $('fp-keypoint-list').innerHTML   = '';
+  $('fr-create-note').textContent   = '';
+  hide('view-fr-prompts');
+  show('view-fr-create');
+}
+
+function addFpConstraintRow(value) {
+  const list = $('fp-constraint-list');
+  const item = document.createElement('div');
+  item.className = 'dynamic-item';
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.placeholder = 'e.g. Must include at least one specific example';
+  input.value       = value || '';
+  const remove = document.createElement('button');
+  remove.className   = 'btn-remove';
+  remove.title       = 'Remove';
+  remove.textContent = '×';
+  remove.addEventListener('click', () => item.remove());
+  item.appendChild(input);
+  item.appendChild(remove);
+  list.appendChild(item);
+}
+
+function addFpKeyPointRow(value, weight) {
+  const list = $('fp-keypoint-list');
+  const item = document.createElement('div');
+  item.className = 'dynamic-item';
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.placeholder = 'e.g. definition of active listening';
+  input.value       = value || '';
+  const sel = document.createElement('select');
+  sel.title = 'Point weight';
+  [['1','Low (1pt)'],['2','Medium (2pt)'],['3','High (3pt)'],['4','Critical (4pt)']].forEach(([v, label]) => {
+    const opt = document.createElement('option');
+    opt.value       = v;
+    opt.textContent = label;
+    if (parseInt(v) === (weight || 2)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  const remove = document.createElement('button');
+  remove.className   = 'btn-remove';
+  remove.title       = 'Remove';
+  remove.textContent = '×';
+  remove.addEventListener('click', () => item.remove());
+  item.appendChild(input);
+  item.appendChild(sel);
+  item.appendChild(remove);
+  list.appendChild(item);
+}
+
+$('btn-fp-add-constraint').addEventListener('click', () => addFpConstraintRow());
+$('btn-fp-add-keypoint').addEventListener('click',   () => addFpKeyPointRow());
+
+$('btn-cancel-fr-create').addEventListener('click', () => {
+  hide('view-fr-create');
+  show('view-fr-prompts');
+});
+
+$('btn-fr-fill-ai').addEventListener('click', async () => {
+  const desc = $('fr-ai-description').value.trim();
+  if (!desc) { alert('Please describe your prompt first.'); return; }
+
+  const btn = $('btn-fr-fill-ai');
+  btn.innerHTML = '<span class="spinner"></span>Generating…';
+  btn.disabled  = true;
+  $('fr-create-note').textContent = '';
+
+  try {
+    const data = await api('/api/generate-prompt', { description: desc, provider: S.provider, model: S.model, api_key: S.apiKey || undefined });
+    const p    = data.prompt;
+
+    $('fp-title').value       = p.title        || '';
+    $('fp-description').value = p.description  || '';
+    $('fp-prompt-text').value = p.prompt_text  || '';
+    $('fp-word-limit').value  = p.word_limit   || '';
+    $('fp-answer').value      = p.expert_answer|| '';
+
+    $('fp-constraint-list').innerHTML = '';
+    (p.constraints || []).forEach(c => addFpConstraintRow(c));
+
+    $('fp-keypoint-list').innerHTML = '';
+    (p.key_points || []).forEach(kp => addFpKeyPointRow(kp, p.rubric ? p.rubric[kp] : 2));
+
+    $('fr-create-note').textContent = 'AI draft loaded — review and edit each field before saving.';
+  } catch (err) {
+    $('fr-create-note').textContent = 'Generation failed: ' + err.message;
+  } finally {
+    btn.innerHTML = 'Fill with AI';
+    btn.disabled  = false;
+  }
+});
+
+$('btn-save-prompt').addEventListener('click', async () => {
+  const title      = $('fp-title').value.trim();
+  const promptText = $('fp-prompt-text').value.trim();
+  const answer     = $('fp-answer').value.trim();
+
+  if (!title || !promptText || !answer) {
+    alert('Title, Prompt Text, and Expert Answer are required.');
+    return;
+  }
+
+  const keyPoints = [];
+  const rubric    = {};
+  $('fp-keypoint-list').querySelectorAll('.dynamic-item').forEach(item => {
+    const text   = item.querySelector('input').value.trim();
+    const weight = parseInt(item.querySelector('select').value);
+    if (text) { keyPoints.push(text); rubric[text] = weight; }
+  });
+
+  const constraints = [];
+  $('fp-constraint-list').querySelectorAll('.dynamic-item input').forEach(input => {
+    if (input.value.trim()) constraints.push(input.value.trim());
+  });
+
+  const wordLimit = parseInt($('fp-word-limit').value) || null;
+
+  const btn = $('btn-save-prompt');
+  btn.innerHTML = '<span class="spinner"></span>Saving…';
+  btn.disabled  = true;
+
+  try {
+    await api('/api/save-prompt', {
+      title:         title,
+      description:   $('fp-description').value.trim(),
+      prompt_text:   promptText,
+      word_limit:    wordLimit,
+      constraints:   constraints,
+      expert_answer: answer,
+      key_points:    keyPoints,
+      rubric:        rubric,
+    });
+
+    $('fr-create-note').textContent = 'Saved — returning to prompt list…';
+    _frPromptsLoaded = false;
+    await loadFrPrompts();
+    setTimeout(() => { hide('view-fr-create'); show('view-fr-prompts'); }, 1000);
+  } catch (err) {
+    $('fr-create-note').textContent = 'Save failed: ' + err.message;
+  } finally {
+    btn.innerHTML = 'Save Prompt';
     btn.disabled  = false;
   }
 });

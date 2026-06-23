@@ -549,6 +549,65 @@ def api_save_scenario():
     return jsonify({"path": str(path)})
 
 
+@app.route("/api/generate-prompt", methods=["POST"])
+@auth.login_required
+def api_generate_prompt():
+    data        = request.get_json()
+    description = data.get("description", "").strip()
+    if not description:
+        return jsonify({"error": "description is required"}), 400
+
+    provider_name    = data.get("provider") or config.DEFAULT_PROVIDER
+    provider_cfg     = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
+    api_key_override = (data.get("api_key") or "").strip()
+    api_key          = api_key_override if api_key_override else provider_cfg["api_key"]
+
+    if not engine.llm_is_available(api_key):
+        return jsonify({"error": "An API key is required for AI generation. "
+                                  "Enter one in the key field or configure it in config.py."}), 400
+
+    model = data.get("model") or provider_cfg["model"]
+    draft = engine.generate_prompt_draft(
+        description, model=model, api_key=api_key, base_url=provider_cfg["base_url"]
+    )
+    return jsonify({"prompt": draft})
+
+
+@app.route("/api/save-prompt", methods=["POST"])
+@auth.login_required
+def api_save_prompt():
+    global prompts
+    data = request.get_json()
+
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    prompt_id   = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
+    prompt_data = {
+        "id":          prompt_id,
+        "title":       title,
+        "description": data.get("description", ""),
+        "prompt_text": data.get("prompt_text", ""),
+        "word_limit":  int(data["word_limit"]) if data.get("word_limit") else None,
+        "constraints": data.get("constraints", []),
+        "expert_answers": [
+            {
+                "id":         "expert_001",
+                "answer":     data.get("expert_answer", ""),
+                "key_points": data.get("key_points", []),
+                "rubric":     data.get("rubric", {}),
+            }
+        ],
+        "metadata": {},
+    }
+
+    path = PROMPTS_DIR / (prompt_id + ".json")
+    path.write_text(json.dumps(prompt_data, indent=2), encoding="utf-8")
+    prompts = engine.load_prompts(PROMPTS_DIR)
+    return jsonify({"path": str(path)})
+
+
 # ── Free-Response API ──────────────────────────────────────────────────────────
 
 @app.route("/api/fr/prompts", methods=["POST"])

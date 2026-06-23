@@ -161,3 +161,36 @@ def generate_scenario_draft(description, model, api_key, base_url):
 
     raw = llm_chat(model, system, prompt, api_key, base_url)
     return _extract_json(raw)
+
+
+def generate_prompt_draft(description, model, api_key, base_url):
+    prompt = (
+        "You are an instructional designer creating a free-response writing prompt for assessment.\n\n"
+        'Based on this description: "' + description + '"\n\n'
+        "Return a JSON object with exactly these fields:\n"
+        "{\n"
+        '  "title": "<short title>",\n'
+        '  "description": "<one sentence summary shown in the prompt list>",\n'
+        '  "prompt_text": "<2-4 sentences giving the learner a clear writing task, including length and format>",\n'
+        '  "word_limit": <suggested word limit as an integer, e.g. 200>,\n'
+        '  "constraints": ["<must-satisfy rule 1>", "<rule 2>", "<rule 3>"],\n'
+        '  "expert_answer": "<3-5 sentences: the complete ideal response covering all key points>",\n'
+        '  "key_points": ["<short phrase 1>", "<phrase 2>", "<6-10 total>"],\n'
+        '  "rubric": {"<key point phrase>": <weight 1-4>, "<next phrase>": <weight>}\n'
+        "}\n\n"
+        "Guidelines:\n"
+        "- prompt_text: clear, direct instruction ending with what the learner should produce\n"
+        "- key_points: 6-10 short phrases the learner must mention to score well\n"
+        "- rubric weights: 1=low importance, 2=medium, 3=high, 4=critical\n"
+        "- every key_point must have an entry in rubric\n"
+        "Return only the JSON, no other text."
+    )
+
+    system = (
+        "You are an expert instructional designer. "
+        "Create clear, rigorous free-response writing prompts for assessment. "
+        "Respond only with valid JSON — no markdown, no extra text."
+    )
+
+    raw = llm_chat(model, system, prompt, api_key, base_url)
+    return _extract_json(raw)

@@ -1,0 +1,41 @@
+{
+  "id": "active_listening_paragraph",
+  "title": "Paragraph: Active Listening in the Workplace",
+  "description": "Explain what active listening is and why it matters in a professional setting.",
+  "prompt_text": "In one well-developed paragraph, explain what active listening is, describe at least two specific techniques a professional can use to practise it, and explain why it matters in a workplace setting.",
+  "word_limit": 200,
+  "constraints": [
+    "Define active listening in your own words",
+    "Name and describe at least two specific techniques",
+    "Explain at least one consequence of poor listening in the workplace"
+  ],
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "Active listening is the practice of fully concentrating on a speaker — not just hearing words, but understanding their meaning, emotion, and intent. Key techniques include maintaining eye contact and open body language to signal engagement, paraphrasing or summarising what the speaker said before responding to confirm understanding, and asking open-ended follow-up questions to deepen clarity. Avoiding interruptions and refraining from mentally planning your response while the other person is still speaking are equally important. In a workplace context, active listening reduces misunderstandings, builds trust between colleagues, and leads to better decision-making. Poor listening results in repeated errors, damaged working relationships, and reduced team morale.",
+      "key_points": [
+        "definition of active listening",
+        "eye contact or body language",
+        "paraphrasing or summarising",
+        "open-ended questions",
+        "avoiding interruptions",
+        "workplace benefit",
+        "consequence of poor listening"
+      ],
+      "rubric": {
+        "definition of active listening": 3,
+        "eye contact or body language": 2,
+        "paraphrasing or summarising": 3,
+        "open-ended questions": 2,
+        "avoiding interruptions": 2,
+        "workplace benefit": 2,
+        "consequence of poor listening": 3
+      }
+    }
+  ],
+  "metadata": {
+    "domain": "professional_skills",
+    "type": "paragraph",
+    "difficulty": "beginner"
+  }
+}

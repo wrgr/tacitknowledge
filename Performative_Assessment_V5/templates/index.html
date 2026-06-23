@@ -1083,6 +1083,10 @@ const $  = id => document.getElementById(id);
 const show = id => $(id).classList.remove('hidden');
 const hide = id => $(id).classList.add('hidden');
 
+function llmAvailable() {
+  return !!(S.apiKey || S.providerIsConfigured);
+}
+
 async function api(path, body) {
   const r = await fetch(path, {
     method: 'POST',
@@ -1502,9 +1506,10 @@ function renderResults(data) {
   }
 
   $('results-content').innerHTML = html;
-  $('report-note').textContent   = '';
-  $('btn-report').disabled       = false;
+  const canReport = llmAvailable();
+  $('btn-report').disabled       = !canReport;
   $('btn-report').textContent    = 'Generate Report';
+  $('report-note').textContent   = canReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
 
   // Animate score bar after paint
   requestAnimationFrame(() => {
@@ -1709,9 +1714,10 @@ function renderFrResults(ev) {
   }
 
   $('fr-results-content').innerHTML = html;
-  $('fr-report-note').textContent   = '';
-  $('btn-fr-report').disabled       = false;
+  const canFrReport = llmAvailable();
+  $('btn-fr-report').disabled       = !canFrReport;
   $('btn-fr-report').textContent    = 'Generate Report';
+  $('fr-report-note').textContent   = canFrReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {

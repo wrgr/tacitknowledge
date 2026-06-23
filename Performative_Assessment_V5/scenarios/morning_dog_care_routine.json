@@ -1,0 +1,37 @@
+{
+  "id": "morning_dog_care_routine",
+  "title": "Morning Dog Care Routine",
+  "description": "Perform a sequential walkthrough of essential steps for providing comprehensive morning care to a pet dog.",
+  "situation": "You are faced with your dog who has just been waking up and needs their full morning routine completed. Guide the process from release to final outdoor exit while maintaining safety and thoroughness.",
+  "user_role": "Pet Owner/Caregiver",
+  "max_turns": 8,
+  "constraints": [
+    "The dog's emotional state must be considered throughout the routine.",
+    "Safety protocols (e.g., preventing falls or injury) must be observed at every stage.",
+    "All supplies needed for the care (food, bowls, leash, etc.) must be gathered beforehand."
+  ],
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "First, safely release the dog from the crate and prepare the necessary supplies like food and a clean bowl. Next, take the dog outside to allow her initial stretch and potty break. Following that, feed the meal while ensuring the water bowl is refreshed and full. Finally, conduct a final check on physical needs before allowing the second exit.",
+      "key_points": [
+        "Safe crate release",
+        "Initial outdoor elimination/potty break",
+        "Feeding the proper meal",
+        "Refreshing the water source",
+        "Checking for visible injuries or unusual behavior",
+        "Securing the dog with appropriate containment (leash)",
+        "Final departure"
+      ],
+      "rubric": {
+        "Safe crate release": 3,
+        "Initial outdoor elimination/potty break": 4,
+        "Feeding the proper meal": 3,
+        "Refreshing the water source": 2,
+        "Checking for visible injuries or unusual behavior": 3,
+        "Securing the dog with appropriate containment (leash)": 3,
+        "Final departure": 2
+      }
+    }
+  ]
+}

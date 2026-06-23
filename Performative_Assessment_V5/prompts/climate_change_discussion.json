@@ -1,0 +1,41 @@
+{
+  "id": "climate_change_discussion",
+  "title": "Discussion Post: Climate Change Policy",
+  "description": "Evaluate the most effective policy approaches to addressing climate change.",
+  "prompt_text": "In 2–3 paragraphs, evaluate what you consider the most effective policy approaches to addressing climate change. Support your argument with specific examples and acknowledge at least one counterargument or limitation.",
+  "word_limit": 350,
+  "constraints": [
+    "Discuss at least two distinct policy approaches",
+    "Include at least one specific real-world example",
+    "Acknowledge a counterargument or limitation"
+  ],
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "Effective climate policy requires a combination of market mechanisms and regulatory frameworks. Carbon pricing — through a carbon tax or cap-and-trade — creates economic incentives to reduce emissions across all sectors. Renewable energy incentives, such as investment tax credits and feed-in tariffs, accelerate the energy transition by making clean technology financially viable. International cooperation through agreements like the Paris Accord is essential because emissions are borderless; however, enforcement remains a significant weakness. A key limitation of market-based approaches is that without adequate redistribution, they can disproportionately burden lower-income households.",
+      "key_points": [
+        "carbon pricing",
+        "renewable energy incentives",
+        "international cooperation",
+        "specific policy example",
+        "counterargument or limitation",
+        "economic incentives",
+        "energy transition"
+      ],
+      "rubric": {
+        "carbon pricing": 3,
+        "renewable energy incentives": 3,
+        "international cooperation": 2,
+        "specific policy example": 3,
+        "counterargument or limitation": 3,
+        "economic incentives": 2,
+        "energy transition": 2
+      }
+    }
+  ],
+  "metadata": {
+    "domain": "environmental_policy",
+    "type": "discussion_post",
+    "difficulty": "intermediate"
+  }
+}

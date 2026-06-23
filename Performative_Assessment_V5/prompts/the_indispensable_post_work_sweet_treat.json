@@ -1,0 +1,35 @@
+{
+  "id": "the_indispensable_post_work_sweet_treat",
+  "title": "The Indispensable Post-Work Sweet Treat",
+  "description": "Persuade the reader about the essential emotional and physiological benefits of consuming ice cream after a hard day's labor.",
+  "prompt_text": "Write a persuasive paragraph arguing that ice cream serves an important psychological or physiological function after completing a demanding workday. Your argument must acknowledge stress, outline specific mood boosts, and maintain a consistently persuasive tone. Ensure your response is approximately 150 words in length and structured as a single cohesive paragraph.",
+  "word_limit": 150,
+  "constraints": [
+    "Must adopt a highly persuasive and enthusiastic tone.",
+    "Must structure the argument around emotional/psychological benefits (not just taste).",
+    "Must achieve argumentative depth by addressing a relevant problem."
+  ],
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "After hours of intense effort, the mind deserves more than just rest; it deserves a ritualistic reward. A scoop of ice cream acts as far more than mere dessert\u2014it is an immediate, tangible transition from professional pressure to peaceful self-care. The cool, sweet sensory experience provides instant comfort and triggers a natural dopamine release, signaling to the brain that work is done. This satisfying moment functions as miniature emotional decompression, helping readers reset their mood and reaffirming that hard labor deserves sweet compensation. Indeed, this perfect synergy of effort and sweetness makes post-work ice cream an essential pillar of balance.",
+      "key_points": [
+        "Decompressional/Stress relief function",
+        "Emotional reward for effort expended",
+        "Sensory comfort (taste/cool temperature)",
+        "Transition from work to relaxation",
+        "Psychological benefit beyond taste",
+        "Dopamine release/Mood boost"
+      ],
+      "rubric": {
+        "Decompressional/Stress relief function": 4,
+        "Emotional reward for effort expended": 3,
+        "Sensory comfort (taste/cool temperature)": 2,
+        "Transition from work to relaxation": 3,
+        "Psychological benefit beyond taste": 4,
+        "Dopamine release/Mood boost": 3
+      }
+    }
+  ],
+  "metadata": {}
+}

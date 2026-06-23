@@ -52,6 +52,17 @@ app.config.update(
 
 auth.seed_default_users()
 
+
+# ── Prevent browser caching of HTML pages ─────────────────────────────────────
+# This ensures back/forward navigation always re-requests the page, so the
+# session check fires and unauthenticated users are redirected to login.
+@app.after_request
+def no_cache_html(response):
+    if "text/html" in response.content_type:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"]        = "no-cache"
+    return response
+
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 PROMPTS_DIR   = Path(__file__).parent / "prompts"
 REPORTS_BASE  = Path(__file__).parent / config.REPORTS_DIR
@@ -224,7 +235,7 @@ def admin_dashboard():
 def admin_view_report(username, filename):
     if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
         abort(400)
-    if not re.match(r'^[a-z_]+report_[\d_]+\.md$', filename):
+    if not re.match(r'^(?:fr_)?report_[\d_]+\.md$', filename):
         abort(400)
 
     report_path = REPORTS_BASE / username / filename
@@ -240,6 +251,44 @@ def admin_view_report(username, filename):
         filename=filename,
         content=content,
         admin_name=session.get("display_name", "Admin"),
+        user_theme=_user_theme(),
+    )
+
+
+# ── Student report endpoints ───────────────────────────────────────────────────
+
+@app.route("/api/my-reports", methods=["POST"])
+@auth.login_required
+def api_my_reports():
+    """List the calling user's own reports — students cannot access others'."""
+    user_dir = REPORTS_BASE / session["user_id"]
+    files = []
+    if user_dir.is_dir():
+        files = sorted([f.name for f in user_dir.glob("*.md")], reverse=True)
+    return jsonify({"reports": files})
+
+
+@app.route("/my-report/<filename>")
+@auth.login_required
+def student_view_report(filename):
+    """Serve a report to the student who owns it. Strict path validation prevents traversal."""
+    if not re.match(r'^(?:fr_)?report_[\d_]+\.md$', filename):
+        abort(400)
+
+    report_path = REPORTS_BASE / session["user_id"] / filename
+    # Ensure the resolved path stays inside the user's own directory
+    user_dir = (REPORTS_BASE / session["user_id"]).resolve()
+    if report_path.resolve().parent != user_dir:
+        abort(400)
+    if not report_path.exists():
+        abort(404)
+
+    content = report_path.read_text(encoding="utf-8")
+    return render_template(
+        "student_report.html",
+        filename=filename,
+        content=content,
+        current_user=session.get("display_name", session.get("user_id", "")),
         user_theme=_user_theme(),
     )
 

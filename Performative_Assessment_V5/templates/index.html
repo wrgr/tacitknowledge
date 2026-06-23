@@ -870,6 +870,11 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <h3>Free Response</h3>
         <p>Write an essay, paragraph, or discussion post. Watch which key points you hit as you write, then submit for full feedback.</p>
       </div>
+      <div class="mode-card" id="mode-reports">
+        <div class="mode-icon">📂</div>
+        <h3>My Reports</h3>
+        <p>View your previously generated assessment reports.</p>
+      </div>
     </div>
   </div>
 </div>
@@ -1050,6 +1055,15 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   </div>
 </div>
 
+<!-- My Reports -->
+<div id="view-reports" class="view hidden">
+  <div id="reports-inner" style="max-width:640px;margin:0 auto;padding:32px 20px">
+    <span class="back-home-link" onclick="showHome()">← Back</span>
+    <h2 style="font-size:1.2rem;margin-bottom:20px">My Reports</h2>
+    <div id="reports-list"></div>
+  </div>
+</div>
+
 <!-- Free Response: results view -->
 <div id="view-fr-results" class="view hidden">
   <div id="fr-results-inner">
@@ -1097,7 +1111,7 @@ async function api(path, body) {
 // ── Mode navigation ────────────────────────────
 function showHome() {
   ['view-scenarios','view-assess','view-results','view-create',
-   'view-fr-prompts','view-fr-write','view-fr-results'].forEach(hide);
+   'view-fr-prompts','view-fr-write','view-fr-results','view-reports'].forEach(hide);
   show('view-home');
 }
 
@@ -1114,6 +1128,51 @@ function showFrMode() {
 
 $('mode-scenario').addEventListener('click', showScenarioMode);
 $('mode-fr').addEventListener('click', showFrMode);
+$('mode-reports').addEventListener('click', showReportsMode);
+
+// ── My Reports ─────────────────────────────────
+async function showReportsMode() {
+  hide('view-home');
+  show('view-reports');
+  const list = $('reports-list');
+  list.innerHTML = '<p style="color:var(--muted);font-size:.88rem">Loading…</p>';
+  try {
+    const data = await api('/api/my-reports', {});
+    if (!data.reports.length) {
+      list.innerHTML = '<p style="color:var(--muted);font-size:.88rem">No reports yet. Complete an assessment and click "Generate Report" to save one.</p>';
+      return;
+    }
+    list.innerHTML = '';
+    data.reports.forEach(filename => {
+      const item = document.createElement('div');
+      item.className = 'scenario-card';
+      item.style.cssText = 'cursor:default';
+      const icon = filename.startsWith('fr_') ? '📝' : '🎭';
+      const label = filename.startsWith('fr_') ? 'Free Response' : 'Scenario';
+      // parse timestamp from filename e.g. report_20260622_105552
+      const m = filename.match(/(\d{8})_(\d{6})/);
+      let dateStr = '';
+      if (m) {
+        const d = m[1], t = m[2];
+        dateStr = d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6) + ' ' + t.slice(0,2)+':'+t.slice(2,4);
+      }
+      item.innerHTML = `
+        <div class="icon">${icon}</div>
+        <div class="info">
+          <h3 style="font-size:.9rem">${filename}</h3>
+          <p>${label}${dateStr ? ' &mdash; ' + dateStr : ''}</p>
+        </div>
+        <a href="/my-report/${encodeURIComponent(filename)}"
+           style="font-size:.78rem;padding:5px 12px;border-radius:6px;border:1px solid var(--blue);color:var(--blue);text-decoration:none;white-space:nowrap;transition:background .12s"
+           onmouseover="this.style.background='#eff6ff'"
+           onmouseout="this.style.background=''"
+           target="_blank" rel="noopener">View</a>`;
+      list.appendChild(item);
+    });
+  } catch (err) {
+    list.innerHTML = `<p style="color:var(--muted);font-size:.88rem">Failed to load: ${err.message}</p>`;
+  }
+}
 
 // ── Chat ───────────────────────────────────────
 function addBubble(role, text) {

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ user_theme if user_theme != 'light' else '' }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ filename }} — My Report</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --blue:    #3b82f6;
+  --blue-dk: #1d4ed8;
+  --bg:      #f1f5f9;
+  --card:    #ffffff;
+  --border:  #e2e8f0;
+  --text:    #1e293b;
+  --muted:   #64748b;
+  --radius:  12px;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+}
+
+header {
+  background: var(--blue);
+  color: #fff;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+header a {
+  color: rgba(255,255,255,.85);
+  text-decoration: none;
+  font-size: .84rem;
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 6px;
+  transition: background .12s;
+  white-space: nowrap;
+}
+header a:hover { background: rgba(255,255,255,.12); }
+
+.report-meta { flex: 1; }
+.report-meta h1 { font-size: .95rem; font-weight: 600; }
+.report-meta p  { font-size: .78rem; color: rgba(255,255,255,.65); margin-top: 2px; }
+
+main {
+  max-width: 860px;
+  margin: 28px auto;
+  padding: 0 20px 40px;
+}
+
+.report-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-size: .8rem;
+  color: var(--muted);
+}
+
+pre.report-content {
+  padding: 24px;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', 'Courier New', monospace;
+  font-size: .83rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  tab-size: 2;
+}
+
+/* ── Dark ── */
+[data-theme="dark"] .report-card { border-color: var(--border); }
+
+/* ── Ultra-Dark ── */
+[data-theme="ultra-dark"] header { background: #000; border-bottom: 2px solid #00ff41; }
+[data-theme="ultra-dark"] .report-card { border-color: #00ff41; }
+[data-theme="ultra-dark"] .report-toolbar { border-bottom-color: #00ff41; }
+[data-theme="ultra-dark"] header a { border-color: #00ff41; color: #00ff41; }
+
+/* ── Ultra-Light ── */
+[data-theme="ultra-light"] header { background: #0000ff; border-bottom: 3px solid #000; }
+[data-theme="ultra-light"] .report-card { border: 2px solid #000; border-radius: 0; }
+[data-theme="ultra-light"] .report-toolbar { border-bottom: 2px solid #000; }
+
+/* ── Rustic ── */
+[data-theme="rustic"] header { background: var(--blue-dk); }
+</style>
+<link rel="stylesheet" href="/static/themes.css">
+</head>
+<body>
+
+<header>
+  <a href="/">← My Reports</a>
+  <div class="report-meta">
+    <h1>{{ filename }}</h1>
+    <p>{{ current_user }}</p>
+  </div>
+  <select id="theme-select" class="theme-sel" title="Choose theme">
+    <option value="ultra-light">🔆 Ultra-Light</option>
+    <option value="light">☀️ Light</option>
+    <option value="rustic">📰 Rustic</option>
+    <option value="dark">🌙 Dark</option>
+    <option value="ultra-dark">☠️ Ultra-Dark</option>
+  </select>
+</header>
+
+<main>
+  <div class="report-card">
+    <div class="report-toolbar">
+      <span>Assessment Report</span>
+    </div>
+    <pre class="report-content">{{ content }}</pre>
+  </div>
+</main>
+
+<script>
+const sel = document.getElementById('theme-select');
+sel.value = document.documentElement.dataset.theme || 'light';
+sel.addEventListener('change', function () {
+  document.documentElement.dataset.theme = this.value === 'light' ? '' : this.value;
+  fetch('/api/save-theme', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ theme: this.value }),
+  }).catch(() => {});
+});
+</script>
+</body>
+</html>

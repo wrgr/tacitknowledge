@@ -56,7 +56,7 @@ def _append_thinking_profile(lines, thinking_profile):
 
 def generate_report(session, model, api_key, base_url, output_dir, thinking_profile=None):
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)  # create the folder if it doesn't exist
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # build a filename like "report_20260618_162039.md"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -92,11 +92,14 @@ def generate_report(session, model, api_key, base_url, output_dir, thinking_prof
         "Respond only with valid JSON — no markdown, no extra text."
     )
 
-    raw        = llm_chat(model, summary_system, summary_prompt, api_key, base_url)
-    instructor = _extract_json(raw)
-    if not instructor:
-        # if JSON parsing fails, use the raw text as the assessment so the report still saves
-        instructor = {"overall_assessment": raw, "learning_gaps": [], "recommendations": []}
+    try:
+        raw        = llm_chat(model, summary_system, summary_prompt, api_key, base_url)
+        instructor = _extract_json(raw)
+        if not instructor:
+            instructor = {"overall_assessment": raw, "learning_gaps": [], "recommendations": []}
+    except Exception:
+        instructor = {"overall_assessment": "Summary unavailable — no LLM API key configured.",
+                      "learning_gaps": [], "recommendations": []}
 
     # build the Markdown report line by line
     lines = []
@@ -182,7 +185,7 @@ def generate_report(session, model, api_key, base_url, output_dir, thinking_prof
 
 def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output_dir, thinking_profile=None):
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # build a filename like "fr_report_20260618_162039.md"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -210,11 +213,14 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
         "Respond only with valid JSON — no markdown, no extra text."
     )
 
-    raw        = llm_chat(model, summary_system, summary_prompt, api_key, base_url)
-    instructor = _extract_json(raw)
-    if not instructor:
-        # if JSON parsing fails, use the raw text as the assessment so the report still saves
-        instructor = {"overall_assessment": raw, "learning_gaps": [], "recommendations": []}
+    try:
+        raw        = llm_chat(model, summary_system, summary_prompt, api_key, base_url)
+        instructor = _extract_json(raw)
+        if not instructor:
+            instructor = {"overall_assessment": raw, "learning_gaps": [], "recommendations": []}
+    except Exception:
+        instructor = {"overall_assessment": "Summary unavailable — no LLM API key configured.",
+                      "learning_gaps": [], "recommendations": []}
 
     # build the Markdown report line by line
     lines = []

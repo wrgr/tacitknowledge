@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sign In — Performative Assessment</title>
+<!-- anti-flash: apply localStorage theme before paint -->
+<script>(function(){var t=localStorage.getItem('theme')||(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');if(t&&t!=='light')document.documentElement.dataset.theme=t;}());</script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -30,27 +32,11 @@ body {
   padding: 20px;
 }
 
-.login-wrap {
-  width: 100%;
-  max-width: 380px;
-}
+.login-wrap  { width: 100%; max-width: 380px; }
 
-.login-logo {
-  text-align: center;
-  margin-bottom: 28px;
-}
-
-.login-logo h1 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--blue-dk);
-  margin-bottom: 4px;
-}
-
-.login-logo p {
-  font-size: .85rem;
-  color: var(--muted);
-}
+.login-logo        { text-align: center; margin-bottom: 28px; }
+.login-logo h1     { font-size: 1.25rem; font-weight: 700; color: var(--blue-dk); margin-bottom: 4px; }
+.login-logo p      { font-size: .85rem; color: var(--muted); }
 
 .login-card {
   background: var(--card);
@@ -60,12 +46,7 @@ body {
   box-shadow: 0 4px 16px rgba(0,0,0,.06);
 }
 
-.login-card h2 {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-bottom: 22px;
-  color: var(--text);
-}
+.login-card h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: 22px; color: var(--text); }
 
 .error-banner {
   background: #fef2f2;
@@ -78,16 +59,11 @@ body {
   line-height: 1.5;
 }
 
-.field {
-  margin-bottom: 16px;
-}
+.field { margin-bottom: 16px; }
 
 .field label {
-  display: block;
-  font-size: .8rem;
-  font-weight: 500;
-  color: var(--muted);
-  margin-bottom: 6px;
+  display: block; font-size: .8rem; font-weight: 500;
+  color: var(--muted); margin-bottom: 6px;
 }
 
 .field input {
@@ -102,44 +78,64 @@ body {
   outline: none;
   transition: border-color .15s, box-shadow .15s;
 }
-
 .field input:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(59,130,246,.12);
-  background: #fff;
+  background: var(--card);
 }
-
-.field input[type="password"] {
-  letter-spacing: .08em;
-}
+.field input[type="password"] { letter-spacing: .08em; }
 
 .btn-submit {
-  width: 100%;
-  padding: 11px;
-  background: var(--blue);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: .92rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  margin-top: 6px;
-  transition: background .15s;
+  width: 100%; padding: 11px;
+  background: var(--blue); color: #fff;
+  border: none; border-radius: 8px;
+  font-size: .92rem; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  margin-top: 6px; transition: background .15s;
 }
-
-.btn-submit:hover { background: var(--blue-dk); }
+.btn-submit:hover  { background: var(--blue-dk); }
 .btn-submit:active { transform: scale(.99); }
 
 .login-footer {
-  text-align: center;
-  margin-top: 20px;
-  font-size: .78rem;
-  color: var(--muted);
+  text-align: center; margin-top: 20px;
+  font-size: .78rem; color: var(--muted);
 }
+
+/* ── Dark ── */
+[data-theme="dark"] .login-card { background: var(--card); border-color: var(--border); }
+[data-theme="dark"] .error-banner { background: #3b0a0a; border-color: #7f1d1d; color: #fca5a5; }
+
+/* ── Rustic ── */
+[data-theme="rustic"] .login-card { background: var(--card); border-color: var(--border); }
+[data-theme="rustic"] .btn-submit  { background: var(--blue); }
+[data-theme="rustic"] .btn-submit:hover { background: var(--blue-dk); }
+
+/* ── Ultra-Dark ── */
+[data-theme="ultra-dark"] .login-card    { background: var(--card); border-color: #00ff41; box-shadow: 0 0 20px #00ff4133; }
+[data-theme="ultra-dark"] .login-logo h1 { color: #00ff41; text-shadow: 0 0 12px #00ff41; }
+[data-theme="ultra-dark"] .btn-submit    { background: #00ffff; color: #000; }
+[data-theme="ultra-dark"] .btn-submit:hover { background: #00cccc; }
+[data-theme="ultra-dark"] .error-banner  { background: #1a0000; border-color: #ff0040; color: #ff0040; }
+
+/* ── Ultra-Light ── */
+[data-theme="ultra-light"] .login-card   { border: 2px solid #000; border-radius: 0; box-shadow: 4px 4px 0 #000; }
+[data-theme="ultra-light"] .btn-submit   { border-radius: 0; }
+[data-theme="ultra-light"] .field input  { border-radius: 0; }
 </style>
+<link rel="stylesheet" href="/static/themes.css">
 </head>
 <body>
+
+<!-- floating theme selector for guest pages -->
+<div class="guest-theme-wrap">
+  <select id="theme-select" class="guest-theme-sel" title="Choose theme">
+    <option value="ultra-light">🔆</option>
+    <option value="light">☀️</option>
+    <option value="rustic">📰</option>
+    <option value="dark">🌙</option>
+    <option value="ultra-dark">☠️</option>
+  </select>
+</div>
 
 <div class="login-wrap">
   <div class="login-logo">
@@ -155,52 +151,41 @@ body {
     {% endif %}
 
     <form method="post" action="/login" autocomplete="off" novalidate>
-      <!--
-        CSRF token — generated fresh on every GET, verified on POST.
-        This prevents cross-site form submission attacks.
-      -->
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
       <div class="field">
         <label for="username">Username</label>
-        <!--
-          maxlength caps input length server-side as well.
-          autocomplete="off" / spellcheck="false" reduce credential leakage
-          through browser extensions.
-        -->
-        <input
-          type="text"
-          id="username"
-          name="username"
-          value="{{ username_val | e }}"
-          maxlength="64"
-          required
-          autofocus
-          autocomplete="off"
-          spellcheck="false"
-          autocorrect="off"
-          autocapitalize="off">
+        <input type="text" id="username" name="username"
+               value="{{ username_val | e }}"
+               maxlength="64" required autofocus
+               autocomplete="off" spellcheck="false"
+               autocorrect="off" autocapitalize="off">
       </div>
 
       <div class="field">
         <label for="password">Password</label>
-        <input
-          type="password"
-          id="password"
-          name="password"
-          maxlength="128"
-          required
-          autocomplete="current-password">
+        <input type="password" id="password" name="password"
+               maxlength="128" required autocomplete="current-password">
       </div>
 
       <button type="submit" class="btn-submit">Sign In</button>
     </form>
   </div>
 
-  <div class="login-footer">
-    Performative Assessment System
-  </div>
+  <div class="login-footer">Performative Assessment System</div>
 </div>
 
+<script>
+// Guest pages use localStorage for theme (no user session yet)
+const sel = document.getElementById('theme-select');
+const t = document.documentElement.dataset.theme || 'light';
+sel.value = t;
+
+sel.addEventListener('change', function () {
+  const v = this.value;
+  document.documentElement.dataset.theme = v === 'light' ? '' : v;
+  localStorage.setItem('theme', v);
+});
+</script>
 </body>
 </html>

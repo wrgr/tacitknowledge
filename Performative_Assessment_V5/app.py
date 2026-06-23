@@ -3,9 +3,9 @@ Performative Assessment — web interface with secure student/admin gateway.
 Run with:  python app.py
 Open:      http://localhost:5000
 
-Default credentials (change in users.json before deploying):
-  admin   / admin123
-  student / student123
+Accounts (seeded on first run):
+  admin  / admin123
+  emma liam sofia james priya tyler  / Learn@2024
 
 Security notes:
   - All login inputs are sanitised (null bytes stripped, length capped, whitespace trimmed)
@@ -29,10 +29,10 @@ from flask import (Flask, abort, jsonify, redirect, render_template,
 
 import auth
 import config
+import database as db
 import engine
 
 # ── Persistent secret key ──────────────────────────────────────────────────────
-# Stored in .secret_key so sessions survive server restarts.
 _key_file = Path(__file__).parent / ".secret_key"
 if _key_file.exists():
     _SECRET = _key_file.read_text(encoding="utf-8").strip()
@@ -44,58 +44,51 @@ else:
 app = Flask(__name__)
 app.secret_key = _SECRET
 app.config.update(
-    SESSION_COOKIE_HTTPONLY   = True,
-    SESSION_COOKIE_SAMESITE   = "Strict",
-    SESSION_COOKIE_SECURE     = False,   # set True when serving over HTTPS
-    PERMANENT_SESSION_LIFETIME = 3600,   # 1-hour session lifetime
+    SESSION_COOKIE_HTTPONLY    = True,
+    SESSION_COOKIE_SAMESITE    = "Strict",
+    SESSION_COOKIE_SECURE      = False,   # set True when serving over HTTPS
+    PERMANENT_SESSION_LIFETIME = 3600,
 )
 
-auth.seed_default_users()   # create users.json with defaults on first run
+auth.seed_default_users()
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 PROMPTS_DIR   = Path(__file__).parent / "prompts"
-REPORTS_BASE  = Path(__file__).parent / config.REPORTS_DIR   # base reports folder
+REPORTS_BASE  = Path(__file__).parent / config.REPORTS_DIR
 
 scenarios            = engine.load_scenarios(SCENARIOS_DIR)
 prompts              = engine.load_prompts(PROMPTS_DIR)
 configured_providers = engine.get_configured_providers(config.PROVIDERS)
 
-# Active scenario assessment sessions keyed by UUID.
-# Format: { uuid: { "runner": ..., "session": ..., "scenario": ...,
-#                   "user_id": <str>, "profile": None } }
+# Active scenario assessment sessions  { uuid: { runner, session, scenario, user_id, profile } }
 _state: dict = {}
 
-# Active free-response sessions keyed by UUID.
-# Format: { uuid: { "prompt": ..., "evaluation": ..., "profile": None,
-#                   "user_id": <str>, "model": ..., "api_key": ..., "base_url": ... } }
+# Active free-response sessions  { uuid: { prompt, evaluation, profile, user_id, model, ... } }
 _fr_state: dict = {}
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _new_csrf():
-    """Generate a fresh CSRF token and store it in the Flask session."""
     tok = secrets.token_hex(32)
     session["csrf_token"] = tok
     return tok
 
 
+def _user_theme():
+    return session.get("theme", "light")
+
+
 def _post_login_redirect():
-    """Send the freshly-authenticated user to the right page for their role."""
     if session.get("role") == "admin":
         return redirect(url_for("admin_dashboard"))
     return redirect(url_for("index"))
 
 
 def _get_state(data):
-    """
-    Look up an assessment session by ID and authorise access.
-    Returns (state_dict, None) on success or (None, error_response) on failure.
-    """
     st = _state.get(data.get("session_id"))
     if not st:
         return None, (jsonify({"error": "session not found"}), 404)
-    # Students may only access their own sessions; admins can access any
     if st["user_id"] != session.get("user_id") and session.get("role") != "admin":
         return None, (jsonify({"error": "forbidden"}), 403)
     return st, None
@@ -107,22 +100,16 @@ def _get_state(data):
 def login():
     ip = request.remote_addr or "0.0.0.0"
 
-    # Already authenticated → skip the login page
     if "user_id" in session:
         return _post_login_redirect()
 
-    # Hard-locked IP → send to lockout page
     if auth.is_admin_locked(ip):
         return redirect(url_for("locked"))
 
-    # ── GET: show login form ───────────────────────────────────────────────────
     if request.method == "GET":
         return render_template("login.html", error=None,
                                csrf_token=_new_csrf(), username_val="")
 
-    # ── POST: validate and process credentials ────────────────────────────────
-
-    # CSRF check — compare using constant-time comparison to prevent timing attacks
     form_tok = request.form.get("csrf_token", "")
     sess_tok = session.pop("csrf_token", "")
     if not sess_tok or not hmac.compare_digest(
@@ -131,13 +118,11 @@ def login():
                                error="Invalid request. Please try again.",
                                csrf_token=_new_csrf(), username_val="")
 
-    # General rate-limit check
     if not auth.check_limit(ip):
         return render_template("login.html",
                                error="Too many login attempts. Please wait before trying again.",
                                csrf_token=_new_csrf(), username_val="")
 
-    # Sanitise inputs: strip null bytes, trim whitespace, cap length
     username = auth.sanitize_str(request.form.get("username", ""), max_len=64)
     password = auth.sanitize_str(request.form.get("password", ""), max_len=128)
 
@@ -146,10 +131,8 @@ def login():
                                error="Username and password are required.",
                                csrf_token=_new_csrf(), username_val=username)
 
-    # Determine whether this attempt targets an admin account so the right
-    # lockout counter is incremented (even if the username doesn't exist).
-    all_users       = auth.load_users()
-    attempted_role  = all_users.get(username, {}).get("role", "")
+    all_users      = auth.load_users()
+    attempted_role = all_users.get(username, {}).get("role", "")
     is_admin_attempt = (attempted_role == "admin")
 
     user = auth.authenticate(username, password)
@@ -157,20 +140,20 @@ def login():
     if user is None:
         just_locked = auth.record_failed(ip, is_admin_attempt)
         if just_locked:
-            # 3rd failed admin attempt — boot to lockout page immediately
             return redirect(url_for("locked"))
-        # Use a generic message so attackers can't enumerate valid usernames
         return render_template("login.html",
                                error="Invalid username or password.",
                                csrf_token=_new_csrf(), username_val=username)
 
-    # Successful login
     is_admin = (user["role"] == "admin")
     auth.record_success(ip, is_admin)
     session.clear()
-    session["user_id"]      = username
-    session["role"]         = user["role"]
-    session["display_name"] = user.get("display_name", username)
+    session["user_id"]             = username
+    session["role"]                = user["role"]
+    session["display_name"]        = user.get("display_name", username)
+    session["theme"]               = user.get("theme", "light")
+    session["preferred_provider"]  = user.get("preferred_provider", "")
+    session["preferred_model"]     = user.get("preferred_model", "")
 
     return _post_login_redirect()
 
@@ -184,7 +167,6 @@ def logout():
 @app.route("/locked")
 def locked():
     ip = request.remote_addr or "0.0.0.0"
-    # If the lock has expired and the user isn't logged in, let them try again
     if not auth.is_admin_locked(ip) and "user_id" not in session:
         return redirect(url_for("login"))
     return render_template("locked.html")
@@ -199,6 +181,7 @@ def index():
         "index.html",
         current_user=session.get("display_name", session.get("user_id", "")),
         is_admin=(session.get("role") == "admin"),
+        user_theme=_user_theme(),
     )
 
 
@@ -217,7 +200,6 @@ def admin_dashboard():
         for uname, udata in all_users.items()
     ]
 
-    # Build a dict mapping username → sorted list of report filenames
     report_tree = {}
     for u in user_list:
         udir = REPORTS_BASE / u["username"]
@@ -233,21 +215,20 @@ def admin_dashboard():
         admin_name=session.get("display_name", "Admin"),
         users=user_list,
         report_tree=report_tree,
+        user_theme=_user_theme(),
     )
 
 
 @app.route("/admin/report/<username>/<filename>")
 @auth.admin_required
 def admin_view_report(username, filename):
-    # Strict validation to prevent any path traversal
     if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
         abort(400)
-    if not re.match(r'^report_[\d_]+\.md$', filename):
+    if not re.match(r'^[a-z_]+report_[\d_]+\.md$', filename):
         abort(400)
 
     report_path = REPORTS_BASE / username / filename
     if report_path.resolve().parent != (REPORTS_BASE / username).resolve():
-        # Resolved path escapes the user directory — block path traversal
         abort(400)
     if not report_path.exists():
         abort(404)
@@ -259,23 +240,49 @@ def admin_view_report(username, filename):
         filename=filename,
         content=content,
         admin_name=session.get("display_name", "Admin"),
+        user_theme=_user_theme(),
     )
 
 
-# ── API endpoints (all require an active login session) ───────────────────────
+# ── Preference API endpoints ───────────────────────────────────────────────────
+
+@app.route("/api/save-theme", methods=["POST"])
+@auth.login_required
+def api_save_theme():
+    data  = request.get_json()
+    theme = (data or {}).get("theme", "light")
+    db.set_theme(session["user_id"], theme)
+    session["theme"] = theme
+    return jsonify({"ok": True})
+
+
+@app.route("/api/save-model-pref", methods=["POST"])
+@auth.login_required
+def api_save_model_pref():
+    data     = request.get_json() or {}
+    provider = data.get("provider", "")
+    model    = data.get("model", "")
+    db.set_model_pref(session["user_id"], provider, model)
+    session["preferred_provider"] = provider
+    session["preferred_model"]    = model
+    return jsonify({"ok": True})
+
+
+# ── API endpoints ──────────────────────────────────────────────────────────────
 
 @app.route("/api/scenarios", methods=["POST"])
 @auth.login_required
 def api_scenarios():
-    scenario_list = []
-    for i, s in enumerate(scenarios):
-        scenario_list.append({
+    scenario_list = [
+        {
             "index":       i,
             "id":          s["id"],
             "title":       s["title"],
             "description": s["description"],
             "max_turns":   s["max_turns"],
-        })
+        }
+        for i, s in enumerate(scenarios)
+    ]
 
     all_providers = [
         {
@@ -293,9 +300,11 @@ def api_scenarios():
     )
 
     return jsonify({
-        "scenarios":        scenario_list,
-        "providers":        all_providers,
-        "default_provider": default,
+        "scenarios":                scenario_list,
+        "providers":                all_providers,
+        "default_provider":         default,
+        "user_preferred_provider":  session.get("preferred_provider", ""),
+        "user_preferred_model":     session.get("preferred_model", ""),
     })
 
 
@@ -333,7 +342,7 @@ def api_start():
         "session":  engine.Session(use_llm, model=model, api_key=api_key, base_url=base_url),
         "scenario": scenario,
         "profile":  None,
-        "user_id":  session["user_id"],   # bind this assessment to the logged-in user
+        "user_id":  session["user_id"],
     }
 
     return jsonify({
@@ -350,7 +359,6 @@ def api_respond():
     st, err = _get_state(data)
     if err:
         return err
-
     narration, concluded = st["runner"].respond(data["user_input"])
     return jsonify({"narration": narration, "concluded": concluded})
 
@@ -363,8 +371,8 @@ def api_evaluate():
     if err:
         return err
 
-    runner  = st["runner"]
-    sess    = st["session"]
+    runner      = st["runner"]
+    sess        = st["session"]
     evaluations = sess.evaluate(runner.scenario, transcript=runner.transcript())
 
     eval_list = [
@@ -420,7 +428,7 @@ def api_report():
         return err
 
     sess             = st["session"]
-    user_reports_dir = REPORTS_BASE / session["user_id"]   # student-specific subdirectory
+    user_reports_dir = REPORTS_BASE / session["user_id"]
 
     path = engine.generate_report(
         sess,
@@ -492,7 +500,7 @@ def api_save_scenario():
     return jsonify({"path": str(path)})
 
 
-# ── Free-Response API endpoints ───────────────────────────────────────────────
+# ── Free-Response API ──────────────────────────────────────────────────────────
 
 @app.route("/api/fr/prompts", methods=["POST"])
 @auth.login_required
@@ -513,7 +521,6 @@ def api_fr_prompts():
 @app.route("/api/fr/check", methods=["POST"])
 @auth.login_required
 def api_fr_check():
-    # Fast keyword check used by the live sidebar — no LLM call.
     data      = request.get_json()
     prompt_id = data.get("prompt_id", "")
     text      = data.get("text", "")
@@ -626,6 +633,6 @@ def api_fr_report():
 
 if __name__ == "__main__":
     print("\n  Performative Assessment  →  http://localhost:5000")
-    print("  Default logins:  admin / admin123   |   student / student123")
-    print("  Change default passwords in users.json before deploying.\n")
+    print("  Admin:    admin / admin123")
+    print("  Students: emma liam sofia james priya tyler / Learn@2024\n")
     app.run(host="localhost", port=5000, debug=False)

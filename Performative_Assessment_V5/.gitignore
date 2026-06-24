@@ -13,3 +13,6 @@ __pycache__/
 
 # Reports (student data, not source code)
 reports/
+
+#venv
+/.venv

@@ -858,6 +858,17 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <!-- Mode selector (home) -->
 <div id="view-home" class="view">
   <div id="home-inner">
+    <div id="ollama-warning" class="warning-bar hidden">
+      No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key above to enable LLM scoring.
+    </div>
+    <div id="provider-row" class="hidden">
+      <label for="provider-select">AI Provider</label>
+      <select id="provider-select"></select>
+      <label for="model-select">Model</label>
+      <select id="model-select"></select>
+      <label for="api-key-input">API Key</label>
+      <input type="password" id="api-key-input" autocomplete="new-password">
+    </div>
     <h2>What type of assessment are you taking?</h2>
     <div id="mode-cards">
       <div class="mode-card" id="mode-scenario">
@@ -883,17 +894,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <div id="view-scenarios" class="view hidden">
   <div id="scenario-inner">
     <span class="back-home-link" onclick="showHome()">← Change mode</span>
-    <div id="ollama-warning" class="warning-bar hidden">
-      No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key above to enable LLM scoring.
-    </div>
-    <div id="provider-row" class="hidden">
-      <label for="provider-select">AI Provider</label>
-      <select id="provider-select"></select>
-      <label for="model-select">Model</label>
-      <select id="model-select"></select>
-      <label for="api-key-input">API Key</label>
-      <input type="password" id="api-key-input" autocomplete="new-password">
-    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="margin-bottom:0">Choose a scenario</h2>
       <button class="btn btn-outline" onclick="showCreate()">+ Create Scenario</button>

@@ -343,6 +343,8 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   display: block;
 }
 .ai-box textarea:focus { border-color: var(--blue); }
+.ai-box-row { display: flex; align-items: center; gap: 12px; }
+.ai-box-row .ai-note { font-size: .8rem; color: var(--red, #dc2626); }
 
 .form-section {
   background: var(--card);
@@ -959,7 +961,10 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <div class="ai-box">
       <p>Describe your scenario in plain English</p>
       <textarea id="ai-description" placeholder="e.g. A nursing student must respond to a patient showing signs of a stroke while on a hospital ward…"></textarea>
-      <button class="btn btn-primary" id="btn-fill-ai" disabled title="Add an API key to enable AI generation">Fill with AI</button>
+      <div class="ai-box-row">
+        <button class="btn btn-primary" id="btn-fill-ai" disabled title="Add an API key to enable AI generation">Fill with AI</button>
+        <span class="ai-note" id="ai-fill-note"></span>
+      </div>
     </div>
 
     <!-- Basic info -->
@@ -1072,7 +1077,10 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <div class="ai-box">
       <p>Describe your prompt in plain English</p>
       <textarea id="fr-ai-description" placeholder="e.g. A paragraph-length response asking students to explain the causes of World War I with at least two specific examples…"></textarea>
-      <button class="btn btn-primary" id="btn-fr-fill-ai" disabled title="Add an API key to enable AI generation">Fill with AI</button>
+      <div class="ai-box-row">
+        <button class="btn btn-primary" id="btn-fr-fill-ai" disabled title="Add an API key to enable AI generation">Fill with AI</button>
+        <span class="ai-note" id="fr-ai-fill-note"></span>
+      </div>
     </div>
 
     <!-- Basic info -->
@@ -2118,7 +2126,7 @@ $('btn-cancel-create').addEventListener('click', () => {
 // Ask the AI to fill in the form fields from the description
 $('btn-fill-ai').addEventListener('click', async () => {
   const desc = $('ai-description').value.trim();
-  if (!desc) { alert('Please describe your scenario first.'); return; }
+  if (desc.length < 20) { $('ai-fill-note').textContent = 'Provide more detail'; return; }
 
   const btn = $('btn-fill-ai');
   btn.innerHTML = '<span class="spinner"></span>Generating…';
@@ -2150,6 +2158,10 @@ $('btn-fill-ai').addEventListener('click', async () => {
     btn.innerHTML = 'Fill with AI';
     btn.disabled  = false;
   }
+});
+
+$('ai-description').addEventListener('input', () => {
+  if ($('ai-fill-note').textContent) $('ai-fill-note').textContent = '';
 });
 
 // Save the form as a new scenario JSON file
@@ -2283,7 +2295,7 @@ $('btn-cancel-fr-create').addEventListener('click', () => {
 
 $('btn-fr-fill-ai').addEventListener('click', async () => {
   const desc = $('fr-ai-description').value.trim();
-  if (!desc) { alert('Please describe your prompt first.'); return; }
+  if (desc.length < 20) { $('fr-ai-fill-note').textContent = 'Provide more detail'; return; }
 
   const btn = $('btn-fr-fill-ai');
   btn.innerHTML = '<span class="spinner"></span>Generating…';
@@ -2313,6 +2325,10 @@ $('btn-fr-fill-ai').addEventListener('click', async () => {
     btn.innerHTML = 'Fill with AI';
     btn.disabled  = false;
   }
+});
+
+$('fr-ai-description').addEventListener('input', () => {
+  if ($('fr-ai-fill-note').textContent) $('fr-ai-fill-note').textContent = '';
 });
 
 $('btn-save-prompt').addEventListener('click', async () => {

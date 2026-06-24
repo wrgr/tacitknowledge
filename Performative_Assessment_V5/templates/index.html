@@ -521,6 +521,10 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 }
 #api-key-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
 #api-key-input:disabled { opacity: .5; cursor: not-allowed; background: var(--bg); }
+#key-status { font-size: .8rem; white-space: nowrap; }
+#key-status.key-valid    { color: var(--green); }
+#key-status.key-invalid  { color: var(--red); }
+#key-status.key-checking { color: var(--muted); }
 
 /* ── Dark mode ───────────────────────────────── */
 [data-theme="dark"] {
@@ -868,6 +872,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
       <select id="model-select"></select>
       <label for="api-key-input">API Key</label>
       <input type="password" id="api-key-input" autocomplete="new-password">
+      <span id="key-status"></span>
     </div>
     <h2>What type of assessment are you taking?</h2>
     <div id="mode-cards">
@@ -896,7 +901,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <span class="back-home-link" onclick="showHome()">← Change mode</span>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="margin-bottom:0">Choose a scenario</h2>
-      <button class="btn btn-outline" onclick="showCreate()">+ Create Scenario</button>
+      {% if is_admin %}<button class="btn btn-outline" onclick="showCreate()">+ Create Scenario</button>{% endif %}
     </div>
     <div id="scenario-list"></div>
   </div>
@@ -1023,7 +1028,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <span class="back-home-link" onclick="showHome()">← Change mode</span>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="margin-bottom:0">Choose a prompt</h2>
-      <button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>
+      {% if is_admin %}<button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>{% endif %}
     </div>
     <div id="fr-prompt-list"></div>
   </div>
@@ -1415,17 +1420,38 @@ async function loadScenarios() {
     sel.addEventListener('change', async () => {
       S.provider = sel.value;
       $('api-key-input').value = '';
+      const ks = $('key-status');
+      ks.textContent = ''; ks.className = '';
       updateKeyField();
       await fetchModels(S.provider);
       saveModelPref(S.provider, $('model-select').value);
     });
 
+    let _keyValidTimer = null;
     $('api-key-input').addEventListener('input', function () {
       S.apiKey = this.value.trim();
       const meta = _providerMeta[S.provider] || {};
       if (S.apiKey || S.providerIsConfigured) hide('ollama-warning');
       else show('ollama-warning');
       updateFillAiButtons();
+
+      const status = $('key-status');
+      clearTimeout(_keyValidTimer);
+      if (!S.apiKey) { status.textContent = ''; status.className = ''; return; }
+      status.textContent = 'Checking…'; status.className = 'key-checking';
+      _keyValidTimer = setTimeout(async () => {
+        try {
+          const data = await api('/api/validate-key', {
+            provider: S.provider,
+            model: $('model-select').value,
+            api_key: S.apiKey,
+          });
+          status.textContent = data.valid ? '✓ Valid' : ('✗ ' + (data.error || 'Invalid key'));
+          status.className   = data.valid ? 'key-valid' : 'key-invalid';
+        } catch (_) {
+          status.textContent = '✗ Check failed'; status.className = 'key-invalid';
+        }
+      }, 800);
     });
 
     $('model-select').addEventListener('change', () => {

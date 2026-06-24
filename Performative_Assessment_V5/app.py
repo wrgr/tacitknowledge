@@ -659,6 +659,31 @@ def api_fr_check():
     return jsonify(result)
 
 
+@app.route("/api/fr/check-llm", methods=["POST"])
+@auth.login_required
+def api_fr_check_llm():
+    data      = request.get_json()
+    prompt_id = data.get("prompt_id", "")
+    text      = data.get("text", "")
+
+    prompt_data = next((p for p in prompts if p["id"] == prompt_id), None)
+    if not prompt_data:
+        return jsonify({"error": "prompt not found"}), 404
+
+    provider_name    = data.get("provider") or config.DEFAULT_PROVIDER
+    provider_cfg     = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
+    api_key_override = (data.get("api_key") or "").strip()
+    api_key          = api_key_override if api_key_override else provider_cfg["api_key"]
+    base_url         = provider_cfg["base_url"]
+    model            = data.get("model") or provider_cfg["model"]
+
+    if not engine.llm_is_available(api_key):
+        return jsonify({"error": "LLM not available"}), 400
+
+    result = engine.check_fr_with_llm(model, api_key, base_url, prompt_data, text)
+    return jsonify(result)
+
+
 @app.route("/api/fr/submit", methods=["POST"])
 @auth.login_required
 def api_fr_submit():

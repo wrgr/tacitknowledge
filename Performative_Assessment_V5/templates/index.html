@@ -896,7 +896,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <span class="back-home-link" onclick="showHome()">← Change mode</span>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="margin-bottom:0">Choose a scenario</h2>
-      <button class="btn btn-outline" onclick="showCreate()">+ Create Scenario</button>
+      {% if is_admin %}<button class="btn btn-outline" onclick="showCreate()">+ Create Scenario</button>{% endif %}
     </div>
     <div id="scenario-list"></div>
   </div>
@@ -1023,7 +1023,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <span class="back-home-link" onclick="showHome()">← Change mode</span>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="margin-bottom:0">Choose a prompt</h2>
-      <button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>
+      {% if is_admin %}<button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>{% endif %}
     </div>
     <div id="fr-prompt-list"></div>
   </div>

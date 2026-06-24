@@ -7,7 +7,23 @@ Runs as a separate call after scoring so the score appears without delay.
 Results accumulate across sessions to build a longitudinal profile.
 """
 
+import re
+
 from llm import llm_chat, _extract_json
+
+
+def _strip_md(val):
+    """Strip markdown emphasis and stray $ from LLM-generated strings."""
+    if isinstance(val, list):
+        return [_strip_md(v) for v in val]
+    if not isinstance(val, str):
+        return val
+    # bold/italic: **x**, *x*, __x__, _x_
+    val = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', val)
+    val = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', val)
+    # stray $ signs
+    val = val.replace('$', '')
+    return val
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -79,5 +95,16 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url, pri
         "}"
     )
 
-    raw = llm_chat(model, system, prompt, api_key, base_url)
-    return _extract_json(raw)
+    raw    = llm_chat(model, system, prompt, api_key, base_url)
+    result = _extract_json(raw)
+
+    _prose_fields = (
+        "honey_mumford_evidence", "honey_mumford_reasoning",
+        "solo_evidence", "solo_reasoning",
+        "insufficient_data_note", "observed_patterns", "instructor_note",
+    )
+    for field in _prose_fields:
+        if field in result:
+            result[field] = _strip_md(result[field])
+
+    return result

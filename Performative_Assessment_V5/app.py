@@ -1,7 +1,7 @@
 """
 Performative Assessment — web interface with secure student/admin gateway.
 Run with:  python app.py
-Open:      http://localhost:5000
+Open:      http://localhost:5001
 
 Accounts (seeded on first run):
   admin  / admin123
@@ -783,7 +783,7 @@ def api_fr_report():
 
 
 if __name__ == "__main__":
-    print("\n  Performative Assessment  →  http://localhost:5000")
+    print("\n  Performative Assessment  →  http://localhost:5001")
     print("  Admin:    admin / admin123")
     print("  Students: emma liam sofia james priya tyler / Learn@2024\n")
-    app.run(host="localhost", port=5000, debug=False)
+    app.run(host="localhost", port=5001, debug=False)

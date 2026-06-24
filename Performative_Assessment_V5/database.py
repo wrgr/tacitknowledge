@@ -13,6 +13,11 @@ from werkzeug.security import generate_password_hash
 DB_FILE      = Path(__file__).parent / "assessments.db"
 VALID_THEMES = {"light", "dark", "rustic", "ultra-light", "ultra-dark"}
 
+# pbkdf2 relies only on hashlib.pbkdf2_hmac (present in every Python build).
+# werkzeug's default of scrypt needs OpenSSL-with-scrypt, which the macOS
+# system Python (linked against LibreSSL) lacks — so pin pbkdf2 for portability.
+_HASH_METHOD = "pbkdf2:sha256"
+
 _SEED_STUDENTS = [
     ("emma",  "Learn@2024", "Emma Clarke"),
     ("liam",  "Learn@2024", "Liam Patel"),
@@ -53,11 +58,11 @@ def seed_default_users():
         if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:
             return
         rows = [
-            ("admin", generate_password_hash("admin123"), "admin",
+            ("admin", generate_password_hash("admin123", method=_HASH_METHOD), "admin",
              "Administrator", "light", "", ""),
         ]
         for uname, pwd, name in _SEED_STUDENTS:
-            rows.append((uname, generate_password_hash(pwd), "student",
+            rows.append((uname, generate_password_hash(pwd, method=_HASH_METHOD), "student",
                          name, "light", "", ""))
         c.executemany(
             "INSERT OR IGNORE INTO users "

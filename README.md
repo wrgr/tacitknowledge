@@ -1,7 +1,7 @@
 HOW TO RUN
 ----------
 Terminal version:  python3 cli.py
-Web version:       python3 app.py  →  open http://localhost:5000 in your browser
+Web version:       python3 app.py  →  open http://localhost:5001 in your browser
 Reports are saved in the reports/<username>/ folder (one sub-folder per user).
 
 

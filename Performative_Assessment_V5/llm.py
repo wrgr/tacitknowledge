@@ -21,6 +21,65 @@ def llm_is_available(api_key):
     return bool(api_key) and not api_key.startswith("your-")
 
 
+def validate_api_key(provider_name, api_key, model, base_url):
+    """Try a minimal API call. Returns (ok, error_message)."""
+    import urllib.error
+
+    if provider_name == "Ollama":
+        try:
+            host = base_url.rstrip("/")
+            if host.endswith("/v1"):
+                host = host[:-3]
+            req = urllib.request.Request(host + "/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=5):
+                pass
+            return True, None
+        except Exception:
+            return False, "Cannot connect to Ollama"
+
+    if _ANTHROPIC_HOST in base_url:
+        try:
+            import anthropic
+        except ImportError:
+            return False, "anthropic package not installed"
+        try:
+            client = anthropic.Anthropic(api_key=api_key)
+            client.messages.create(
+                model=model, max_tokens=1,
+                messages=[{"role": "user", "content": "Hi"}],
+            )
+            return True, None
+        except anthropic.AuthenticationError:
+            return False, "Invalid API key"
+        except Exception:
+            return False, "Cannot connect to provider"
+
+    # OpenAI-compatible providers (OpenAI, Groq, Mistral, Gemini, etc.)
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + api_key,
+    }
+    body = json.dumps({
+        "model": model, "max_tokens": 1,
+        "messages": [{"role": "user", "content": "Hi"}],
+    }).encode()
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=body, headers=headers, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10):
+            return True, None
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return False, "Invalid API key"
+        if e.code == 429:
+            return True, None  # rate-limited → key is valid
+        return False, f"Provider error ({e.code})"
+    except Exception:
+        return False, "Cannot connect to provider"
+
+
 def get_configured_providers(providers):
     return [{"name": name, "model": cfg["model"]}
             for name, cfg in providers.items()

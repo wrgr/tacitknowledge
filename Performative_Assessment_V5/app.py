@@ -357,6 +357,24 @@ def api_scenarios():
     })
 
 
+@app.route("/api/validate-key", methods=["POST"])
+@auth.login_required
+def api_validate_key():
+    import llm as llm_module
+    data          = request.get_json() or {}
+    provider_name = data.get("provider") or config.DEFAULT_PROVIDER
+    provider_cfg  = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
+    api_key       = (data.get("api_key") or "").strip()
+    model         = data.get("model") or provider_cfg["model"]
+    base_url      = provider_cfg["base_url"]
+
+    if not api_key:
+        return jsonify({"valid": False, "error": "No key provided"})
+
+    ok, error = llm_module.validate_api_key(provider_name, api_key, model, base_url)
+    return jsonify({"valid": ok, "error": error})
+
+
 @app.route("/api/models", methods=["POST"])
 @auth.login_required
 def api_models():

@@ -1,0 +1,341 @@
+"""
+report_parser.py — Parse generated Markdown reports into structured dicts.
+"""
+
+import re
+
+
+def parse_report_md(content):
+    lines = content.split('\n')
+
+    title_line = lines[0] if lines else ''
+    report_type = 'fr' if 'Free Response' in title_line else 'scenario'
+
+    sections = _split_sections(lines[1:])
+
+    metadata = _parse_metadata(sections.get('_header', []))
+    instructor_summary = _parse_instructor_summary(
+        sections.get('Instructor Summary', [])
+    )
+    thinking_profile = _parse_thinking_profile(
+        sections.get('Learner Thinking Profile', [])
+    )
+
+    result = {
+        'type': report_type,
+        'title': title_line.lstrip('# ').strip(),
+        'metadata': metadata,
+        'instructor_summary': instructor_summary,
+        'thinking_profile': thinking_profile,
+    }
+
+    if report_type == 'fr':
+        result['prompt'] = _parse_fr_prompt(sections.get('Prompt', []))
+        result['submission'] = _parse_blockquote(
+            sections.get("Learner's Submission", [])
+        )
+        result['evaluation'] = _parse_fr_evaluation(
+            sections.get('Evaluation', [])
+        )
+    else:
+        scenario_list = []
+        for key, sec_lines in sections.items():
+            if key.startswith('Scenario '):
+                scenario_list.append(_parse_scenario(key, sec_lines))
+        result['scenarios'] = sorted(scenario_list, key=lambda s: s['number'])
+
+    return result
+
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _split_sections(lines):
+    sections = {}
+    current = '_header'
+    buf = []
+    for line in lines:
+        if line.startswith('## '):
+            sections[current] = buf
+            current = line[3:].strip()
+            buf = []
+        else:
+            buf.append(line)
+    sections[current] = buf
+    return sections
+
+
+def _parse_metadata(lines):
+    meta = {}
+    for line in lines:
+        m = re.match(r'^\*\*(.+?):\*\*\s*(.*?)(?:\s{2})?$', line.rstrip())
+        if m:
+            key = m.group(1).lower().replace(' ', '_')
+            meta[key] = m.group(2).strip()
+    return meta
+
+
+def _parse_blockquote(lines):
+    parts = []
+    for line in lines:
+        if line.startswith('> '):
+            parts.append(line[2:])
+        elif line == '>':
+            parts.append('')
+    return '\n'.join(parts).strip()
+
+
+def _parse_fr_prompt(lines):
+    prompt_text_lines = []
+    constraints = []
+    in_constraints = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == '**Constraints:**':
+            in_constraints = True
+        elif in_constraints:
+            m = re.match(r'^\s+-\s+(.*)', line)
+            if m:
+                constraints.append(m.group(1).strip())
+        elif stripped and stripped not in ('---',):
+            prompt_text_lines.append(line)
+    return {
+        'text': '\n'.join(prompt_text_lines).strip(),
+        'constraints': constraints,
+    }
+
+
+def _parse_fr_evaluation(lines):
+    ev = {
+        'score': '',
+        'feedback': '',
+        'strengths': [],
+        'gaps': [],
+        'matched_points': [],
+        'missed_points': [],
+        'expert_answer': '',
+    }
+    state = None
+    expert_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('**Score:**'):
+            ev['score'] = stripped.split('**Score:**')[1].strip()
+            state = None
+        elif stripped.startswith('**Feedback for learner:**'):
+            fb = re.sub(r'\*\*Feedback for learner:\*\*\s*', '', stripped)
+            ev['feedback'] = fb.strip('_')
+            state = None
+        elif stripped == '**Strengths:**':
+            state = 'strengths'
+        elif stripped == '**Gaps:**':
+            state = 'gaps'
+        elif stripped.startswith('**Key points covered:**'):
+            val = stripped.split('**Key points covered:**')[1].strip()
+            ev['matched_points'] = [p.strip() for p in val.split(',') if p.strip()]
+            state = None
+        elif stripped.startswith('**Key points missed:**'):
+            val = stripped.split('**Key points missed:**')[1].strip()
+            ev['missed_points'] = [p.strip() for p in val.split(',') if p.strip()]
+            state = None
+        elif stripped == '**Expert reference answer:**':
+            state = 'expert'
+        elif state == 'expert' and (line.startswith('> ') or line == '>'):
+            expert_lines.append(line[2:] if line.startswith('> ') else '')
+        elif state == 'strengths':
+            m = re.match(r'^\s+-\s+(.*)', line)
+            if m:
+                ev['strengths'].append(m.group(1).strip())
+            elif stripped.startswith('**'):
+                state = None
+        elif state == 'gaps':
+            m = re.match(r'^\s+-\s+(.*)', line)
+            if m:
+                ev['gaps'].append(m.group(1).strip())
+            elif stripped.startswith('**'):
+                state = None
+    ev['expert_answer'] = '\n'.join(expert_lines).strip()
+    return ev
+
+
+def _parse_instructor_summary(lines):
+    summary = {'assessment': '', 'learning_gaps': [], 'recommendations': []}
+    state = None
+    assessment_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped == '**Learning gaps identified:**':
+            state = 'gaps'
+        elif stripped == '**Recommendations:**':
+            state = 'recs'
+        elif state == 'gaps':
+            m = re.match(r'^\s+-\s+(.*)', line)
+            if m:
+                summary['learning_gaps'].append(m.group(1).strip())
+        elif state == 'recs':
+            m = re.match(r'^\s+-\s+(.*)', line)
+            if m:
+                summary['recommendations'].append(m.group(1).strip())
+        elif state is None and stripped not in ('---', ''):
+            assessment_lines.append(line)
+    summary['assessment'] = ' '.join(assessment_lines).strip()
+    return summary
+
+
+def _parse_thinking_profile(lines):
+    if not any(line.strip() for line in lines):
+        return None
+
+    profile = {
+        'insufficient_data_note': '',
+        'honey_mumford': None,
+        'solo': None,
+        'patterns': [],
+        'instructor_note': '',
+    }
+    state = None
+    in_patterns = False
+    hm   = {'style': '', 'confidence': '', 'evidence': [], 'reasoning': ''}
+    solo = {'level': '', 'confidence': '', 'evidence': [], 'reasoning': ''}
+
+    for line in lines:
+        stripped = line.strip()
+        if '**Note — limited evidence:**' in stripped:
+            profile['insufficient_data_note'] = re.sub(
+                r'.*\*\*Note — limited evidence:\*\*\s*', '', stripped
+            )
+        elif stripped.startswith('**Honey & Mumford style:**'):
+            state = 'hm'; in_patterns = False
+            rest = stripped[len('**Honey & Mumford style:**'):].strip()
+            m = re.match(r'(.+?)\s*_\(confidence:\s*(.+?)\)_', rest)
+            if m:
+                hm['style'], hm['confidence'] = m.group(1).strip(), m.group(2).strip()
+            else:
+                hm['style'] = rest
+        elif stripped.startswith('**SOLO level:**'):
+            state = 'solo'; in_patterns = False
+            rest = stripped[len('**SOLO level:**'):].strip()
+            m = re.match(r'(.+?)\s*_\(confidence:\s*(.+?)\)_', rest)
+            if m:
+                solo['level'], solo['confidence'] = m.group(1).strip(), m.group(2).strip()
+            else:
+                solo['level'] = rest
+        elif stripped == '**Observed patterns:**':
+            state = None; in_patterns = True
+        elif stripped.startswith('**Instructor note:**'):
+            state = None; in_patterns = False
+            note = re.sub(r'\*\*Instructor note:\*\*\s*', '', stripped)
+            profile['instructor_note'] = note.strip('_')
+        elif state == 'hm':
+            m_ev = re.match(r'^\s+-\s+_"(.+)"_', line)
+            m_rs = re.match(r'^\s+>\s+(.*)', line)
+            if m_ev:
+                hm['evidence'].append(m_ev.group(1))
+            elif m_rs:
+                hm['reasoning'] = m_rs.group(1)
+        elif state == 'solo':
+            m_ev = re.match(r'^\s+-\s+_"(.+)"_', line)
+            m_rs = re.match(r'^\s+>\s+(.*)', line)
+            if m_ev:
+                solo['evidence'].append(m_ev.group(1))
+            elif m_rs:
+                solo['reasoning'] = m_rs.group(1)
+        elif in_patterns:
+            m = re.match(r'^\s+-\s+(.*)', line)
+            if m:
+                profile['patterns'].append(m.group(1).strip())
+
+    if hm['style']:
+        profile['honey_mumford'] = hm
+    if solo['level']:
+        profile['solo'] = solo
+
+    if not profile['honey_mumford'] and not profile['solo']:
+        return None
+
+    return profile
+
+
+def _parse_scenario(header, lines):
+    m = re.match(r'Scenario (\d+):\s*(.*)', header)
+    number = int(m.group(1)) if m else 0
+    title  = m.group(2).strip() if m else header
+
+    scenario = {
+        'number': number,
+        'title': title,
+        'description': '',
+        'constraints': [],
+        'score': '',
+        'transcript': '',
+        'expert_guidance': '',
+        'strengths': [],
+        'gaps': [],
+        'matched_points': [],
+        'missed_points': [],
+        'feedback': '',
+    }
+    state = None
+    transcript_lines = []
+    expert_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('_') and stripped.endswith('_') and not state and not scenario['description']:
+            scenario['description'] = stripped.strip('_')
+        elif stripped == '**Constraints:**':
+            state = 'constraints'
+        elif stripped.startswith('**Score:**'):
+            scenario['score'] = stripped.split('**Score:**')[1].strip()
+            state = None
+        elif stripped == '**Conversation transcript:**':
+            state = 'transcript'
+        elif stripped == '**Expert guidance:**':
+            state = 'expert'
+        elif stripped == '**Strengths:**':
+            state = 'strengths'
+        elif stripped == '**Gaps:**':
+            state = 'gaps'
+        elif stripped.startswith('**Key points covered:**'):
+            val = stripped.split('**Key points covered:**')[1].strip()
+            scenario['matched_points'] = [p.strip() for p in val.split(',') if p.strip()]
+            state = None
+        elif stripped.startswith('**Key points missed:**'):
+            val = stripped.split('**Key points missed:**')[1].strip()
+            scenario['missed_points'] = [p.strip() for p in val.split(',') if p.strip()]
+            state = None
+        elif stripped.startswith('**Feedback for learner:**'):
+            fb = re.sub(r'\*\*Feedback for learner:\*\*\s*', '', stripped)
+            scenario['feedback'] = fb.strip('_')
+            state = None
+        elif state == 'constraints':
+            m2 = re.match(r'^\s+-\s+(.*)', line)
+            if m2:
+                scenario['constraints'].append(m2.group(1).strip())
+            elif stripped.startswith('**'):
+                state = None
+        elif state == 'transcript':
+            if line.startswith('> ') or line == '>':
+                transcript_lines.append(line[2:] if line.startswith('> ') else '')
+            elif stripped.startswith('**'):
+                state = None
+        elif state == 'expert':
+            if line.startswith('> ') or line == '>':
+                expert_lines.append(line[2:] if line.startswith('> ') else '')
+            elif stripped.startswith('**'):
+                state = None
+        elif state == 'strengths':
+            m2 = re.match(r'^\s+-\s+(.*)', line)
+            if m2:
+                scenario['strengths'].append(m2.group(1).strip())
+            elif stripped.startswith('**'):
+                state = None
+        elif state == 'gaps':
+            m2 = re.match(r'^\s+-\s+(.*)', line)
+            if m2:
+                scenario['gaps'].append(m2.group(1).strip())
+            elif stripped.startswith('**'):
+                state = None
+
+    scenario['transcript'] = '\n'.join(transcript_lines).strip()
+    scenario['expert_guidance'] = '\n'.join(expert_lines).strip()
+    return scenario

@@ -31,6 +31,7 @@ import auth
 import config
 import database as db
 import engine
+import report_parser
 
 # ── Persistent secret key ──────────────────────────────────────────────────────
 _key_file = Path(__file__).parent / ".secret_key"
@@ -245,11 +246,12 @@ def admin_view_report(username, filename):
         abort(404)
 
     content = report_path.read_text(encoding="utf-8")
+    report = report_parser.parse_report_md(content)
     return render_template(
         "report_view.html",
         username=username,
         filename=filename,
-        content=content,
+        report=report,
         admin_name=session.get("display_name", "Admin"),
         user_theme=_user_theme(),
     )
@@ -284,10 +286,11 @@ def student_view_report(filename):
         abort(404)
 
     content = report_path.read_text(encoding="utf-8")
+    report = report_parser.parse_report_md(content)
     return render_template(
         "student_report.html",
         filename=filename,
-        content=content,
+        report=report,
         current_user=session.get("display_name", session.get("user_id", "")),
         user_theme=_user_theme(),
     )
@@ -497,13 +500,22 @@ def api_report():
     sess             = st["session"]
     user_reports_dir = REPORTS_BASE / session["user_id"]
 
+    # Generate the thinking profile now if the async frontend call hasn't finished yet.
+    thinking_profile = st.get("profile")
+    if thinking_profile is None and sess.use_llm:
+        thinking_profile = engine.analyse_thinking_profile(
+            st["scenario"], st["runner"].transcript(),
+            model=sess.model, api_key=sess.api_key, base_url=sess.base_url,
+        )
+        st["profile"] = thinking_profile
+
     path = engine.generate_report(
         sess,
         model=sess.model,
         api_key=sess.api_key,
         base_url=sess.base_url,
         output_dir=user_reports_dir,
-        thinking_profile=st.get("profile"),
+        thinking_profile=thinking_profile,
     )
     return jsonify({"path": str(path)})
 
@@ -773,11 +785,20 @@ def api_fr_report():
 
     user_reports_dir = REPORTS_BASE / session["user_id"]
 
+    # Generate the thinking profile now if the async frontend call hasn't finished yet.
+    thinking_profile = st.get("profile")
+    if thinking_profile is None and engine.llm_is_available(st["api_key"]):
+        thinking_profile = engine.analyse_thinking_profile(
+            st["prompt"], st["evaluation"]["text"],
+            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
+        )
+        st["profile"] = thinking_profile
+
     path = engine.generate_fr_report(
         st["prompt"], st["evaluation"],
         model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
         output_dir=user_reports_dir,
-        thinking_profile=st.get("profile"),
+        thinking_profile=thinking_profile,
     )
     return jsonify({"path": str(path)})
 

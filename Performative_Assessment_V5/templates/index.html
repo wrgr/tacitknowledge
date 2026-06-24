@@ -475,6 +475,34 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   font-size: .92rem; font-weight: 600; color: var(--blue-dk); margin-bottom: 4px;
 }
 .profile-card-evidence { font-size: .78rem; color: var(--muted); line-height: 1.5; }
+.profile-evidence-list {
+  list-style: none; margin: 4px 0 6px; padding: 0;
+}
+.profile-evidence-list li {
+  font-size: .78rem; color: var(--muted); line-height: 1.5;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border);
+  margin-bottom: 3px;
+  font-style: italic;
+}
+.profile-card-reasoning {
+  font-size: .76rem; color: var(--muted);
+  line-height: 1.5; margin-top: 6px;
+  padding-top: 6px; border-top: 1px dashed var(--border);
+}
+.profile-conf {
+  display: inline-block; font-size: .65rem; font-weight: 600;
+  padding: 1px 6px; border-radius: 10px; vertical-align: middle;
+  text-transform: uppercase; letter-spacing: .04em; margin-left: 5px;
+}
+.profile-conf-high   { background: #d4edda; color: #155724; }
+.profile-conf-medium { background: #fff3cd; color: #856404; }
+.profile-conf-low    { background: #f8d7da; color: #721c24; }
+.profile-data-warning {
+  font-size: .8rem; color: #856404; background: #fff3cd;
+  border: 1px solid #ffc107; border-radius: 6px;
+  padding: 7px 12px; margin-bottom: 12px; line-height: 1.5;
+}
 .profile-patterns { list-style: none; margin: 4px 0 10px; }
 .profile-patterns li { font-size: .85rem; padding: 3px 0; display: flex; gap: 8px; }
 .profile-patterns li::before { content: "◆"; color: var(--blue); font-size: .6rem; margin-top: 4px; flex-shrink: 0; }
@@ -1568,19 +1596,38 @@ async function fetchThinkingProfile() {
   }
 }
 
-function renderProfile(p) {
-  $('profile-session-label').textContent = 'This session';
+function _buildProfileHTML(p) {
+  // evidence may be a list (new schema) or a plain string (legacy)
+  function evidenceHTML(ev) {
+    if (!ev || (Array.isArray(ev) && !ev.length)) return '';
+    const items = Array.isArray(ev) ? ev : [ev];
+    return '<ul class="profile-evidence-list">' +
+      items.map(e => `<li>"${e}"</li>`).join('') +
+      '</ul>';
+  }
+  function confBadge(conf) {
+    if (!conf) return '';
+    return `<span class="profile-conf profile-conf-${conf}">${conf} confidence</span>`;
+  }
 
-  let html = `<div class="profile-frameworks">
+  let html = '';
+
+  if (p.insufficient_data_note) {
+    html += `<div class="profile-data-warning"><strong>Limited evidence</strong> — ${p.insufficient_data_note}</div>`;
+  }
+
+  html += `<div class="profile-frameworks">
     <div class="profile-card">
       <div class="profile-card-label">Honey &amp; Mumford</div>
-      <div class="profile-card-value">${p.honey_mumford_style || '—'}</div>
-      <div class="profile-card-evidence">${p.honey_mumford_evidence || ''}</div>
+      <div class="profile-card-value">${p.honey_mumford_style || '—'} ${confBadge(p.honey_mumford_confidence)}</div>
+      ${evidenceHTML(p.honey_mumford_evidence)}
+      ${p.honey_mumford_reasoning ? `<div class="profile-card-reasoning">${p.honey_mumford_reasoning}</div>` : ''}
     </div>
     <div class="profile-card">
       <div class="profile-card-label">SOLO Level</div>
-      <div class="profile-card-value">${p.solo_level || '—'}</div>
-      <div class="profile-card-evidence">${p.solo_evidence || ''}</div>
+      <div class="profile-card-value">${p.solo_level || '—'} ${confBadge(p.solo_confidence)}</div>
+      ${evidenceHTML(p.solo_evidence)}
+      ${p.solo_reasoning ? `<div class="profile-card-reasoning">${p.solo_reasoning}</div>` : ''}
     </div>
   </div>`;
 
@@ -1595,7 +1642,12 @@ function renderProfile(p) {
     html += `<p class="profile-note"><strong>For instructors:</strong> ${p.instructor_note}</p>`;
   }
 
-  $('profile-content').innerHTML = html;
+  return html;
+}
+
+function renderProfile(p) {
+  $('profile-session-label').textContent = 'This session';
+  $('profile-content').innerHTML = _buildProfileHTML(p);
 }
 
 // ── Finish button ──────────────────────────────
@@ -1960,27 +2012,7 @@ async function fetchFrThinkingProfile() {
 }
 
 function renderFrProfile(p) {
-  let html = `<div class="profile-frameworks">
-    <div class="profile-card">
-      <div class="profile-card-label">Honey &amp; Mumford</div>
-      <div class="profile-card-value">${p.honey_mumford_style || '—'}</div>
-      <div class="profile-card-evidence">${p.honey_mumford_evidence || ''}</div>
-    </div>
-    <div class="profile-card">
-      <div class="profile-card-label">SOLO Level</div>
-      <div class="profile-card-value">${p.solo_level || '—'}</div>
-      <div class="profile-card-evidence">${p.solo_evidence || ''}</div>
-    </div>
-  </div>`;
-
-  const patterns = p.observed_patterns || [];
-  if (patterns.length) {
-    html += '<ul class="profile-patterns">' + patterns.map(pat => `<li>${pat}</li>`).join('') + '</ul>';
-  }
-  if (p.instructor_note) {
-    html += `<p class="profile-note"><strong>For instructors:</strong> ${p.instructor_note}</p>`;
-  }
-  $('fr-profile-content').innerHTML = html;
+  $('fr-profile-content').innerHTML = _buildProfileHTML(p);
 }
 
 $('btn-fr-report').addEventListener('click', async () => {

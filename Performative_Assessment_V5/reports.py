@@ -21,20 +21,43 @@ def _append_thinking_profile(lines, thinking_profile):
     lines.append("## Learner Thinking Profile")
     lines.append("")
 
-    hm    = thinking_profile.get("honey_mumford_style", "")
-    hm_ev = thinking_profile.get("honey_mumford_evidence", "")
-    if hm:
-        lines.append("**Honey & Mumford style:** " + hm)
-        if hm_ev:
-            lines.append("_" + hm_ev + "_")
+    # surface a data-quality warning before the classifications when evidence was thin
+    insufficient = thinking_profile.get("insufficient_data_note")
+    if insufficient:
+        lines.append("> **Note — limited evidence:** " + insufficient)
         lines.append("")
 
-    solo    = thinking_profile.get("solo_level", "")
-    solo_ev = thinking_profile.get("solo_evidence", "")
+    hm         = thinking_profile.get("honey_mumford_style", "")
+    hm_conf    = thinking_profile.get("honey_mumford_confidence", "")
+    hm_ev      = thinking_profile.get("honey_mumford_evidence", "")
+    hm_reason  = thinking_profile.get("honey_mumford_reasoning", "")
+    if hm:
+        conf_tag = (" _(confidence: " + hm_conf + ")_") if hm_conf else ""
+        lines.append("**Honey & Mumford style:** " + hm + conf_tag)
+        # evidence may be a list (new schema) or a plain string (legacy)
+        if isinstance(hm_ev, list):
+            for item in hm_ev:
+                lines.append("  - _\"" + item + "\"_")
+        elif hm_ev:
+            lines.append("  - _" + hm_ev + "_")
+        if hm_reason:
+            lines.append("  > " + hm_reason)
+        lines.append("")
+
+    solo        = thinking_profile.get("solo_level", "")
+    solo_conf   = thinking_profile.get("solo_confidence", "")
+    solo_ev     = thinking_profile.get("solo_evidence", "")
+    solo_reason = thinking_profile.get("solo_reasoning", "")
     if solo:
-        lines.append("**SOLO level:** " + solo)
-        if solo_ev:
-            lines.append("_" + solo_ev + "_")
+        conf_tag = (" _(confidence: " + solo_conf + ")_") if solo_conf else ""
+        lines.append("**SOLO level:** " + solo + conf_tag)
+        if isinstance(solo_ev, list):
+            for item in solo_ev:
+                lines.append("  - _\"" + item + "\"_")
+        elif solo_ev:
+            lines.append("  - _" + solo_ev + "_")
+        if solo_reason:
+            lines.append("  > " + solo_reason)
         lines.append("")
 
     patterns = thinking_profile.get("observed_patterns", [])

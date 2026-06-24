@@ -19,6 +19,9 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url, pri
         "You are an educational psychologist. "
         "Classify a learner's response using two established frameworks. "
         "Base your analysis only on HOW they responded — language, sequencing, depth — not on their score. "
+        "You must back every classification with direct evidence from the transcript. "
+        "When the transcript is too short or ambiguous to classify confidently, say so explicitly "
+        "and give your most probable interpretation with the evidence that led you there. "
         "Respond only with valid JSON — no markdown, no extra text."
     )
 
@@ -41,14 +44,38 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url, pri
         "- Relational: integrates elements coherently, shows how they connect\n"
         "- Extended Abstract: generalises beyond the task, considers edge cases or broader principles\n\n"
 
-        "Return this JSON (be concise — one sentence per evidence field):\n"
+        "## Evidence and reasoning requirements\n"
+        "- honey_mumford_evidence: list 2-3 direct quotes or close paraphrases from the transcript "
+        "that support the style classification. If the transcript is very short, list everything usable.\n"
+        "- honey_mumford_reasoning: explain the chain of logic — WHY does each piece of evidence "
+        "point to this style and not an adjacent one (e.g. why Theorist and not Pragmatist).\n"
+        "- honey_mumford_confidence: 'high' if ≥2 distinct evidence signals; 'medium' if only one "
+        "signal or if another style was plausible; 'low' if the transcript barely has enough to judge.\n"
+        "- solo_evidence: list 2-3 specific moments from the transcript that reveal the learner's "
+        "depth of understanding.\n"
+        "- solo_reasoning: explain WHY these moments place the learner at this SOLO level and not "
+        "the level above or below.\n"
+        "- solo_confidence: same scale as above.\n"
+        "- insufficient_data_note: if the transcript is too short or ambiguous for a confident "
+        "classification in EITHER framework, describe exactly what is missing, state your most "
+        "probable interpretation, and cite the specific transcript text that drove that guess. "
+        "Set to null when evidence is sufficient for both frameworks.\n"
+        "- observed_patterns: 2-3 entries; each must name the behaviour AND quote the transcript "
+        "moment that illustrates it (format: '<behaviour>: \"<quote>\"').\n\n"
+
+        "Return this JSON exactly — no markdown, no extra text:\n"
         "{\n"
-        '  "honey_mumford_style":    "<Activist | Reflector | Theorist | Pragmatist>",\n'
-        '  "honey_mumford_evidence": "<one sentence from the transcript that supports this>",\n'
-        '  "solo_level":             "<Prestructural | Unistructural | Multistructural | Relational | Extended Abstract>",\n'
-        '  "solo_evidence":          "<one sentence describing the depth of understanding shown>",\n'
-        '  "observed_patterns":      [<2–3 short phrases: specific thinking behaviours noticed>],\n'
-        '  "instructor_note":        "<one sentence on how to scaffold learning for this learner>"\n'
+        '  "honey_mumford_style":     "<Activist | Reflector | Theorist | Pragmatist>",\n'
+        '  "honey_mumford_evidence":  [<2-3 direct quotes or close paraphrases from the transcript>],\n'
+        '  "honey_mumford_reasoning": "<explanation of why this evidence points to this style>",\n'
+        '  "honey_mumford_confidence":"<high | medium | low>",\n'
+        '  "solo_level":              "<Prestructural | Unistructural | Multistructural | Relational | Extended Abstract>",\n'
+        '  "solo_evidence":           [<2-3 specific transcript moments showing depth of understanding>],\n'
+        '  "solo_reasoning":          "<explanation of why this evidence places the learner at this SOLO level>",\n'
+        '  "solo_confidence":         "<high | medium | low>",\n'
+        '  "insufficient_data_note":  null | "<what is missing, most probable interpretation, and supporting quote>",\n'
+        '  "observed_patterns":       [<2-3 strings: \'<behaviour>: "<quote from transcript>"\'>],\n'
+        '  "instructor_note":         "<one sentence on how to scaffold learning for this learner>"\n'
         "}"
     )
 

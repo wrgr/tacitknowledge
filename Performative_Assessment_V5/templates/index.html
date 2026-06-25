@@ -1439,6 +1439,70 @@ const S  = { sessionId: null, maxTurns: 0, turn: 0, busy: false, provider: null,
 const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null,
              llmCheckTimer: null, llmLastWordCount: 0, llmInFlight: false };
 
+// ── Writing Tracker ────────────────────────────
+// Captures per-turn behavioural metrics: typing speed, deletions, pauses, paste events.
+// Call reset() when a new turn begins, collect(text) just before submitting.
+const WritingTracker = {
+  _events:       [],   // [{type:'key'|'delete'|'paste', t:<ms>}, ...]
+  _startTime:    null, // Date.now() when this turn began (set by reset)
+  _firstKeyTime: null, // Date.now() of the first keystroke this turn
+
+  reset() {
+    this._events       = [];
+    this._startTime    = Date.now();
+    this._firstKeyTime = null;
+  },
+
+  onKey(e) {
+    const now = Date.now();
+    if (this._firstKeyTime === null) this._firstKeyTime = now;
+    const type = (e.key === 'Backspace' || e.key === 'Delete') ? 'delete' : 'key';
+    this._events.push({ type, t: now });
+  },
+
+  onPaste() {
+    const now = Date.now();
+    if (this._firstKeyTime === null) this._firstKeyTime = now;
+    this._events.push({ type: 'paste', t: now });
+  },
+
+  collect(finalText) {
+    const now    = Date.now();
+    const words  = finalText.trim() ? finalText.trim().split(/\s+/).length : 0;
+    const keys   = this._events.filter(e => e.type === 'key').length;
+    const dels   = this._events.filter(e => e.type === 'delete').length;
+    const pastes = this._events.filter(e => e.type === 'paste').length;
+
+    // Active typing duration: sum of inter-keystroke gaps <= 3 s; longer gaps are pauses
+    const PAUSE_MS = 3000;
+    let activeDuration = 0, pauseCount = 0, maxPauseMs = 0;
+    for (let i = 1; i < this._events.length; i++) {
+      const gap = this._events[i].t - this._events[i - 1].t;
+      if (gap > PAUSE_MS) { pauseCount++; if (gap > maxPauseMs) maxPauseMs = gap; }
+      else                { activeDuration += gap; }
+    }
+
+    const activeMin  = activeDuration / 60000;
+    const wpm        = (activeMin > 0 && words > 0) ? Math.round(words / activeMin) : null;
+    const totalKeys  = keys + dels;
+    const latencyS   = this._firstKeyTime !== null
+      ? +((this._firstKeyTime - this._startTime) / 1000).toFixed(1) : null;
+    const totalTimeS = this._firstKeyTime !== null
+      ? +((now - this._firstKeyTime) / 1000).toFixed(1) : null;
+
+    return {
+      wpm,
+      latency_s:      latencyS,
+      deletion_count: dels,
+      revision_ratio: totalKeys > 0 ? +(dels / totalKeys).toFixed(3) : 0,
+      paste_count:    pastes,
+      pause_count:    pauseCount,
+      max_pause_s:    maxPauseMs > 0 ? +(maxPauseMs / 1000).toFixed(1) : 0,
+      total_time_s:   totalTimeS,
+    };
+  },
+};
+
 // ── Helpers ────────────────────────────────────
 const $  = id => document.getElementById(id);
 const show = id => $(id).classList.remove('hidden');
@@ -1767,6 +1831,7 @@ async function startScenario(index, title) {
   hide('view-scenarios');
   show('view-assess');
   addBubble('examiner', data.opening);
+  WritingTracker.reset();
   $('user-input').focus();
 }
 
@@ -1776,14 +1841,17 @@ async function send() {
   const text = el.value.trim();
   if (!text || S.busy) return;
 
+  const writingMetrics = WritingTracker.collect(text);
+
   addBubble('user', text);
   el.value = '';
   el.style.height = 'auto';
   lock(true);
   showTyping();
+  WritingTracker.reset();
 
   try {
-    const data = await api('/api/respond', { session_id: S.sessionId, user_input: text });
+    const data = await api('/api/respond', { session_id: S.sessionId, user_input: text, writing_metrics: writingMetrics });
     hideTyping();
     S.turn++;
     updateMeta();
@@ -1897,11 +1965,12 @@ $('btn-finish').addEventListener('click', async () => {
   if (!confirm('End the assessment now and see your results?')) return;
   const text = $('user-input').value.trim();
   if (text) {
+    const writingMetrics = WritingTracker.collect(text);
     addBubble('user', text);
     $('user-input').value = '';
     lock(true);
     showTyping();
-    try { await api('/api/respond', { session_id: S.sessionId, user_input: text }); } catch (_) {}
+    try { await api('/api/respond', { session_id: S.sessionId, user_input: text, writing_metrics: writingMetrics }); } catch (_) {}
     hideTyping();
   } else {
     lock(true);
@@ -1913,8 +1982,10 @@ $('btn-finish').addEventListener('click', async () => {
 $('btn-send').addEventListener('click', send);
 
 $('user-input').addEventListener('keydown', e => {
+  WritingTracker.onKey(e);
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
+$('user-input').addEventListener('paste', () => WritingTracker.onPaste());
 
 $('user-input').addEventListener('input', function () {
   this.style.height = 'auto';
@@ -2074,6 +2145,7 @@ function startFrPrompt(index, promptList) {
   hide('view-fr-prompts');
   show('view-fr-write');
   $('fr-textarea').focus();
+  WritingTracker.reset();
 }
 
 function updateFrWordCount(text, limit) {
@@ -2138,6 +2210,9 @@ async function checkFrLlm() {
   }
 }
 
+$('fr-textarea').addEventListener('keydown', e => WritingTracker.onKey(e));
+$('fr-textarea').addEventListener('paste', () => WritingTracker.onPaste());
+
 $('fr-textarea').addEventListener('input', function () {
   const text  = this.value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -2167,6 +2242,8 @@ $('btn-fr-submit').addEventListener('click', async () => {
   if (!text) { alert('Please write your response before submitting.'); return; }
   if (!confirm('Submit your response? You will not be able to edit it after submitting.')) return;
 
+  const writingMetrics = WritingTracker.collect(text);
+
   $('fr-textarea').disabled     = true;
   $('btn-fr-submit').disabled   = true;
   $('btn-fr-submit').innerHTML  = '<span class="spinner"></span>Evaluating…';
@@ -2175,6 +2252,7 @@ $('btn-fr-submit').addEventListener('click', async () => {
     const data = await api('/api/fr/submit', {
       prompt_id: FR.promptData.id,
       text,
+      writing_metrics: writingMetrics,
       provider: S.provider,
       model:    S.model,
       api_key:  S.apiKey || undefined,

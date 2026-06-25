@@ -22,19 +22,21 @@ FALLBACK_CLOSING = "Share anything else you would do."         # used on the sec
 class ScenarioRunner:
 
     def __init__(self, scenario, model, api_key, base_url):
-        self.scenario    = scenario    # the scenario dict loaded from JSON
-        self.model       = model       # LLM model name
-        self.api_key     = api_key     # provider API key
-        self.base_url    = base_url    # provider base URL
-        self.history     = []          # list of {"role": ..., "content": ...} dicts, one per turn
-        self.user_inputs = []          # just the learner's responses (used to check if they said anything)
-        self.turn        = 0           # counts how many learner responses have been submitted
+        self.scenario        = scenario    # the scenario dict loaded from JSON
+        self.model           = model       # LLM model name
+        self.api_key         = api_key     # provider API key
+        self.base_url        = base_url    # provider base URL
+        self.history         = []          # list of {"role": ..., "content": ...} dicts, one per turn
+        self.user_inputs     = []          # just the learner's responses (used to check if they said anything)
+        self.writing_metrics = []          # per-turn behavioural metrics from the frontend
+        self.turn            = 0           # counts how many learner responses have been submitted
 
     def start(self):
         # reset everything so the runner can be reused for a fresh attempt
-        self.history     = []
-        self.user_inputs = []
-        self.turn        = 0
+        self.history         = []
+        self.user_inputs     = []
+        self.writing_metrics = []
+        self.turn            = 0
         # return the opening line shown to the learner
         return "Examiner: " + self.scenario["situation"] + "\n\nWhat do you do?"
 
@@ -89,9 +91,10 @@ class ScenarioRunner:
             print("[narration error] " + str(e))
             return fallback
 
-    def respond(self, user_input):
-        self.user_inputs.append(user_input)  # record what the learner said
-        self.turn += 1                        # advance the turn counter
+    def respond(self, user_input, writing_metrics=None):
+        self.user_inputs.append(user_input)                       # record what the learner said
+        self.writing_metrics.append(writing_metrics or {})        # store behavioural metrics for this turn
+        self.turn += 1                                            # advance the turn counter
 
         is_concluded = self.turn >= self.scenario["max_turns"]    # True on the last turn
         is_closing   = self.turn == self.scenario["max_turns"] - 1  # True one turn before the end

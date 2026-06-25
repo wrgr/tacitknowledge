@@ -128,10 +128,11 @@ def _extract_json(raw):
             return obj
         except json.JSONDecodeError:
             continue
+    print("[llm] _extract_json: no valid JSON found in response. Raw output:\n" + raw[:500])
     return {}
 
 
-def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None):
+def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False):
     """Stdlib-only HTTP call. Tries OpenAI-compatible format first; falls back to Ollama's native API on 404."""
     import urllib.error
 
@@ -150,6 +151,8 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None):
     body = {"model": model, "max_tokens": max_tokens, "messages": msgs}
     if think is not None and is_ollama:
         body["think"] = think
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
     payload = json.dumps(body).encode()
     req = urllib.request.Request(base + "/chat/completions", data=payload, headers=headers, method="POST")
     try:
@@ -164,6 +167,8 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None):
     body = {"model": model, "messages": msgs, "stream": False, "options": {"num_predict": max_tokens}}
     if think is not None:
         body["think"] = think
+    if json_mode:
+        body["format"] = "json"
     payload = json.dumps(body).encode()
     req = urllib.request.Request(host + "/api/chat", data=payload,
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -171,7 +176,7 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None):
         return json.loads(resp.read())["message"]["content"] or ""
 
 
-def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None):
+def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False):
     """Dispatch to the right backend. No package is required at import time."""
     try:
         if _ANTHROPIC_HOST in base_url:
@@ -199,10 +204,12 @@ def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None):
                 msgs.append({"role": "user", "content": user})
                 is_ollama = not api_key or api_key.lower() == "ollama"
                 extra = {"extra_body": {"think": think}} if think is not None and is_ollama else {}
+                if json_mode:
+                    extra["response_format"] = {"type": "json_object"}
                 response = client.chat.completions.create(model=model, max_tokens=max_tokens, messages=msgs, **extra)
                 return response.choices[0].message.content or ""
             except ImportError:
-                return _raw_chat(model, api_key, base_url, max_tokens, system, user, think=think)
+                return _raw_chat(model, api_key, base_url, max_tokens, system, user, think=think, json_mode=json_mode)
     except KeyboardInterrupt:
         raise
     except Exception as e:
@@ -219,3 +226,10 @@ def llm_chat(model, system, message, api_key, base_url):
     # think=False prevents thinking models from spending their token budget on
     # reasoning and truncating the JSON response.
     return _call_llm(model, api_key, base_url, 4096, system, message, think=False)
+
+
+def llm_chat_json(model, system, message, api_key, base_url):
+    # Like llm_chat but enables JSON mode (Ollama: format=json, OpenAI: response_format).
+    # Uses a higher token budget (8192) because structured JSON responses with evidence
+    # quotes and multi-field schemas are larger than typical prose completions.
+    return _call_llm(model, api_key, base_url, 8192, system, message, think=False, json_mode=True)

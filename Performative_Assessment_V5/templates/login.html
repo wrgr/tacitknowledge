@@ -14,7 +14,7 @@
   --blue:      #3b82f6;
   --blue-dk:   #1d4ed8;
   --blue-pale: #eff6ff;
-  --navy:      #0f172a;
+  --navy:      #212327;
   --navy-mid:  #1e293b;
   --red:       #ef4444;
   --bg:        #f1f5f9;
@@ -213,6 +213,7 @@ html, body {
   border-radius: 12px;
   object-fit: contain;
   display: block;
+  z-index: 1;
 }
 
 /* decorative accent dots */
@@ -305,6 +306,28 @@ html, body {
 [data-theme="rustic"] .btn-submit      { background: var(--blue); }
 [data-theme="rustic"] .btn-submit:hover { background: var(--blue-dk); }
 
+[data-theme="rustic"] .cursor-particle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background-image: url('/static/login/rust_logo.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transform: translate(-50%, -50%);
+}
+
+.hero-rustic-bg {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+[data-theme="rustic"] .hero-rustic-bg { display: block; }
+
 /* ── Ultra-Dark ── */
 [data-theme="ultra-dark"] .panel-login    { background: #050a0e; box-shadow: 4px 0 40px rgba(0,255,65,.08); }
 [data-theme="ultra-dark"] .brand-name     { color: #00ff41; text-shadow: 0 0 10px #00ff4166; }
@@ -396,20 +419,6 @@ html, body {
       <!-- Quick-info tiles -->
       <div class="info-tiles">
         <div class="info-tile">
-          <span class="info-tile-icon">🔒</span>
-          <div class="info-tile-text">
-            <strong>Secure Access</strong>
-            Your session is protected with CSRF tokens and encrypted credentials.
-          </div>
-        </div>
-        <div class="info-tile">
-          <span class="info-tile-icon">📋</span>
-          <div class="info-tile-text">
-            <strong>Institutional Use Only</strong>
-            Access is restricted to authorised staff and enrolled students.
-          </div>
-        </div>
-        <div class="info-tile">
           <span class="info-tile-icon">🛠</span>
           <div class="info-tile-text">
             <strong>Need help?</strong>
@@ -441,9 +450,11 @@ html, body {
       <span></span><span></span><span></span>
     </div>
 
-    <!-- INSERT IMAGE PATH BELOW (src="...") -->
-    <!-- THIS IS A PLACEHOLDER -->
-    <img class="hero-img" src="/static/logo-nobg.png" alt="Hero image">
+    <!-- Rustic-theme background image (hidden in other themes) -->
+    <img id="rustic-bg" class="hero-rustic-bg" src="/static/login/rust_bg.png" alt="">
+
+    <!-- Hero logo — src updated per-theme by JS below -->
+    <img id="hero-img" class="hero-img" src="" alt="Hero image">
 
     <!-- Bottom overlay: platform highlights -->
     <div class="hero-overlay">
@@ -465,13 +476,107 @@ html, body {
 <script>
 // Guest pages use localStorage for theme (no user session yet)
 const sel = document.getElementById('theme-select');
+const heroImg = document.getElementById('hero-img');
 const t = document.documentElement.dataset.theme || 'light';
 sel.value = t;
+
+// LOGIN IMAGES PER THEME
+function updateHeroImage(theme) {
+  const logos = {
+    'ultra-light': '/static/login/dark_logo.png',
+    'light':       '/static/login/dark_logo.png',
+    'rustic':      '/static/login/rust_logo.png',
+    'dark':        '/static/login/dark_logo.png',
+    'ultra-dark':  '/static/login/dark_logo.png',
+  };
+  heroImg.src = logos[theme] || logos['light'];
+}
+
+updateHeroImage(t);
 
 sel.addEventListener('change', function () {
   const v = this.value;
   document.documentElement.dataset.theme = v === 'light' ? '' : v;
   localStorage.setItem('theme', v);
+  updateHeroImage(v);
+  if (v === 'rustic') { if (!rusticModeStart) rusticModeStart = Date.now(); }
+  else rusticModeStart = null;
+});
+
+// Cursor image particles — rustic theme only
+let rusticModeStart = (document.documentElement.dataset.theme === 'rustic') ? Date.now() : null;
+
+function createParticle(x, y) {
+  const particle = document.createElement('div');
+  particle.className = 'cursor-particle';
+  const size = 500 + Math.random() * 20;
+  particle.style.width = size + 'px';
+  particle.style.height = size + 'px';
+  document.body.appendChild(particle);
+
+  // Exponential speed multiplier based on time spent in rustic mode
+  const elapsed = rusticModeStart ? (Date.now() - rusticModeStart) / 1000 : 0;
+  const speedMult = Math.exp(elapsed / 20);
+
+  // Fully random launch direction
+  const angle = Math.random() * Math.PI * 2;
+  const baseSpeed = 2 + Math.random() * 3;
+  const speed = baseSpeed * speedMult;
+  let px = x, py = y;
+  let vx = Math.cos(angle) * speed;
+  let vy = Math.sin(angle) * speed;
+  const gravity = 0.12;
+  let opacity = 1;
+  let rot = 0;
+  const rotSpeed = (Math.random() - 0.5) * 8 * speedMult;
+
+  function animate() {
+    vy += gravity;
+    px += vx;
+    py += vy;
+    rot += rotSpeed;
+    opacity -= 0.00001;
+    particle.style.left = px + 'px';
+    particle.style.top = py + 'px';
+    particle.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+    particle.style.opacity = opacity;
+    if (opacity > 0 && py < window.innerHeight + 100) {
+      requestAnimationFrame(animate);
+    } else {
+      particle.remove();
+    }
+  }
+  requestAnimationFrame(animate);
+}
+
+let lastParticle = 0;
+document.addEventListener('mousemove', function(e) {
+  if (document.documentElement.dataset.theme !== 'rustic') return;
+  const now = Date.now();
+  const elapsed = rusticModeStart ? (now - rusticModeStart) / 1000 : 0;
+  const spawnDelay = 1500 / Math.exp(elapsed / 40);
+  if (now - lastParticle < spawnDelay) return;
+  lastParticle = now;
+  createParticle(e.clientX, e.clientY);
+});
+
+// Easter egg: type "dinosaur" in username field while in rustic mode
+function triggerDinoFlood() {
+  if (document.documentElement.dataset.theme !== 'rustic') return;
+  const end = Date.now() + 3500;
+  const flood = setInterval(function() {
+    if (Date.now() > end) { clearInterval(flood); return; }
+    for (let i = 0; i < 6; i++) {
+      createParticle(
+        Math.random() * window.innerWidth,
+        Math.random() * window.innerHeight * 0.6
+      );
+    }
+  }, 80);
+}
+
+document.getElementById('username').addEventListener('input', function() {
+  if (this.value.toLowerCase() === 'dinosaur') triggerDinoFlood();
 });
 </script>
 </body>

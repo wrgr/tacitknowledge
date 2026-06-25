@@ -519,7 +519,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
 }
 #provider-row label {
   font-size: .85rem;
@@ -547,7 +546,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   font-size: .88rem;
   color: var(--text);
   font-family: inherit;
-  width: 200px;
+  width: 160px;
   letter-spacing: .05em;
 }
 #api-key-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
@@ -1053,6 +1052,21 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <div id="view-dashboard" class="view hidden">
   <div id="dashboard-inner" style="max-width:640px;margin:0 auto;padding:36px 20px">
 
+    <div id="ollama-warning" class="warning-bar hidden">
+      No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key to enable LLM scoring.
+    </div>
+    <div id="provider-row" class="hidden">
+      <label for="provider-select">AI Provider</label>
+      <select id="provider-select"></select>
+      <label for="model-select">Model</label>
+      <select id="model-select"></select>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label for="api-key-input">API Key</label>
+        <input type="password" id="api-key-input" autocomplete="new-password">
+        <span id="key-status"></span>
+      </div>
+    </div>
+
     <div style="margin-bottom:28px">
       <h2 id="dash-greeting" style="font-size:1.45rem;font-weight:700;margin-bottom:4px">Welcome back!</h2>
       <p style="color:var(--muted);font-size:.88rem">Here's your learning snapshot</p>
@@ -1116,18 +1130,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <div id="view-home" class="view hidden">
   <div id="home-inner">
     <span id="back-to-dash" class="back-home-link" onclick="showDashboard()" style="display:none">← Dashboard</span>
-    <div id="ollama-warning" class="warning-bar hidden">
-      No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key above to enable LLM scoring.
-    </div>
-    <div id="provider-row" class="hidden">
-      <label for="provider-select">AI Provider</label>
-      <select id="provider-select"></select>
-      <label for="model-select">Model</label>
-      <select id="model-select"></select>
-      <label for="api-key-input">API Key</label>
-      <input type="password" id="api-key-input" autocomplete="new-password">
-      <span id="key-status"></span>
-    </div>
     <h2>What type of assessment are you taking?</h2>
     <div id="mode-cards">
       <div class="mode-card" id="mode-scenario">
@@ -1268,7 +1270,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 
     <div class="action-bar">
       <button class="btn btn-outline" id="btn-report">Generate Report</button>
-      <button class="btn btn-ghost"   id="btn-again">Try Another Scenario</button>
+      <button class="btn btn-ghost"   id="btn-again">Return to Dashboard</button>
     </div>
     <div id="report-note"></div>
   </div>
@@ -1479,7 +1481,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 
     <div class="action-bar">
       <button class="btn btn-outline" id="btn-fr-report">Generate Report</button>
-      <button class="btn btn-ghost"   id="btn-fr-again">Try Another Prompt</button>
+      <button class="btn btn-ghost"   id="btn-fr-again">Return to Dashboard</button>
     </div>
     <div id="fr-report-note"></div>
   </div>
@@ -2149,7 +2151,7 @@ function renderResults(data) {
   const canReport = llmAvailable();
   $('btn-report').disabled       = !canReport;
   $('btn-report').textContent    = 'Generate Report';
-  $('report-note').textContent   = canReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
+  $('report-note').textContent   = canReport ? '' : 'An LLM connection is required to generate reports. Configure a provider on the dashboard.';
 
   // Animate score bar after paint
   requestAnimationFrame(() => {
@@ -2176,7 +2178,7 @@ $('btn-again').addEventListener('click', () => {
   hide('view-results');
   hide('profile-section');
   $('profile-content').innerHTML = '';
-  show('view-scenarios');
+  IS_ADMIN ? showHome() : showDashboard();
 });
 
 // ── Free Response ──────────────────────────────
@@ -2408,7 +2410,7 @@ function renderFrResults(ev) {
   const canFrReport = llmAvailable();
   $('btn-fr-report').disabled       = !canFrReport;
   $('btn-fr-report').textContent    = 'Generate Report';
-  $('fr-report-note').textContent   = canFrReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
+  $('fr-report-note').textContent   = canFrReport ? '' : 'An LLM connection is required to generate reports. Configure a provider on the dashboard.';
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -2456,7 +2458,7 @@ $('btn-fr-again').addEventListener('click', () => {
   hide('view-fr-results');
   hide('fr-profile-section');
   $('fr-profile-content').innerHTML = '';
-  show('view-fr-prompts');
+  IS_ADMIN ? showHome() : showDashboard();
 });
 
 // ── Scenario Creator ───────────────────────────

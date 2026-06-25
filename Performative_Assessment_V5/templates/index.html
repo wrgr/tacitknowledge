@@ -1049,9 +1049,73 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   </div>
 </header>
 
+<!-- Student Dashboard -->
+<div id="view-dashboard" class="view hidden">
+  <div id="dashboard-inner" style="max-width:640px;margin:0 auto;padding:36px 20px">
+
+    <div style="margin-bottom:28px">
+      <h2 id="dash-greeting" style="font-size:1.45rem;font-weight:700;margin-bottom:4px">Welcome back!</h2>
+      <p style="color:var(--muted);font-size:.88rem">Here's your learning snapshot</p>
+    </div>
+
+    <!-- Profile preview card -->
+    <div class="result-section" style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="font-size:.95rem;margin:0">Learning Profile</h3>
+        <span id="dash-profile-link"
+              onclick="showProfileMode()"
+              style="font-size:.78rem;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px">
+          View Full Profile
+        </span>
+      </div>
+
+      <div class="stat-row" id="dash-stat-row">
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-total">—</div>
+          <div class="stat-label">Assessments</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-avg">—</div>
+          <div class="stat-label">Avg Score</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-best">—</div>
+          <div class="stat-label">Best Score</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-trend">—</div>
+          <div class="stat-label">Trend</div>
+        </div>
+      </div>
+
+      <p id="dash-no-data" class="hidden"
+         style="font-size:.84rem;color:var(--muted);margin-top:4px">
+        No assessments yet — take your first one below!
+      </p>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <button class="btn btn-primary"
+              style="width:100%;padding:26px 20px;font-size:1.15rem;font-weight:700;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;gap:12px"
+              onclick="showHome()">
+        <span style="font-size:1.8rem">🎯</span>
+        Take Assessment
+      </button>
+      <a href="/my-reports"
+         class="btn btn-outline"
+         style="width:100%;padding:16px 20px;font-size:.95rem;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none">
+        <span style="font-size:1.3rem">📂</span>
+        View My Reports
+      </a>
+    </div>
+  </div>
+</div>
+
 <!-- Mode selector (home) -->
-<div id="view-home" class="view">
+<div id="view-home" class="view hidden">
   <div id="home-inner">
+    <span id="back-to-dash" class="back-home-link" onclick="showDashboard()" style="display:none">← Dashboard</span>
     <div id="ollama-warning" class="warning-bar hidden">
       No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key above to enable LLM scoring.
     </div>
@@ -1075,16 +1139,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <div class="mode-icon">📝</div>
         <h3>Free Response</h3>
         <p>Write an essay, paragraph, or discussion post. Watch which key points you hit as you write, then submit for full feedback.</p>
-      </div>
-      <div class="mode-card" id="mode-reports">
-        <div class="mode-icon">📂</div>
-        <h3>My Reports</h3>
-        <p>View your previously generated assessment reports.</p>
-      </div>
-      <div class="mode-card" id="mode-profile">
-        <div class="mode-icon">📈</div>
-        <h3>Learning Profile</h3>
-        <p>Track progress over time across all assessments — scores, trends, and a chart grouped by assessment type.</p>
       </div>
     </div>
   </div>
@@ -1337,7 +1391,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <!-- My Reports -->
 <div id="view-reports" class="view hidden">
   <div id="reports-inner" style="max-width:640px;margin:0 auto;padding:32px 20px">
-    <span class="back-home-link" onclick="showHome()">← Back</span>
+    <span class="back-home-link" onclick="IS_ADMIN ? showHome() : showDashboard()">← Back</span>
     <h2 style="font-size:1.2rem;margin-bottom:20px">My Reports</h2>
     <div id="reports-list"></div>
   </div>
@@ -1346,7 +1400,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <!-- Learning Profile -->
 <div id="view-profile" class="view hidden">
   <div id="profile-inner">
-    <span class="back-home-link" onclick="showHome()">← Change mode</span>
+    <span class="back-home-link" onclick="IS_ADMIN ? showHome() : showDashboard()">← Back</span>
     <h2 id="profile-heading">Learning Profile</h2>
 
     <!-- Admin user selector (hidden for students) -->
@@ -1536,10 +1590,61 @@ async function api(path, body) {
 
 // ── Mode navigation ────────────────────────────
 function showHome() {
-  ['view-scenarios','view-assess','view-results','view-create',
+  ['view-dashboard','view-scenarios','view-assess','view-results','view-create',
    'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
    'view-profile'].forEach(hide);
   show('view-home');
+  // show "← Dashboard" back link only for students
+  const bd = $('back-to-dash');
+  if (bd) bd.style.display = IS_ADMIN ? 'none' : 'inline';
+}
+
+async function showDashboard() {
+  ['view-home','view-scenarios','view-assess','view-results','view-create',
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
+   'view-profile'].forEach(hide);
+  show('view-dashboard');
+  await _loadDashboardStats();
+}
+
+async function _loadDashboardStats() {
+  try {
+    const data = await api('/api/learning-profile', {});
+    const name = (data.display_name || data.username || '').split(' ')[0];
+    $('dash-greeting').textContent = 'Welcome back, ' + name + '!';
+
+    const reps = data.reports || [];
+    if (!reps.length) {
+      ['dash-stat-total','dash-stat-avg','dash-stat-best','dash-stat-trend'].forEach(id => {
+        $(id).textContent = '0';
+      });
+      $('dash-no-data').classList.remove('hidden');
+      return;
+    }
+
+    const scores = reps.map(r => r.score);
+    const avg    = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    const best   = Math.max(...scores);
+    let trendStr = '—';
+    let trendColor = '';
+    if (scores.length >= 2) {
+      const mid   = Math.floor(scores.length / 2);
+      const early = scores.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
+      const late  = scores.slice(mid).reduce((a, b) => a + b, 0) / (scores.length - mid);
+      const delta = Math.round(late - early);
+      if (delta > 0)      { trendStr = '+' + delta + '%'; trendColor = 'var(--green)'; }
+      else if (delta < 0) { trendStr = delta + '%';       trendColor = 'var(--red)';   }
+      else                { trendStr = '→ 0%'; }
+    }
+
+    $('dash-stat-total').textContent = reps.length;
+    $('dash-stat-avg').textContent   = avg + '%';
+    $('dash-stat-best').textContent  = best + '%';
+    $('dash-stat-trend').textContent = trendStr;
+    if (trendColor) $('dash-stat-trend').style.color = trendColor;
+  } catch (_) {
+    // fail silently — stats not critical
+  }
 }
 
 function showScenarioMode() {
@@ -1555,8 +1660,6 @@ function showFrMode() {
 
 $('mode-scenario').addEventListener('click', showScenarioMode);
 $('mode-fr').addEventListener('click', showFrMode);
-$('mode-reports').addEventListener('click', showReportsMode);
-$('mode-profile').addEventListener('click', showProfileMode);
 
 // ── My Reports ─────────────────────────────────
 async function showReportsMode() {
@@ -2700,7 +2803,7 @@ let _profileAllReports = [];
 let _profileFilter     = 'all';
 
 async function showProfileMode() {
-  hide('view-home');
+  ['view-home','view-dashboard'].forEach(hide);
   show('view-profile');
   $('profile-heading').textContent = 'Learning Profile';
 
@@ -3215,6 +3318,13 @@ $('theme-select').addEventListener('change', function () {
   loadScenarios().catch(err => {
     $('scenario-list').textContent = `Failed to load: ${err.message}`;
   });
+
+  // Route to the right starting view
+  if (IS_ADMIN) {
+    showHome();
+  } else {
+    showDashboard();
+  }
 }());
 </script>
 </body>

@@ -259,6 +259,22 @@ def admin_view_report(username, filename):
 
 # ── Student report endpoints ───────────────────────────────────────────────────
 
+@app.route("/my-reports")
+@auth.login_required
+def my_reports_page():
+    """Dedicated page listing the logged-in student's own reports."""
+    user_dir = REPORTS_BASE / session["user_id"]
+    files = []
+    if user_dir.is_dir():
+        files = sorted([f.name for f in user_dir.glob("*.md")], reverse=True)
+    return render_template(
+        "my_reports.html",
+        reports=files,
+        current_user=session.get("display_name", session.get("user_id", "")),
+        user_theme=_user_theme(),
+    )
+
+
 @app.route("/api/my-reports", methods=["POST"])
 @auth.login_required
 def api_my_reports():

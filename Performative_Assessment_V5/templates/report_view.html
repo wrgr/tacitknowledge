@@ -9,14 +9,24 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --blue:    #3b82f6;
-  --blue-dk: #1d4ed8;
-  --bg:      #f1f5f9;
-  --card:    #ffffff;
-  --border:  #e2e8f0;
-  --text:    #1e293b;
-  --muted:   #64748b;
-  --radius:  12px;
+  --blue:      #3b82f6;
+  --blue-dk:   #1d4ed8;
+  --green:     #10b981;
+  --green-dk:  #065f46;
+  --green-bg:  #d1fae5;
+  --red:       #ef4444;
+  --red-bg:    #fee2e2;
+  --amber:     #f59e0b;
+  --amber-bg:  #fef3c7;
+  --purple:    #8b5cf6;
+  --purple-bg: #ede9fe;
+  --bg:        #f1f5f9;
+  --card:      #ffffff;
+  --border:    #e2e8f0;
+  --text:      #1e293b;
+  --muted:     #64748b;
+  --radius:    12px;
+  --radius-sm: 8px;
 }
 
 body {
@@ -26,6 +36,7 @@ body {
   min-height: 100dvh;
 }
 
+/* ── Header ── */
 header {
   background: var(--blue-dk);
   color: #fff;
@@ -33,8 +44,11 @@ header {
   display: flex;
   align-items: center;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2);
 }
-
 header a {
   color: rgba(255,255,255,.8);
   text-decoration: none;
@@ -46,59 +60,323 @@ header a {
   white-space: nowrap;
 }
 header a:hover { background: rgba(255,255,255,.12); }
-
 .report-meta { flex: 1; }
 .report-meta h1 { font-size: .95rem; font-weight: 600; }
 .report-meta p  { font-size: .78rem; color: rgba(255,255,255,.65); margin-top: 2px; }
 
+/* ── Layout ── */
 main {
-  max-width: 860px;
+  max-width: 900px;
   margin: 28px auto;
-  padding: 0 20px 40px;
+  padding: 0 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.report-card {
+/* ── Score banner ── */
+.score-banner {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,.05);
-}
-
-.report-toolbar {
+  padding: 20px 24px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 18px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  font-size: .8rem;
-  color: var(--muted);
+  gap: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.score-circle {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.35rem; font-weight: 800;
+  flex-shrink: 0;
+  border: 3px solid currentColor;
+}
+.score-green  { color: var(--green);  background: var(--green-bg); }
+.score-blue   { color: var(--blue-dk);background: #dbeafe; }
+.score-amber  { color: #92400e;       background: var(--amber-bg); }
+.score-red    { color: var(--red);    background: var(--red-bg); }
+.score-muted  { color: var(--muted);  background: var(--bg); }
+
+.banner-text h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; }
+.banner-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.banner-pill {
+  font-size: .74rem; padding: 3px 10px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 99px; color: var(--muted); font-weight: 500;
 }
 
-pre.report-content {
-  padding: 24px;
-  font-family: 'SF Mono', 'Menlo', 'Consolas', 'Courier New', monospace;
-  font-size: .83rem;
-  line-height: 1.7;
+/* ── Section card ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  overflow: hidden;
+}
+.card-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: .72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted);
+  background: var(--bg);
+  display: flex; align-items: center; gap: 8px;
+}
+.card-header .icon { font-size: .9rem; }
+.card-body { padding: 18px 20px; }
+
+/* ── Prompt text ── */
+.prompt-text {
+  font-size: .9rem; line-height: 1.7;
+  color: var(--text); margin-bottom: 14px;
+}
+.constraints-list { display: flex; flex-direction: column; gap: 6px; }
+.constraint-item {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: .85rem; color: var(--text);
+}
+.constraint-item::before {
+  content: '•';
+  color: var(--blue); font-weight: 700; flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Submission blockquote ── */
+.submission-text {
+  font-size: .88rem; line-height: 1.75;
+  color: var(--text);
+  border-left: 4px solid var(--blue);
+  padding-left: 16px;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text);
-  tab-size: 2;
 }
 
-/* ── Dark ── */
-[data-theme="dark"] .report-card { border-color: var(--border); }
+/* ── Score row ── */
+.eval-score-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px;
+}
+.score-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .95rem; font-weight: 800;
+  padding: 4px 14px; border-radius: 99px;
+}
+.feedback-text {
+  font-size: .87rem; line-height: 1.65;
+  color: var(--text);
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-left: 3px solid var(--blue);
+}
+
+/* ── Strengths / Gaps ── */
+.sg-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-bottom: 14px;
+}
+@media (max-width: 600px) { .sg-grid { grid-template-columns: 1fr; } }
+
+.sg-box { border-radius: var(--radius-sm); padding: 12px 14px; }
+.sg-box.strengths { background: var(--green-bg); border: 1px solid #6ee7b7; }
+.sg-box.gaps      { background: var(--red-bg);   border: 1px solid #fca5a5; }
+.sg-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; margin-bottom: 8px;
+}
+.sg-box.strengths .sg-label { color: var(--green-dk); }
+.sg-box.gaps      .sg-label { color: #991b1b; }
+.sg-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.sg-list li {
+  font-size: .84rem; line-height: 1.5;
+  display: flex; gap: 6px; align-items: flex-start;
+}
+.sg-list li::before { content: '✓'; flex-shrink: 0; margin-top: 1px; }
+.sg-box.strengths .sg-list li::before { color: var(--green); }
+.sg-box.gaps      .sg-list li::before { content: '✗'; color: var(--red); }
+.sg-empty { font-size: .82rem; color: var(--muted); font-style: italic; }
+
+/* ── Key point chips ── */
+.chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chips-label {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 4px;
+}
+.chip {
+  font-size: .76rem; padding: 3px 10px;
+  border-radius: 99px; font-weight: 500;
+}
+.chip.covered { background: var(--green-bg); color: var(--green-dk); border: 1px solid #6ee7b7; }
+.chip.missed  { background: var(--red-bg);   color: #991b1b;        border: 1px solid #fca5a5; }
+
+/* ── Collapsible expert answer ── */
+details.expert-details { border-radius: var(--radius-sm); overflow: hidden; }
+details.expert-details summary {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer; font-size: .82rem; font-weight: 600;
+  color: var(--muted); list-style: none;
+  transition: background .12s;
+}
+details.expert-details summary:hover { background: #e8edf4; }
+details.expert-details summary::marker { display: none; }
+details.expert-details summary .chevron { margin-left: auto; transition: transform .2s; }
+details[open].expert-details summary .chevron { transform: rotate(90deg); }
+.expert-body {
+  font-size: .87rem; line-height: 1.7;
+  color: var(--text);
+  border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  padding: 14px 16px;
+  border-left: 4px solid var(--amber);
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* ── Instructor summary ── */
+.assessment-text {
+  font-size: .9rem; line-height: 1.7; margin-bottom: 14px;
+}
+.summary-section { margin-top: 12px; }
+.summary-section-label {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted); margin-bottom: 8px;
+}
+.summary-list { display: flex; flex-direction: column; gap: 7px; }
+.summary-list li {
+  font-size: .87rem; line-height: 1.55;
+  display: flex; gap: 8px; align-items: flex-start;
+}
+.summary-list li::before { content: '→'; flex-shrink: 0; color: var(--blue); }
+
+/* ── Thinking profile card ── */
+.profile-card { border-color: #c4b5fd; }
+.profile-card .card-header {
+  background: var(--purple-bg); color: #5b21b6; border-bottom-color: #c4b5fd;
+}
+.profile-note {
+  background: #fef3c7; border: 1px solid #fcd34d;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px; font-size: .83rem;
+  color: #92400e; margin-bottom: 14px;
+}
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+@media (max-width: 600px) { .profile-grid { grid-template-columns: 1fr; } }
+
+.profile-box {
+  border-radius: var(--radius-sm);
+  border: 1px solid #c4b5fd;
+  padding: 14px;
+  background: #faf5ff;
+}
+.profile-box-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: #7c3aed; margin-bottom: 8px;
+}
+.profile-style-name {
+  font-size: 1.05rem; font-weight: 700; color: var(--text);
+  margin-bottom: 4px;
+}
+.conf-badge {
+  display: inline-block; font-size: .68rem; font-weight: 600;
+  padding: 2px 8px; border-radius: 99px; margin-bottom: 10px;
+  text-transform: capitalize;
+}
+.conf-badge.high   { background: var(--green-bg); color: var(--green-dk); }
+.conf-badge.medium { background: var(--amber-bg); color: #92400e; }
+.conf-badge.low    { background: var(--red-bg);   color: #991b1b; }
+
+.evidence-list {
+  list-style: none; display: flex; flex-direction: column; gap: 5px;
+  margin-bottom: 8px;
+}
+.evidence-list li {
+  font-size: .8rem; color: var(--muted);
+  font-style: italic; line-height: 1.5;
+}
+.evidence-list li::before { content: '"'; color: var(--purple); font-weight: 700; }
+.evidence-list li::after  { content: '"'; color: var(--purple); font-weight: 700; }
+
+.reasoning-text {
+  font-size: .81rem; line-height: 1.6; color: var(--text);
+  background: white; border-radius: 6px;
+  padding: 8px 10px; border: 1px solid #ddd6fe;
+}
+
+.patterns-section { margin-bottom: 12px; }
+.pattern-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.pattern-list li {
+  font-size: .84rem; display: flex; gap: 7px; align-items: flex-start;
+}
+.pattern-list li::before { content: '◆'; font-size: .55rem; color: var(--purple); flex-shrink: 0; margin-top: 4px; }
+
+.instructor-note-box {
+  background: var(--purple-bg); border: 1px solid #c4b5fd;
+  border-radius: var(--radius-sm); padding: 12px 14px;
+  font-size: .86rem; line-height: 1.6; color: #3b0764;
+}
+.instructor-note-box::before {
+  content: 'Instructor note: ';
+  font-weight: 700;
+}
+
+/* ── Scenario card specifics ── */
+.scenario-number {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--blue-dk); color: #fff;
+  font-size: .72rem; font-weight: 700; flex-shrink: 0;
+}
+.scenario-desc {
+  font-size: .87rem; color: var(--muted); font-style: italic;
+  margin-bottom: 14px; line-height: 1.6;
+}
+.transcript-box {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px;
+  font-size: .83rem; line-height: 1.7;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 320px; overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+/* ── Divider ── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+/* ── Dark theme ── */
+[data-theme="dark"] {
+  --bg: #0f172a; --card: #1e293b; --border: #334155;
+  --text: #f1f5f9; --muted: #94a3b8;
+}
+[data-theme="dark"] .score-banner   { background: var(--card); }
+[data-theme="dark"] .feedback-text  { background: #0f172a; }
+[data-theme="dark"] .transcript-box { background: #0f172a; }
+[data-theme="dark"] .reasoning-text { background: #1a1a2e; border-color: #4c1d95; }
+[data-theme="dark"] .profile-box    { background: #1a0533; }
+[data-theme="dark"] .instructor-note-box { background: #1a0533; border-color: #6d28d9; color: #ddd6fe; }
+[data-theme="dark"] .banner-pill    { background: #0f172a; }
 
 /* ── Ultra-Dark ── */
+[data-theme="ultra-dark"] {
+  --bg: #000; --card: #0a0a0a; --border: #00ff41;
+  --text: #00ff41; --muted: #00cc33;
+}
 [data-theme="ultra-dark"] header { background: #000; border-bottom: 2px solid #00ff41; }
-[data-theme="ultra-dark"] .report-card { border-color: #00ff41; }
-[data-theme="ultra-dark"] .report-toolbar { border-bottom-color: #00ff41; }
+[data-theme="ultra-dark"] .card  { border-color: #00ff41; }
+[data-theme="ultra-dark"] .card-header { background: #000d00; border-bottom-color: #00ff41; color: #00ff41; }
+[data-theme="ultra-dark"] .profile-card { border-color: #00ff41; }
+[data-theme="ultra-dark"] .profile-card .card-header { background: #001100; color: #00ff41; border-bottom-color: #00ff41; }
+[data-theme="ultra-dark"] .profile-box { background: #001100; border-color: #00ff41; }
+[data-theme="ultra-dark"] .instructor-note-box { background: #001100; border-color: #00ff41; color: #00ff41; }
 
 /* ── Ultra-Light ── */
 [data-theme="ultra-light"] header { background: #0000ff; border-bottom: 3px solid #000; }
-[data-theme="ultra-light"] .report-card { border: 2px solid #000; border-radius: 0; }
-[data-theme="ultra-light"] .report-toolbar { border-bottom: 2px solid #000; }
+[data-theme="ultra-light"] .card  { border: 2px solid #000; border-radius: 0; }
+[data-theme="ultra-light"] .card-header { border-bottom: 2px solid #000; }
 </style>
 <link rel="stylesheet" href="/static/themes.css">
 </head>
@@ -121,12 +399,307 @@ pre.report-content {
 </header>
 
 <main>
-  <div class="report-card">
-    <div class="report-toolbar">
-      <span>Markdown report</span>
+
+  {# ── Score banner ── #}
+  {% set raw_score = report.metadata.get('score') or report.metadata.get('average_score', '') %}
+  {% if raw_score.endswith('%') %}
+    {% set pct = raw_score[:-1]|int %}
+    {% if pct >= 90 %}{% set score_cls = 'green' %}
+    {% elif pct >= 70 %}{% set score_cls = 'blue' %}
+    {% elif pct >= 50 %}{% set score_cls = 'amber' %}
+    {% else %}{% set score_cls = 'red' %}
+    {% endif %}
+  {% else %}
+    {% set score_cls = 'muted' %}
+  {% endif %}
+
+  <div class="score-banner">
+    <div class="score-circle score-{{ score_cls }}">{{ raw_score or '—' }}</div>
+    <div class="banner-text">
+      <h2>{{ report.title }}</h2>
+      <div class="banner-pills">
+        {% if report.metadata.date %}<span class="banner-pill">📅 {{ report.metadata.date }}</span>{% endif %}
+        {% if report.metadata.model %}<span class="banner-pill">🤖 {{ report.metadata.model }}</span>{% endif %}
+        {% if report.type == 'scenario' and report.metadata.scenarios_completed %}
+          <span class="banner-pill">📋 {{ report.metadata.scenarios_completed }} scenario(s)</span>
+        {% endif %}
+        {% if report.type == 'fr' and report.metadata.prompt %}
+          <span class="banner-pill">📝 {{ report.metadata.prompt }}</span>
+        {% endif %}
+      </div>
     </div>
-    <pre class="report-content">{{ content }}</pre>
   </div>
+
+  {# ═══════════════════════════════════════════
+     FREE RESPONSE REPORT
+  ═══════════════════════════════════════════ #}
+  {% if report.type == 'fr' %}
+
+    {# Prompt #}
+    {% if report.prompt and report.prompt.text %}
+    <div class="card">
+      <div class="card-header"><span class="icon">📄</span> Prompt</div>
+      <div class="card-body">
+        <p class="prompt-text">{{ report.prompt.text }}</p>
+        {% if report.prompt.constraints %}
+        <div class="constraints-list">
+          {% for c in report.prompt.constraints %}
+          <div class="constraint-item">{{ c }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Learner's Submission #}
+    {% if report.submission %}
+    <div class="card">
+      <div class="card-header"><span class="icon">✍️</span> Learner's Submission</div>
+      <div class="card-body">
+        <p class="submission-text">{{ report.submission }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Evaluation #}
+    {% set ev = report.evaluation %}
+    <div class="card">
+      <div class="card-header"><span class="icon">📊</span> Evaluation</div>
+      <div class="card-body">
+
+        {% if ev.feedback %}
+        <div class="feedback-text">{{ ev.feedback }}</div>
+        {% endif %}
+
+        <div class="sg-grid">
+          <div class="sg-box strengths">
+            <div class="sg-label">Strengths</div>
+            {% if ev.strengths %}
+            <ul class="sg-list">
+              {% for s in ev.strengths %}<li>{{ s }}</li>{% endfor %}
+            </ul>
+            {% else %}
+            <span class="sg-empty">None identified</span>
+            {% endif %}
+          </div>
+          <div class="sg-box gaps">
+            <div class="sg-label">Gaps</div>
+            {% if ev.gaps %}
+            <ul class="sg-list">
+              {% for g in ev.gaps %}<li>{{ g }}</li>{% endfor %}
+            </ul>
+            {% else %}
+            <span class="sg-empty">None identified</span>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if ev.matched_points %}
+        <div class="chips-label">Key points covered</div>
+        <div class="chips-row">
+          {% for p in ev.matched_points %}<span class="chip covered">{{ p }}</span>{% endfor %}
+        </div>
+        {% endif %}
+
+        {% if ev.missed_points %}
+        <div class="chips-label" style="margin-top:10px">Key points missed</div>
+        <div class="chips-row">
+          {% for p in ev.missed_points %}<span class="chip missed">{{ p }}</span>{% endfor %}
+        </div>
+        {% endif %}
+
+        {% if ev.expert_answer %}
+        <hr class="divider">
+        <details class="expert-details">
+          <summary>
+            <span class="icon">💡</span> Expert Reference Answer
+            <span class="chevron">▶</span>
+          </summary>
+          <div class="expert-body">{{ ev.expert_answer }}</div>
+        </details>
+        {% endif %}
+
+      </div>
+    </div>
+
+  {# ═══════════════════════════════════════════
+     SCENARIO REPORT
+  ═══════════════════════════════════════════ #}
+  {% else %}
+
+    {% for scn in report.scenarios %}
+    <div class="card">
+      <div class="card-header">
+        <span class="scenario-number">{{ scn.number }}</span>
+        Scenario: {{ scn.title }}
+        {% if scn.score %}<span class="banner-pill" style="margin-left:auto">{{ scn.score }}</span>{% endif %}
+      </div>
+      <div class="card-body">
+
+        {% if scn.description %}
+        <p class="scenario-desc">{{ scn.description }}</p>
+        {% endif %}
+
+        {% if scn.constraints %}
+        <div style="margin-bottom:14px">
+          <div class="chips-label">Constraints</div>
+          <div class="constraints-list">
+            {% for c in scn.constraints %}<div class="constraint-item">{{ c }}</div>{% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if scn.feedback %}
+        <div class="feedback-text">{{ scn.feedback }}</div>
+        {% endif %}
+
+        <div class="sg-grid">
+          <div class="sg-box strengths">
+            <div class="sg-label">Strengths</div>
+            {% if scn.strengths %}
+            <ul class="sg-list">{% for s in scn.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+            {% else %}<span class="sg-empty">None identified</span>{% endif %}
+          </div>
+          <div class="sg-box gaps">
+            <div class="sg-label">Gaps</div>
+            {% if scn.gaps %}
+            <ul class="sg-list">{% for g in scn.gaps %}<li>{{ g }}</li>{% endfor %}</ul>
+            {% else %}<span class="sg-empty">None identified</span>{% endif %}
+          </div>
+        </div>
+
+        {% if scn.matched_points %}
+        <div class="chips-label">Key points covered</div>
+        <div class="chips-row">{% for p in scn.matched_points %}<span class="chip covered">{{ p }}</span>{% endfor %}</div>
+        {% endif %}
+        {% if scn.missed_points %}
+        <div class="chips-label" style="margin-top:10px">Key points missed</div>
+        <div class="chips-row">{% for p in scn.missed_points %}<span class="chip missed">{{ p }}</span>{% endfor %}</div>
+        {% endif %}
+
+        {% if scn.transcript %}
+        <hr class="divider">
+        <details class="expert-details">
+          <summary><span class="icon">💬</span> Conversation Transcript <span class="chevron">▶</span></summary>
+          <div class="expert-body" style="border-left-color:var(--blue)">{{ scn.transcript }}</div>
+        </details>
+        {% endif %}
+
+        {% if scn.expert_guidance %}
+        <details class="expert-details" style="margin-top:8px">
+          <summary><span class="icon">💡</span> Expert Guidance <span class="chevron">▶</span></summary>
+          <div class="expert-body">{{ scn.expert_guidance }}</div>
+        </details>
+        {% endif %}
+
+      </div>
+    </div>
+    {% endfor %}
+
+  {% endif %}
+
+  {# ── Instructor Summary ── #}
+  {% set ins = report.instructor_summary %}
+  {% if ins and (ins.assessment or ins.learning_gaps or ins.recommendations) %}
+  <div class="card">
+    <div class="card-header"><span class="icon">📋</span> Instructor Summary</div>
+    <div class="card-body">
+      {% if ins.assessment %}
+      <p class="assessment-text">{{ ins.assessment }}</p>
+      {% endif %}
+
+      {% if ins.learning_gaps %}
+      <div class="summary-section">
+        <div class="summary-section-label">Learning gaps identified</div>
+        <ul class="summary-list">
+          {% for g in ins.learning_gaps %}<li>{{ g }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if ins.recommendations %}
+      <div class="summary-section">
+        <div class="summary-section-label">Recommendations</div>
+        <ul class="summary-list">
+          {% for r in ins.recommendations %}<li>{{ r }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Learner Thinking Profile ── #}
+  {% if report.thinking_profile %}
+  {% set tp = report.thinking_profile %}
+  <div class="card profile-card">
+    <div class="card-header"><span class="icon">🧠</span> Learner Thinking Profile</div>
+    <div class="card-body">
+
+      {% if tp.insufficient_data_note %}
+      <div class="profile-note">⚠ Limited evidence: {{ tp.insufficient_data_note }}</div>
+      {% endif %}
+
+      <div class="profile-grid">
+
+        {% if tp.honey_mumford %}
+        {% set hm = tp.honey_mumford %}
+        <div class="profile-box">
+          <div class="profile-box-label">Honey &amp; Mumford Style</div>
+          <div class="profile-style-name">{{ hm.style }}</div>
+          {% if hm.confidence %}
+          <span class="conf-badge {{ hm.confidence }}">{{ hm.confidence }} confidence</span>
+          {% endif %}
+          {% if hm.evidence %}
+          <ul class="evidence-list">
+            {% for e in hm.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          {% if hm.reasoning %}
+          <div class="reasoning-text">{{ hm.reasoning }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if tp.solo %}
+        {% set solo = tp.solo %}
+        <div class="profile-box">
+          <div class="profile-box-label">SOLO Level</div>
+          <div class="profile-style-name">{{ solo.level }}</div>
+          {% if solo.confidence %}
+          <span class="conf-badge {{ solo.confidence }}">{{ solo.confidence }} confidence</span>
+          {% endif %}
+          {% if solo.evidence %}
+          <ul class="evidence-list">
+            {% for e in solo.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          {% if solo.reasoning %}
+          <div class="reasoning-text">{{ solo.reasoning }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+      </div>
+
+      {% if tp.patterns %}
+      <div class="patterns-section">
+        <div class="summary-section-label">Observed patterns</div>
+        <ul class="pattern-list">
+          {% for p in tp.patterns %}<li>{{ p }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if tp.instructor_note %}
+      <div class="instructor-note-box">{{ tp.instructor_note }}</div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endif %}
+
 </main>
 
 <script>

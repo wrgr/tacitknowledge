@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ user_theme if user_theme != 'light' else '' }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Reports — Performative Assessment</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --blue:    #3b82f6;
+  --blue-dk: #1d4ed8;
+  --green:   #10b981;
+  --amber:   #f59e0b;
+  --bg:      #f1f5f9;
+  --card:    #ffffff;
+  --border:  #e2e8f0;
+  --text:    #1e293b;
+  --muted:   #64748b;
+  --radius:  12px;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+}
+
+/* ── Header ── */
+header {
+  background: var(--blue);
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.hdr-back {
+  color: rgba(255,255,255,.85);
+  text-decoration: none;
+  font-size: .84rem;
+  padding: 5px 12px;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 6px;
+  transition: background .12s;
+  white-space: nowrap;
+}
+.hdr-back:hover { background: rgba(255,255,255,.15); }
+
+.hdr-title { flex: 1; }
+.hdr-title h1 { font-size: 1rem; font-weight: 600; }
+.hdr-title p  { font-size: .76rem; color: rgba(255,255,255,.65); margin-top: 2px; }
+
+/* ── Main ── */
+main {
+  max-width: 700px;
+  margin: 32px auto;
+  padding: 0 20px 48px;
+}
+
+h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+/* ── Report list ── */
+.report-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.report-item:hover {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.08);
+}
+
+.report-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: #eff6ff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.report-info { flex: 1; min-width: 0; }
+.report-info .report-name {
+  font-size: .88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.report-info .report-meta {
+  font-size: .77rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.view-btn {
+  flex-shrink: 0;
+  padding: 7px 16px;
+  font-size: .8rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1.5px solid var(--blue);
+  color: var(--blue);
+  background: transparent;
+  text-decoration: none;
+  transition: background .12s, color .12s;
+  white-space: nowrap;
+}
+.view-btn:hover { background: var(--blue); color: #fff; }
+
+.empty-msg {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--muted);
+  font-size: .9rem;
+}
+.empty-msg .emoji { font-size: 2.5rem; margin-bottom: 12px; }
+
+/* ── Dark / Ultra-Dark theme overrides ── */
+[data-theme="ultra-dark"] header { background: #000; border-bottom: 2px solid #00ff41; }
+[data-theme="ultra-dark"] .hdr-back { border-color: #00ff41; color: #00ff41; }
+[data-theme="ultra-dark"] .report-item { border-color: #1a1a1a; }
+[data-theme="ultra-dark"] .report-item:hover { border-color: #00ff41; box-shadow: 0 0 0 3px rgba(0,255,65,.1); }
+[data-theme="ultra-dark"] .view-btn { border-color: #00ff41; color: #00ff41; }
+[data-theme="ultra-dark"] .view-btn:hover { background: #00ff41; color: #000; }
+
+[data-theme="ultra-light"] header { background: #0000ff; border-bottom: 3px solid #000; }
+[data-theme="ultra-light"] .report-item { border: 2px solid #000; border-radius: 0; }
+</style>
+<link rel="stylesheet" href="/static/themes.css">
+</head>
+<body>
+
+<header>
+  <a href="/" class="hdr-back">← Dashboard</a>
+  <div class="hdr-title">
+    <h1>My Reports</h1>
+    <p>{{ current_user }}</p>
+  </div>
+  <select id="theme-select" class="theme-sel" title="Choose theme">
+    <option value="ultra-light">🔆 Ultra-Light</option>
+    <option value="light">☀️ Light</option>
+    <option value="rustic">📰 Rustic</option>
+    <option value="dark">🌙 Dark</option>
+    <option value="ultra-dark">☠️ Ultra-Dark</option>
+  </select>
+</header>
+
+<main>
+  <h2>Your Assessment Reports</h2>
+
+  {% if reports %}
+    {% for filename in reports %}
+      {% set is_fr = filename.startswith('fr_') %}
+      {% set icon = '📝' if is_fr else '🎭' %}
+      {% set label = 'Free Response' if is_fr else 'Scenario-Based' %}
+
+      {# Parse timestamp from filename: report_20260622_105552.md #}
+      {% set parts = filename.replace('.md','').split('_') %}
+      {% if parts|length >= 3 %}
+        {% set d = parts[-2] %}
+        {% set t = parts[-1] %}
+        {% set date_str = d[:4] + '-' + d[4:6] + '-' + d[6:] + '  ' + t[:2] + ':' + t[2:4] %}
+      {% else %}
+        {% set date_str = '' %}
+      {% endif %}
+
+      <div class="report-item">
+        <div class="report-icon">{{ icon }}</div>
+        <div class="report-info">
+          <div class="report-name">{{ filename }}</div>
+          <div class="report-meta">{{ label }}{% if date_str %} &mdash; {{ date_str }}{% endif %}</div>
+        </div>
+        <a href="/my-report/{{ filename | urlencode }}" class="view-btn">View</a>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-msg">
+      <div class="emoji">📭</div>
+      <p>No reports yet.</p>
+      <p style="margin-top:6px;font-size:.83rem">Complete an assessment and click <strong>Generate Report</strong> to save one here.</p>
+      <a href="/" style="display:inline-block;margin-top:18px;padding:10px 22px;background:var(--blue);color:#fff;border-radius:8px;text-decoration:none;font-size:.88rem;font-weight:600">Take an Assessment</a>
+    </div>
+  {% endif %}
+</main>
+
+<script>
+const sel = document.getElementById('theme-select');
+sel.value = document.documentElement.dataset.theme || 'light';
+sel.addEventListener('change', function () {
+  document.documentElement.dataset.theme = this.value === 'light' ? '' : this.value;
+  fetch('/api/save-theme', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ theme: this.value }),
+  }).catch(() => {});
+});
+</script>
+</body>
+</html>

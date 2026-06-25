@@ -259,6 +259,22 @@ def admin_view_report(username, filename):
 
 # ── Student report endpoints ───────────────────────────────────────────────────
 
+@app.route("/my-reports")
+@auth.login_required
+def my_reports_page():
+    """Dedicated page listing the logged-in student's own reports."""
+    user_dir = REPORTS_BASE / session["user_id"]
+    files = []
+    if user_dir.is_dir():
+        files = sorted([f.name for f in user_dir.glob("*.md")], reverse=True)
+    return render_template(
+        "my_reports.html",
+        reports=files,
+        current_user=session.get("display_name", session.get("user_id", "")),
+        user_theme=_user_theme(),
+    )
+
+
 @app.route("/api/my-reports", methods=["POST"])
 @auth.login_required
 def api_my_reports():
@@ -429,7 +445,7 @@ def api_respond():
     st, err = _get_state(data)
     if err:
         return err
-    narration, concluded = st["runner"].respond(data["user_input"])
+    narration, concluded = st["runner"].respond(data["user_input"], writing_metrics=data.get("writing_metrics"))
     return jsonify({"narration": narration, "concluded": concluded})
 
 
@@ -484,6 +500,8 @@ def api_thinking_profile():
     profile = engine.analyse_thinking_profile(
         scenario, runner.transcript(),
         model=sess.model, api_key=sess.api_key, base_url=sess.base_url,
+        writing_metrics=runner.writing_metrics,
+        user_inputs=runner.user_inputs,
     )
     st["profile"] = profile
     return jsonify({"profile": profile})
@@ -506,6 +524,8 @@ def api_report():
         thinking_profile = engine.analyse_thinking_profile(
             st["scenario"], st["runner"].transcript(),
             model=sess.model, api_key=sess.api_key, base_url=sess.base_url,
+            writing_metrics=st["runner"].writing_metrics,
+            user_inputs=st["runner"].user_inputs,
         )
         st["profile"] = thinking_profile
 
@@ -726,13 +746,14 @@ def api_fr_submit():
 
     sid = str(uuid.uuid4())
     _fr_state[sid] = {
-        "prompt":     prompt_data,
-        "evaluation": evaluation,
-        "profile":    None,
-        "user_id":    session["user_id"],
-        "model":      model,
-        "api_key":    api_key,
-        "base_url":   base_url,
+        "prompt":           prompt_data,
+        "evaluation":       evaluation,
+        "profile":          None,
+        "writing_metrics":  data.get("writing_metrics"),
+        "user_id":          session["user_id"],
+        "model":            model,
+        "api_key":          api_key,
+        "base_url":         base_url,
     }
 
     return jsonify({
@@ -766,6 +787,8 @@ def api_fr_thinking_profile():
     profile = engine.analyse_thinking_profile(
         st["prompt"], st["evaluation"]["text"],
         model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
+        writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
+        user_inputs=[st["evaluation"]["text"]],
     )
     st["profile"] = profile
     return jsonify({"profile": profile})
@@ -791,6 +814,8 @@ def api_fr_report():
         thinking_profile = engine.analyse_thinking_profile(
             st["prompt"], st["evaluation"]["text"],
             model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
+            writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
+            user_inputs=[st["evaluation"]["text"]],
         )
         st["profile"] = thinking_profile
 

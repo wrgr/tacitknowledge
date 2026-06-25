@@ -519,7 +519,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
 }
 #provider-row label {
   font-size: .85rem;
@@ -547,7 +546,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   font-size: .88rem;
   color: var(--text);
   font-family: inherit;
-  width: 200px;
+  width: 160px;
   letter-spacing: .05em;
 }
 #api-key-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
@@ -1049,21 +1048,88 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   </div>
 </header>
 
-<!-- Mode selector (home) -->
-<div id="view-home" class="view">
-  <div id="home-inner">
+<!-- Student Dashboard -->
+<div id="view-dashboard" class="view hidden">
+  <div id="dashboard-inner" style="max-width:640px;margin:0 auto;padding:36px 20px">
+
     <div id="ollama-warning" class="warning-bar hidden">
-      No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key above to enable LLM scoring.
+      No API key available for this provider — falling back to keyword scoring. Narration will be unavailable. Enter a key to enable LLM scoring.
     </div>
     <div id="provider-row" class="hidden">
       <label for="provider-select">AI Provider</label>
       <select id="provider-select"></select>
       <label for="model-select">Model</label>
       <select id="model-select"></select>
-      <label for="api-key-input">API Key</label>
-      <input type="password" id="api-key-input" autocomplete="new-password">
-      <span id="key-status"></span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label for="api-key-input">API Key</label>
+        <input type="password" id="api-key-input" autocomplete="new-password">
+        <span id="key-status"></span>
+      </div>
     </div>
+
+    <div style="margin-bottom:28px">
+      <h2 id="dash-greeting" style="font-size:1.45rem;font-weight:700;margin-bottom:4px">Welcome back!</h2>
+      <p style="color:var(--muted);font-size:.88rem">Here's your learning snapshot</p>
+    </div>
+
+    <!-- Profile preview card -->
+    <div class="result-section" style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="font-size:.95rem;margin:0">Learning Profile</h3>
+        <span id="dash-profile-link"
+              onclick="showProfileMode()"
+              style="font-size:.78rem;color:var(--blue);cursor:pointer;text-decoration:underline;text-underline-offset:2px">
+          View Full Profile
+        </span>
+      </div>
+
+      <div class="stat-row" id="dash-stat-row">
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-total">—</div>
+          <div class="stat-label">Assessments</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-avg">—</div>
+          <div class="stat-label">Avg Score</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-best">—</div>
+          <div class="stat-label">Best Score</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="dash-stat-trend">—</div>
+          <div class="stat-label">Trend</div>
+        </div>
+      </div>
+
+      <p id="dash-no-data" class="hidden"
+         style="font-size:.84rem;color:var(--muted);margin-top:4px">
+        No assessments yet — take your first one below!
+      </p>
+    </div>
+
+    <!-- Action buttons -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <button class="btn btn-primary"
+              style="width:100%;padding:26px 20px;font-size:1.15rem;font-weight:700;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;gap:12px"
+              onclick="showHome()">
+        <span style="font-size:1.8rem">🎯</span>
+        Take Assessment
+      </button>
+      <a href="/my-reports"
+         class="btn btn-outline"
+         style="width:100%;padding:16px 20px;font-size:.95rem;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none">
+        <span style="font-size:1.3rem">📂</span>
+        View My Reports
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Mode selector (home) -->
+<div id="view-home" class="view hidden">
+  <div id="home-inner">
+    <span id="back-to-dash" class="back-home-link" onclick="showDashboard()" style="display:none">← Dashboard</span>
     <h2>What type of assessment are you taking?</h2>
     <div id="mode-cards">
       <div class="mode-card" id="mode-scenario">
@@ -1075,16 +1141,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <div class="mode-icon">📝</div>
         <h3>Free Response</h3>
         <p>Write an essay, paragraph, or discussion post. Watch which key points you hit as you write, then submit for full feedback.</p>
-      </div>
-      <div class="mode-card" id="mode-reports">
-        <div class="mode-icon">📂</div>
-        <h3>My Reports</h3>
-        <p>View your previously generated assessment reports.</p>
-      </div>
-      <div class="mode-card" id="mode-profile">
-        <div class="mode-icon">📈</div>
-        <h3>Learning Profile</h3>
-        <p>Track progress over time across all assessments — scores, trends, and a chart grouped by assessment type.</p>
       </div>
     </div>
   </div>
@@ -1214,7 +1270,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 
     <div class="action-bar">
       <button class="btn btn-outline" id="btn-report">Generate Report</button>
-      <button class="btn btn-ghost"   id="btn-again">Try Another Scenario</button>
+      <button class="btn btn-ghost"   id="btn-again">Return to Dashboard</button>
     </div>
     <div id="report-note"></div>
   </div>
@@ -1337,7 +1393,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <!-- My Reports -->
 <div id="view-reports" class="view hidden">
   <div id="reports-inner" style="max-width:640px;margin:0 auto;padding:32px 20px">
-    <span class="back-home-link" onclick="showHome()">← Back</span>
+    <span class="back-home-link" onclick="IS_ADMIN ? showHome() : showDashboard()">← Back</span>
     <h2 style="font-size:1.2rem;margin-bottom:20px">My Reports</h2>
     <div id="reports-list"></div>
   </div>
@@ -1346,7 +1402,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <!-- Learning Profile -->
 <div id="view-profile" class="view hidden">
   <div id="profile-inner">
-    <span class="back-home-link" onclick="showHome()">← Change mode</span>
+    <span class="back-home-link" onclick="IS_ADMIN ? showHome() : showDashboard()">← Back</span>
     <h2 id="profile-heading">Learning Profile</h2>
 
     <!-- Admin user selector (hidden for students) -->
@@ -1425,7 +1481,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 
     <div class="action-bar">
       <button class="btn btn-outline" id="btn-fr-report">Generate Report</button>
-      <button class="btn btn-ghost"   id="btn-fr-again">Try Another Prompt</button>
+      <button class="btn btn-ghost"   id="btn-fr-again">Return to Dashboard</button>
     </div>
     <div id="fr-report-note"></div>
   </div>
@@ -1438,6 +1494,70 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 const S  = { sessionId: null, maxTurns: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
 const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null,
              llmCheckTimer: null, llmLastWordCount: 0, llmInFlight: false };
+
+// ── Writing Tracker ────────────────────────────
+// Captures per-turn behavioural metrics: typing speed, deletions, pauses, paste events.
+// Call reset() when a new turn begins, collect(text) just before submitting.
+const WritingTracker = {
+  _events:       [],   // [{type:'key'|'delete'|'paste', t:<ms>}, ...]
+  _startTime:    null, // Date.now() when this turn began (set by reset)
+  _firstKeyTime: null, // Date.now() of the first keystroke this turn
+
+  reset() {
+    this._events       = [];
+    this._startTime    = Date.now();
+    this._firstKeyTime = null;
+  },
+
+  onKey(e) {
+    const now = Date.now();
+    if (this._firstKeyTime === null) this._firstKeyTime = now;
+    const type = (e.key === 'Backspace' || e.key === 'Delete') ? 'delete' : 'key';
+    this._events.push({ type, t: now });
+  },
+
+  onPaste() {
+    const now = Date.now();
+    if (this._firstKeyTime === null) this._firstKeyTime = now;
+    this._events.push({ type: 'paste', t: now });
+  },
+
+  collect(finalText) {
+    const now    = Date.now();
+    const words  = finalText.trim() ? finalText.trim().split(/\s+/).length : 0;
+    const keys   = this._events.filter(e => e.type === 'key').length;
+    const dels   = this._events.filter(e => e.type === 'delete').length;
+    const pastes = this._events.filter(e => e.type === 'paste').length;
+
+    // Active typing duration: sum of inter-keystroke gaps <= 3 s; longer gaps are pauses
+    const PAUSE_MS = 3000;
+    let activeDuration = 0, pauseCount = 0, maxPauseMs = 0;
+    for (let i = 1; i < this._events.length; i++) {
+      const gap = this._events[i].t - this._events[i - 1].t;
+      if (gap > PAUSE_MS) { pauseCount++; if (gap > maxPauseMs) maxPauseMs = gap; }
+      else                { activeDuration += gap; }
+    }
+
+    const activeMin  = activeDuration / 60000;
+    const wpm        = (activeMin > 0 && words > 0) ? Math.round(words / activeMin) : null;
+    const totalKeys  = keys + dels;
+    const latencyS   = this._firstKeyTime !== null
+      ? +((this._firstKeyTime - this._startTime) / 1000).toFixed(1) : null;
+    const totalTimeS = this._firstKeyTime !== null
+      ? +((now - this._firstKeyTime) / 1000).toFixed(1) : null;
+
+    return {
+      wpm,
+      latency_s:      latencyS,
+      deletion_count: dels,
+      revision_ratio: totalKeys > 0 ? +(dels / totalKeys).toFixed(3) : 0,
+      paste_count:    pastes,
+      pause_count:    pauseCount,
+      max_pause_s:    maxPauseMs > 0 ? +(maxPauseMs / 1000).toFixed(1) : 0,
+      total_time_s:   totalTimeS,
+    };
+  },
+};
 
 // ── Helpers ────────────────────────────────────
 const $  = id => document.getElementById(id);
@@ -1472,10 +1592,61 @@ async function api(path, body) {
 
 // ── Mode navigation ────────────────────────────
 function showHome() {
-  ['view-scenarios','view-assess','view-results','view-create',
+  ['view-dashboard','view-scenarios','view-assess','view-results','view-create',
    'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
    'view-profile'].forEach(hide);
   show('view-home');
+  // show "← Dashboard" back link only for students
+  const bd = $('back-to-dash');
+  if (bd) bd.style.display = IS_ADMIN ? 'none' : 'inline';
+}
+
+async function showDashboard() {
+  ['view-home','view-scenarios','view-assess','view-results','view-create',
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
+   'view-profile'].forEach(hide);
+  show('view-dashboard');
+  await _loadDashboardStats();
+}
+
+async function _loadDashboardStats() {
+  try {
+    const data = await api('/api/learning-profile', {});
+    const name = (data.display_name || data.username || '').split(' ')[0];
+    $('dash-greeting').textContent = 'Welcome back, ' + name + '!';
+
+    const reps = data.reports || [];
+    if (!reps.length) {
+      ['dash-stat-total','dash-stat-avg','dash-stat-best','dash-stat-trend'].forEach(id => {
+        $(id).textContent = '0';
+      });
+      $('dash-no-data').classList.remove('hidden');
+      return;
+    }
+
+    const scores = reps.map(r => r.score);
+    const avg    = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    const best   = Math.max(...scores);
+    let trendStr = '—';
+    let trendColor = '';
+    if (scores.length >= 2) {
+      const mid   = Math.floor(scores.length / 2);
+      const early = scores.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
+      const late  = scores.slice(mid).reduce((a, b) => a + b, 0) / (scores.length - mid);
+      const delta = Math.round(late - early);
+      if (delta > 0)      { trendStr = '+' + delta + '%'; trendColor = 'var(--green)'; }
+      else if (delta < 0) { trendStr = delta + '%';       trendColor = 'var(--red)';   }
+      else                { trendStr = '→ 0%'; }
+    }
+
+    $('dash-stat-total').textContent = reps.length;
+    $('dash-stat-avg').textContent   = avg + '%';
+    $('dash-stat-best').textContent  = best + '%';
+    $('dash-stat-trend').textContent = trendStr;
+    if (trendColor) $('dash-stat-trend').style.color = trendColor;
+  } catch (_) {
+    // fail silently — stats not critical
+  }
 }
 
 function showScenarioMode() {
@@ -1491,8 +1662,6 @@ function showFrMode() {
 
 $('mode-scenario').addEventListener('click', showScenarioMode);
 $('mode-fr').addEventListener('click', showFrMode);
-$('mode-reports').addEventListener('click', showReportsMode);
-$('mode-profile').addEventListener('click', showProfileMode);
 
 // ── My Reports ─────────────────────────────────
 async function showReportsMode() {
@@ -1767,6 +1936,7 @@ async function startScenario(index, title) {
   hide('view-scenarios');
   show('view-assess');
   addBubble('examiner', data.opening);
+  WritingTracker.reset();
   $('user-input').focus();
 }
 
@@ -1776,14 +1946,17 @@ async function send() {
   const text = el.value.trim();
   if (!text || S.busy) return;
 
+  const writingMetrics = WritingTracker.collect(text);
+
   addBubble('user', text);
   el.value = '';
   el.style.height = 'auto';
   lock(true);
   showTyping();
+  WritingTracker.reset();
 
   try {
-    const data = await api('/api/respond', { session_id: S.sessionId, user_input: text });
+    const data = await api('/api/respond', { session_id: S.sessionId, user_input: text, writing_metrics: writingMetrics });
     hideTyping();
     S.turn++;
     updateMeta();
@@ -1897,11 +2070,12 @@ $('btn-finish').addEventListener('click', async () => {
   if (!confirm('End the assessment now and see your results?')) return;
   const text = $('user-input').value.trim();
   if (text) {
+    const writingMetrics = WritingTracker.collect(text);
     addBubble('user', text);
     $('user-input').value = '';
     lock(true);
     showTyping();
-    try { await api('/api/respond', { session_id: S.sessionId, user_input: text }); } catch (_) {}
+    try { await api('/api/respond', { session_id: S.sessionId, user_input: text, writing_metrics: writingMetrics }); } catch (_) {}
     hideTyping();
   } else {
     lock(true);
@@ -1913,8 +2087,10 @@ $('btn-finish').addEventListener('click', async () => {
 $('btn-send').addEventListener('click', send);
 
 $('user-input').addEventListener('keydown', e => {
+  WritingTracker.onKey(e);
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
+$('user-input').addEventListener('paste', () => WritingTracker.onPaste());
 
 $('user-input').addEventListener('input', function () {
   this.style.height = 'auto';
@@ -1975,7 +2151,7 @@ function renderResults(data) {
   const canReport = llmAvailable();
   $('btn-report').disabled       = !canReport;
   $('btn-report').textContent    = 'Generate Report';
-  $('report-note').textContent   = canReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
+  $('report-note').textContent   = canReport ? '' : 'An LLM connection is required to generate reports. Configure a provider on the dashboard.';
 
   // Animate score bar after paint
   requestAnimationFrame(() => {
@@ -2002,7 +2178,7 @@ $('btn-again').addEventListener('click', () => {
   hide('view-results');
   hide('profile-section');
   $('profile-content').innerHTML = '';
-  show('view-scenarios');
+  IS_ADMIN ? showHome() : showDashboard();
 });
 
 // ── Free Response ──────────────────────────────
@@ -2074,6 +2250,7 @@ function startFrPrompt(index, promptList) {
   hide('view-fr-prompts');
   show('view-fr-write');
   $('fr-textarea').focus();
+  WritingTracker.reset();
 }
 
 function updateFrWordCount(text, limit) {
@@ -2138,6 +2315,9 @@ async function checkFrLlm() {
   }
 }
 
+$('fr-textarea').addEventListener('keydown', e => WritingTracker.onKey(e));
+$('fr-textarea').addEventListener('paste', () => WritingTracker.onPaste());
+
 $('fr-textarea').addEventListener('input', function () {
   const text  = this.value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -2167,6 +2347,8 @@ $('btn-fr-submit').addEventListener('click', async () => {
   if (!text) { alert('Please write your response before submitting.'); return; }
   if (!confirm('Submit your response? You will not be able to edit it after submitting.')) return;
 
+  const writingMetrics = WritingTracker.collect(text);
+
   $('fr-textarea').disabled     = true;
   $('btn-fr-submit').disabled   = true;
   $('btn-fr-submit').innerHTML  = '<span class="spinner"></span>Evaluating…';
@@ -2175,6 +2357,7 @@ $('btn-fr-submit').addEventListener('click', async () => {
     const data = await api('/api/fr/submit', {
       prompt_id: FR.promptData.id,
       text,
+      writing_metrics: writingMetrics,
       provider: S.provider,
       model:    S.model,
       api_key:  S.apiKey || undefined,
@@ -2227,7 +2410,7 @@ function renderFrResults(ev) {
   const canFrReport = llmAvailable();
   $('btn-fr-report').disabled       = !canFrReport;
   $('btn-fr-report').textContent    = 'Generate Report';
-  $('fr-report-note').textContent   = canFrReport ? '' : 'An LLM connection is required to generate reports. Configure a provider above.';
+  $('fr-report-note').textContent   = canFrReport ? '' : 'An LLM connection is required to generate reports. Configure a provider on the dashboard.';
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -2275,7 +2458,7 @@ $('btn-fr-again').addEventListener('click', () => {
   hide('view-fr-results');
   hide('fr-profile-section');
   $('fr-profile-content').innerHTML = '';
-  show('view-fr-prompts');
+  IS_ADMIN ? showHome() : showDashboard();
 });
 
 // ── Scenario Creator ───────────────────────────
@@ -2622,7 +2805,7 @@ let _profileAllReports = [];
 let _profileFilter     = 'all';
 
 async function showProfileMode() {
-  hide('view-home');
+  ['view-home','view-dashboard'].forEach(hide);
   show('view-profile');
   $('profile-heading').textContent = 'Learning Profile';
 
@@ -3137,6 +3320,13 @@ $('theme-select').addEventListener('change', function () {
   loadScenarios().catch(err => {
     $('scenario-list').textContent = `Failed to load: ${err.message}`;
   });
+
+  // Route to the right starting view
+  if (IS_ADMIN) {
+    showHome();
+  } else {
+    showDashboard();
+  }
 }());
 </script>
 </body>

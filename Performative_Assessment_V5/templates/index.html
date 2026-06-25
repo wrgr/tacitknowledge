@@ -866,6 +866,165 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   cursor: pointer;
 }
 .back-home-link:hover { color: var(--text); }
+
+/* ── Learning Profile ────────────────────────── */
+#view-profile { padding: 32px 20px; }
+#profile-inner { max-width: 720px; margin: 0 auto; }
+#profile-inner h2 { font-size: 1.2rem; margin-bottom: 20px; }
+
+.profile-user-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 18px; flex-wrap: wrap;
+}
+.profile-user-row label { font-size: .85rem; color: var(--muted); font-weight: 500; }
+#profile-user-select {
+  padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card);
+  font-size: .87rem; color: var(--text);
+  cursor: pointer; font-family: inherit;
+}
+
+.toggle-row { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+.toggle-btn {
+  padding: 5px 16px; border-radius: 99px;
+  font-size: .82rem; font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--card); color: var(--muted);
+  cursor: pointer; font-family: inherit;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.toggle-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.toggle-btn:hover:not(.active) { border-color: var(--blue); color: var(--blue); background: var(--bg); }
+
+.stat-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.stat-card {
+  flex: 1; min-width: 90px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 12px; text-align: center;
+}
+.stat-value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; margin-bottom: 4px; }
+.stat-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+
+.chart-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  margin-bottom: 16px; position: relative; overflow: hidden;
+}
+#profile-chart { display: block; width: 100%; cursor: crosshair; }
+
+#chart-tooltip {
+  position: absolute; display: none;
+  background: rgba(15,23,42,.88); color: #f1f5f9;
+  padding: 6px 10px; border-radius: 6px;
+  font-size: .78rem; line-height: 1.5;
+  pointer-events: none; white-space: nowrap; z-index: 10;
+}
+
+.profile-report-list { display: flex; flex-direction: column; gap: 8px; }
+.profile-report-item {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 11px 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.pri-type {
+  font-size: .7rem; font-weight: 600; padding: 2px 8px;
+  border-radius: 99px; white-space: nowrap; flex-shrink: 0;
+}
+.pri-type.scenario { background: #dbeafe; color: #1e40af; }
+.pri-type.fr       { background: #d1fae5; color: #065f46; }
+.pri-info { flex: 1; min-width: 0; }
+.pri-title { font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pri-date  { font-size: .74rem; color: var(--muted); margin-top: 2px; }
+.pri-score { font-size: 1.05rem; font-weight: 700; flex-shrink: 0; min-width: 48px; text-align: right; }
+.btn-view-report {
+  font-size: .78rem; padding: 4px 12px; border-radius: 6px;
+  border: 1px solid var(--blue); color: var(--blue);
+  text-decoration: none; white-space: nowrap; flex-shrink: 0;
+  transition: background .12s;
+}
+.btn-view-report:hover { background: #eff6ff; }
+.no-reports-msg { text-align: center; color: var(--muted); font-size: .88rem; padding: 40px 0; }
+
+[data-theme="dark"] .pri-type.scenario { background: #1e3a58; color: #93c5fd; }
+[data-theme="dark"] .pri-type.fr       { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] #chart-tooltip     { background: rgba(248,250,252,.9); color: #0f172a; }
+[data-theme="ultra-dark"] .pri-type.scenario { background: #001a1a; color: #00ffff; border: 1px solid #00ffff; }
+[data-theme="ultra-dark"] .pri-type.fr       { background: #001a00; color: #00ff41; border: 1px solid #00ff41; }
+[data-theme="ultra-dark"] #chart-tooltip     { background: #001100; color: #00ff41; border: 1px solid #00ff41; }
+[data-theme="ultra-dark"] .toggle-btn.active { background: #00ffff; color: #000; border-color: #00ffff; }
+[data-theme="ultra-dark"] .toggle-btn:hover:not(.active) { border-color: #00ff41; color: #00ff41; }
+[data-theme="ultra-dark"] #profile-user-select { color: #00ff41; background: #000; }
+
+/* ── Overarching analysis card ───────────────── */
+.analysis-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.analysis-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+}
+.analysis-header h3 {
+  font-size: .75rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin: 0;
+}
+.analysis-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  margin-bottom: 14px;
+}
+@media (max-width: 500px) { .analysis-grid { grid-template-columns: 1fr; } }
+.analysis-sub {
+  font-size: .7rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
+}
+.style-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.style-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.style-name { font-size: .84rem; flex: 1; }
+.style-count { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+.pattern-item {
+  font-size: .83rem; padding: 3px 0; display: flex; gap: 6px; line-height: 1.5;
+}
+.pattern-item::before { content: "◆"; color: var(--blue); font-size: .6rem; margin-top: 4px; flex-shrink: 0; }
+.gap-item {
+  font-size: .83rem; padding: 3px 0; display: flex; gap: 6px;
+  color: var(--muted); line-height: 1.5;
+}
+.gap-item::before { content: "△"; color: var(--amber); flex-shrink: 0; }
+.no-analysis-msg { font-size: .83rem; color: var(--muted); font-style: italic; }
+#analysis-note { font-size: .78rem; color: var(--muted); margin-top: 6px; }
+
+.ai-narrative { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 18px; }
+.ai-narrative-label {
+  font-size: .7rem; font-weight: 600; color: var(--blue);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px;
+}
+.narrative-overall {
+  font-size: .88rem; line-height: 1.72; margin-bottom: 14px;
+  padding: 10px 14px; background: var(--bg);
+  border-left: 3px solid var(--blue); border-radius: 0 6px 6px 0;
+}
+.narrative-section { margin-bottom: 13px; }
+.narrative-section-label {
+  font-size: .7rem; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px;
+}
+.narrative-body { font-size: .85rem; line-height: 1.68; }
+.narrative-list { list-style: none; margin: 0; padding: 0; }
+.narrative-list li {
+  font-size: .84rem; padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 8px; line-height: 1.5;
+}
+.narrative-list li:last-child { border-bottom: none; }
+.narrative-list.strengths li::before { content: "✓"; color: var(--green); flex-shrink: 0; font-weight: 700; }
+.narrative-list.areas    li::before { content: "△"; color: var(--amber); flex-shrink: 0; }
+.narrative-list.recs     li::before { content: "→"; color: var(--blue);  flex-shrink: 0; font-weight: 700; }
+
+[data-theme="dark"]       .narrative-overall { background: #0f172a; }
+[data-theme="ultra-dark"] .narrative-overall { background: #001100; border-color: #00ff41; }
+[data-theme="ultra-dark"] .ai-narrative-label { color: #00ffff; }
+[data-theme="ultra-dark"] .narrative-list.recs li::before { color: #00ffff; }
 </style>
 <link rel="stylesheet" href="/static/themes.css">
 </head>
@@ -921,6 +1080,11 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <div class="mode-icon">📂</div>
         <h3>My Reports</h3>
         <p>View your previously generated assessment reports.</p>
+      </div>
+      <div class="mode-card" id="mode-profile">
+        <div class="mode-icon">📈</div>
+        <h3>Learning Profile</h3>
+        <p>Track progress over time across all assessments — scores, trends, and a chart grouped by assessment type.</p>
       </div>
     </div>
   </div>
@@ -1179,6 +1343,71 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   </div>
 </div>
 
+<!-- Learning Profile -->
+<div id="view-profile" class="view hidden">
+  <div id="profile-inner">
+    <span class="back-home-link" onclick="showHome()">← Change mode</span>
+    <h2 id="profile-heading">Learning Profile</h2>
+
+    <!-- Admin user selector (hidden for students) -->
+    <div class="profile-user-row hidden" id="profile-user-row">
+      <label for="profile-user-select">Student:</label>
+      <select id="profile-user-select"></select>
+    </div>
+
+    <!-- Assessment type filter -->
+    <div class="toggle-row" id="profile-toggles">
+      <button class="toggle-btn active" data-filter="all">All</button>
+      <button class="toggle-btn" data-filter="scenario">🎭 Scenario</button>
+      <button class="toggle-btn" data-filter="fr">📝 Free Response</button>
+    </div>
+
+    <!-- Summary stat cards -->
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-label">Assessments</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-avg">—</div>
+        <div class="stat-label">Avg Score</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-best">—</div>
+        <div class="stat-label">Best</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-trend">—</div>
+        <div class="stat-label">Trend</div>
+      </div>
+    </div>
+
+    <!-- Overarching analysis -->
+    <div class="analysis-card" id="analysis-card">
+      <div class="analysis-header">
+        <h3>Overarching Analysis</h3>
+        <div>
+          <button class="btn btn-outline" id="btn-gen-analysis" style="font-size:.8rem;padding:5px 14px" disabled>Generate AI Analysis</button>
+          <div id="analysis-note"></div>
+        </div>
+      </div>
+      <div id="analysis-aggregate">
+        <p class="no-analysis-msg">Load a profile to see the analysis.</p>
+      </div>
+      <div id="analysis-narrative" class="ai-narrative hidden"></div>
+    </div>
+
+    <!-- Progress over time chart -->
+    <div class="chart-card">
+      <canvas id="profile-chart" height="220"></canvas>
+      <div id="chart-tooltip"></div>
+    </div>
+
+    <!-- Report list -->
+    <div id="profile-report-list" class="profile-report-list"></div>
+  </div>
+</div>
+
 <!-- Free Response: results view -->
 <div id="view-fr-results" class="view hidden">
   <div id="fr-results-inner">
@@ -1203,6 +1432,8 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 </div>
 
 <script>
+const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+
 // ── State ──────────────────────────────────────
 const S  = { sessionId: null, maxTurns: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
 const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null,
@@ -1242,7 +1473,8 @@ async function api(path, body) {
 // ── Mode navigation ────────────────────────────
 function showHome() {
   ['view-scenarios','view-assess','view-results','view-create',
-   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports'].forEach(hide);
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
+   'view-profile'].forEach(hide);
   show('view-home');
 }
 
@@ -1260,6 +1492,7 @@ function showFrMode() {
 $('mode-scenario').addEventListener('click', showScenarioMode);
 $('mode-fr').addEventListener('click', showFrMode);
 $('mode-reports').addEventListener('click', showReportsMode);
+$('mode-profile').addEventListener('click', showProfileMode);
 
 // ── My Reports ─────────────────────────────────
 async function showReportsMode() {
@@ -2383,6 +2616,502 @@ $('btn-save-prompt').addEventListener('click', async () => {
     btn.disabled  = false;
   }
 });
+
+// ── Learning Profile ───────────────────────────
+let _profileAllReports = [];
+let _profileFilter     = 'all';
+
+async function showProfileMode() {
+  hide('view-home');
+  show('view-profile');
+  $('profile-heading').textContent = 'Learning Profile';
+
+  if (IS_ADMIN) {
+    show('profile-user-row');
+    await _loadProfileUserList();
+  } else {
+    hide('profile-user-row');
+    await _loadProfile(null);
+  }
+}
+
+async function _loadProfileUserList() {
+  try {
+    const data = await api('/api/users', {});
+    const sel  = $('profile-user-select');
+    sel.innerHTML = '';
+    data.users.forEach(u => {
+      const opt       = document.createElement('option');
+      opt.value       = u.username;
+      opt.textContent = u.display_name;
+      sel.appendChild(opt);
+    });
+    sel.onchange = () => _loadProfile(sel.value);
+    if (sel.options.length) await _loadProfile(sel.value);
+  } catch (err) {
+    $('profile-report-list').innerHTML =
+      `<p class="no-reports-msg">Could not load user list: ${err.message}</p>`;
+  }
+}
+
+async function _loadProfile(username) {
+  _profileAllReports = [];
+  $('profile-report-list').innerHTML =
+    '<p class="no-reports-msg">Loading…</p>';
+  _clearChart();
+  ['stat-total','stat-avg','stat-best','stat-trend'].forEach(id => {
+    $(id).textContent = '—';
+    $(id).style.color = '';
+  });
+
+  try {
+    const body = username ? { username } : {};
+    const data = await api('/api/learning-profile', body);
+    _profileAllReports = data.reports;
+    $('profile-heading').textContent =
+      'Learning Profile — ' + (data.display_name || data.username);
+    _renderAnalysis(data.aggregate);
+    _renderProfile();
+  } catch (err) {
+    $('profile-report-list').innerHTML =
+      `<p class="no-reports-msg">Failed to load: ${err.message}</p>`;
+  }
+}
+
+function _filteredReports() {
+  if (_profileFilter === 'all') return _profileAllReports;
+  return _profileAllReports.filter(r => r.type === _profileFilter);
+}
+
+function _renderProfile() {
+  const reps = _filteredReports();
+
+  if (reps.length) {
+    const scores = reps.map(r => r.score);
+    const avg    = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    const best   = Math.max(...scores);
+    let trend    = 0;
+    if (scores.length >= 2) {
+      const mid   = Math.floor(scores.length / 2);
+      const early = scores.slice(0, mid).reduce((a, b) => a + b, 0) / mid;
+      const late  = scores.slice(mid).reduce((a, b) => a + b, 0) / (scores.length - mid);
+      trend = Math.round(late - early);
+    }
+    $('stat-total').textContent = reps.length;
+    $('stat-avg').textContent   = avg + '%';
+    $('stat-best').textContent  = best + '%';
+    const tEl = $('stat-trend');
+    tEl.textContent = (trend > 0 ? '+' : '') + trend + '%';
+    tEl.style.color = trend > 0 ? 'var(--green)' : trend < 0 ? 'var(--red)' : '';
+  } else {
+    $('stat-total').textContent = '0';
+    ['stat-avg','stat-best','stat-trend'].forEach(id => {
+      $(id).textContent = '—';
+      $(id).style.color = '';
+    });
+  }
+
+  _drawChart(reps);
+  _renderProfileList([...reps].reverse());
+}
+
+function _renderProfileList(reps) {
+  const el = $('profile-report-list');
+  if (!reps.length) {
+    el.innerHTML = '<p class="no-reports-msg">No assessments found for this filter.</p>';
+    return;
+  }
+  el.innerHTML = '';
+  reps.forEach(r => {
+    const col       = r.score >= 75 ? 'var(--green)' : r.score >= 50 ? 'var(--amber)' : 'var(--red)';
+    const typeLabel = r.type === 'fr' ? 'Free Response' : 'Scenario';
+    const item      = document.createElement('div');
+    item.className  = 'profile-report-item';
+    item.innerHTML  = `
+      <span class="pri-type ${r.type}">${typeLabel}</span>
+      <div class="pri-info">
+        <div class="pri-title">${r.title}</div>
+        <div class="pri-date">${r.date_str}</div>
+      </div>
+      <div class="pri-score" style="color:${col}">${r.score}%</div>
+      <a href="${r.url}" target="_blank" rel="noopener" class="btn-view-report">View</a>`;
+    el.appendChild(item);
+  });
+}
+
+// toggle buttons
+document.querySelectorAll('#profile-toggles .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#profile-toggles .toggle-btn')
+      .forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _profileFilter = btn.dataset.filter;
+    _renderProfile();
+  });
+});
+
+// ── Overarching analysis ────────────────────────
+let _lastAggregate = null;
+
+function _renderAnalysis(aggregate) {
+  _lastAggregate = aggregate;
+  const el     = $('analysis-aggregate');
+  const noteEl = $('analysis-note');
+  const btn    = $('btn-gen-analysis');
+  hide('analysis-narrative');
+  $('analysis-narrative').innerHTML = '';
+
+  if (!aggregate || !aggregate.has_data) {
+    el.innerHTML       = '<p class="no-analysis-msg">No thinking profile or instructor data found in reports. '
+      + 'Complete assessments with an LLM-enabled session to populate this section.</p>';
+    btn.disabled       = true;
+    noteEl.textContent = '';
+    return;
+  }
+
+  const canGenerate  = llmAvailable();
+  btn.disabled       = !canGenerate;
+  btn.textContent    = 'Generate AI Analysis';
+  noteEl.textContent = canGenerate ? '' : 'Configure an LLM provider above to enable AI analysis.';
+
+  // Side-by-side profile cards — mirrors the post-assessment Thinking Profile layout
+  let html = '<div class="profile-frameworks">';
+  html += _buildAggregateCard('Honey &amp; Mumford', aggregate.hm_entries || [], 'style');
+  html += _buildAggregateCard('SOLO Taxonomy',       aggregate.solo_entries || [], 'level');
+  html += '</div>';
+
+  const patterns = aggregate.all_patterns || [];
+  if (patterns.length) {
+    html += '<div class="analysis-sub" style="margin-top:4px">Observed Patterns</div>';
+    patterns.forEach(p => { html += `<div class="pattern-item">${p}</div>`; });
+  }
+
+  const gaps = aggregate.all_gaps || [];
+  if (gaps.length) {
+    html += '<div class="analysis-sub" style="margin-top:12px">Recurring Learning Gaps</div>';
+    gaps.forEach(g => { html += `<div class="gap-item">${g}</div>`; });
+  }
+
+  el.innerHTML = html;
+}
+
+function _buildAggregateCard(label, entries, styleKey) {
+  if (!entries.length) {
+    return `<div class="profile-card">
+      <div class="profile-card-label">${label}</div>
+      <p class="no-analysis-msg" style="font-size:.78rem;margin-top:6px">No data in reports yet</p>
+    </div>`;
+  }
+
+  // Tally occurrences to find the most common style/level
+  const counts = {};
+  entries.forEach(e => { const k = e[styleKey]; counts[k] = (counts[k] || 0) + 1; });
+  const [primaryName, primaryCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  const pct = Math.round(primaryCount / entries.length * 100);
+
+  function confBadge(conf) {
+    if (!conf) return '';
+    const lvl = conf.toLowerCase();
+    const cls = ['high','medium','low'].includes(lvl) ? lvl : 'medium';
+    return `<span class="profile-conf profile-conf-${cls}">${conf}</span>`;
+  }
+
+  let html = `<div class="profile-card">
+    <div class="profile-card-label">${label}</div>
+    <div class="profile-card-value">${primaryName}</div>`;
+
+  if (entries.length > 1) {
+    html += `<div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">
+      Most frequent — ${primaryCount} of ${entries.length} assessments (${pct}%)
+    </div>`;
+  }
+
+  // Per-assessment history — one block per report entry
+  entries.forEach((e, i) => {
+    const name       = e[styleKey];
+    const typeLabel  = e.type === 'fr' ? 'FR' : 'Scenario';
+    const scoreCol   = e.score >= 75 ? 'var(--green)' : e.score >= 50 ? 'var(--amber)' : 'var(--red)';
+    const evidence   = Array.isArray(e.evidence) ? e.evidence : (e.evidence ? [e.evidence] : []);
+
+    html += `<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:${i === 0 ? '0' : '8px'}">
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">
+        <span style="font-size:.7rem;color:var(--muted)">${e.date.slice(0,10)}</span>
+        <span style="font-size:.65rem;color:var(--muted)">·</span>
+        <span style="font-size:.7rem;color:var(--muted)">${typeLabel}</span>
+        <span style="font-size:.65rem;color:var(--muted)">·</span>
+        <span style="font-size:.7rem;font-weight:700;color:${scoreCol}">${e.score}%</span>
+      </div>
+      <div class="profile-card-value" style="font-size:.85rem;margin-bottom:2px">
+        ${name}${e.confidence ? ' ' + confBadge(e.confidence) : ''}
+      </div>`;
+
+    if (evidence.length) {
+      html += '<ul class="profile-evidence-list">';
+      evidence.slice(0, 2).forEach(ev => { html += `<li>"${ev}"</li>`; });
+      html += '</ul>';
+    }
+    if (e.reasoning) {
+      html += `<div class="profile-card-reasoning">${e.reasoning}</div>`;
+    }
+    html += '</div>';
+  });
+
+  html += '</div>'; // close profile-card
+  return html;
+}
+
+function _renderAiNarrative(a, reportCount) {
+  const el = $('analysis-narrative');
+  let html = `<div class="ai-narrative-label">AI Learning Profile Synthesis`;
+  if (reportCount) html += ` <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--muted)">based on ${reportCount} report${reportCount > 1 ? 's' : ''}</span>`;
+  html += '</div>';
+
+  if (a.overall_narrative) {
+    html += `<div class="narrative-overall">${a.overall_narrative}</div>`;
+  }
+
+  if (a.learning_style_summary) {
+    html += `<div class="narrative-section">
+      <div class="narrative-section-label">Learning Style</div>
+      <div class="narrative-body">${a.learning_style_summary}</div>
+    </div>`;
+  }
+
+  if (a.cognitive_development) {
+    html += `<div class="narrative-section">
+      <div class="narrative-section-label">Cognitive Development</div>
+      <div class="narrative-body">${a.cognitive_development}</div>
+    </div>`;
+  }
+
+  if (a.consistent_strengths?.length) {
+    html += `<div class="narrative-section">
+      <div class="narrative-section-label">Consistent Strengths</div>
+      <ul class="narrative-list strengths">
+        ${a.consistent_strengths.map(s => `<li>${s}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+
+  if (a.development_areas?.length) {
+    html += `<div class="narrative-section">
+      <div class="narrative-section-label">Development Areas</div>
+      <ul class="narrative-list areas">
+        ${a.development_areas.map(s => `<li>${s}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+
+  if (a.recommendations?.length) {
+    html += `<div class="narrative-section">
+      <div class="narrative-section-label">Recommendations</div>
+      <ul class="narrative-list recs">
+        ${a.recommendations.map(s => `<li>${s}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+$('btn-gen-analysis').addEventListener('click', async () => {
+  const btn = $('btn-gen-analysis');
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner"></span>Analysing…';
+  hide('analysis-narrative');
+
+  try {
+    const username = IS_ADMIN && $('profile-user-select').value
+      ? $('profile-user-select').value : null;
+    const body = {
+      provider: S.provider,
+      model:    S.model,
+      api_key:  S.apiKey || undefined,
+    };
+    if (username) body.username = username;
+
+    const data = await api('/api/learning-profile/analysis', body);
+    _renderAiNarrative(data.analysis, data.report_count);
+    show('analysis-narrative');
+  } catch (err) {
+    const el = $('analysis-narrative');
+    el.innerHTML = `<div class="narrative-overall" style="border-color:var(--red);color:var(--red)">Analysis failed: ${err.message}</div>`;
+    show('analysis-narrative');
+  } finally {
+    btn.disabled  = false;
+    btn.textContent = 'Regenerate Analysis';
+  }
+});
+
+// ── Progress chart ──────────────────────────────
+let _chartPts = [];
+
+function _getChartColors() {
+  const theme = document.documentElement.dataset.theme || '';
+  const dark  = theme === 'dark' || theme === 'ultra-dark';
+  const ultra = theme === 'ultra-dark';
+  return {
+    grid:     dark  ? '#334155' : '#e2e8f0',
+    axis:     dark  ? '#94a3b8' : '#64748b',
+    scenario: ultra ? '#00ffff' : '#3b82f6',
+    fr:       ultra ? '#00ff41' : '#10b981',
+    line:     dark  ? '#475569' : '#cbd5e1',
+    nodata:   '#94a3b8',
+  };
+}
+
+function _clearChart() {
+  const canvas = $('profile-chart');
+  if (!canvas) return;
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  _chartPts = [];
+}
+
+function _drawChart(reps) {
+  const canvas = $('profile-chart');
+  if (!canvas) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const W   = canvas.parentElement.clientWidth - 32;
+  const H   = 220;
+
+  canvas.width        = W * dpr;
+  canvas.height       = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const C = _getChartColors();
+
+  if (!reps.length) {
+    ctx.fillStyle    = C.nodata;
+    ctx.font         = '13px system-ui, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('No assessments to display', W / 2, H / 2);
+    _chartPts = [];
+    return;
+  }
+
+  const PAD = { top: 20, right: 20, bottom: 38, left: 48 };
+  const cW  = W - PAD.left - PAD.right;
+  const cH  = H - PAD.top  - PAD.bottom;
+  const n   = reps.length;
+  const xFor = i => n === 1 ? PAD.left + cW / 2 : PAD.left + (i / (n - 1)) * cW;
+  const yFor = s => PAD.top + cH - (Math.min(s, 100) / 100) * cH;
+
+  // y-axis grid + labels
+  ctx.setLineDash([4, 3]);
+  for (const pct of [0, 25, 50, 75, 100]) {
+    const yp = yFor(pct);
+    ctx.strokeStyle  = C.grid;
+    ctx.lineWidth    = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.left, yp); ctx.lineTo(PAD.left + cW, yp); ctx.stroke();
+    ctx.fillStyle    = C.axis;
+    ctx.font         = '10px system-ui, sans-serif';
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(pct + '%', PAD.left - 6, yp);
+  }
+  ctx.setLineDash([]);
+
+  // x-axis baseline
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.left, yFor(0)); ctx.lineTo(PAD.left + cW, yFor(0)); ctx.stroke();
+
+  // x-axis date labels (up to 5 evenly spaced)
+  const labelSet = new Set();
+  const maxL = Math.min(n, 5);
+  if (n === 1) { labelSet.add(0); }
+  else { for (let k = 0; k < maxL; k++) labelSet.add(Math.round(k * (n - 1) / (maxL - 1))); }
+  ctx.fillStyle = C.axis; ctx.font = '9px system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  labelSet.forEach(i => ctx.fillText(reps[i].date_str.slice(0, 10), xFor(i), yFor(0) + 6));
+
+  // build point coords
+  const pts = reps.map((r, i) => ({ x: xFor(i), y: yFor(r.score), r }));
+
+  // connecting line
+  if (pts.length > 1) {
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2;
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+  }
+
+  // data points
+  const radius = n > 20 ? 3.5 : 5;
+  pts.forEach(p => {
+    const col = p.r.type === 'fr' ? C.fr : C.scenario;
+    ctx.fillStyle = col; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+  });
+
+  // legend — only when both types are present and filter is "all"
+  if (_profileFilter === 'all') {
+    const hasScen = reps.some(r => r.type === 'scenario');
+    const hasFr   = reps.some(r => r.type === 'fr');
+    if (hasScen && hasFr) {
+      const ly = PAD.top + 8;
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      let lx = PAD.left + cW - 148;
+      ctx.fillStyle = C.scenario;
+      ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.axis; ctx.fillText('Scenario', lx + 8, ly);
+      lx += 68;
+      ctx.fillStyle = C.fr;
+      ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.axis; ctx.fillText('Free Response', lx + 8, ly);
+    }
+  }
+
+  _chartPts = pts;
+}
+
+// chart hover tooltip
+const _profileChart   = $('profile-chart');
+const _chartTooltip   = $('chart-tooltip');
+
+_profileChart.addEventListener('mousemove', e => {
+  if (!_chartPts.length) return;
+  const rect = _profileChart.getBoundingClientRect();
+  const mx   = e.clientX - rect.left;
+  const my   = e.clientY - rect.top;
+
+  let nearest = null, minDist = Infinity;
+  _chartPts.forEach(p => {
+    const d = Math.hypot(p.x - mx, p.y - my);
+    if (d < minDist) { minDist = d; nearest = p; }
+  });
+
+  if (nearest && minDist < 30) {
+    const cardRect = _profileChart.closest('.chart-card').getBoundingClientRect();
+    let tx = e.clientX - cardRect.left + 14;
+    let ty = e.clientY - cardRect.top  - 52;
+    if (ty < 4) ty = e.clientY - cardRect.top + 14;
+    if (tx + 220 > cardRect.width) tx = e.clientX - cardRect.left - 224;
+    _chartTooltip.innerHTML     = `${nearest.r.date_str} &mdash; ${nearest.r.title}<br><strong>${nearest.r.score}%</strong>`;
+    _chartTooltip.style.left    = tx + 'px';
+    _chartTooltip.style.top     = ty + 'px';
+    _chartTooltip.style.display = 'block';
+  } else {
+    _chartTooltip.style.display = 'none';
+  }
+});
+
+_profileChart.addEventListener('mouseleave', () => {
+  _chartTooltip.style.display = 'none';
+});
+
+// redraw chart on container resize
+new ResizeObserver(() => {
+  if (_profileAllReports.length) _drawChart(_filteredReports());
+}).observe(_profileChart.parentElement);
 
 // ── Theme ──────────────────────────────────────
 function applyTheme(id) {

@@ -803,6 +803,309 @@ def api_fr_report():
     return jsonify({"path": str(path)})
 
 
+# ── Learning Profile API ───────────────────────────────────────────────────────
+
+@app.route("/api/users", methods=["POST"])
+@auth.admin_required
+def api_users():
+    """Return all non-admin users for the admin's profile viewer."""
+    all_users = auth.load_users()
+    user_list = [
+        {"username": uname, "display_name": udata.get("display_name", uname)}
+        for uname, udata in sorted(all_users.items())
+        if udata.get("role") != "admin"
+    ]
+    return jsonify({"users": user_list})
+
+
+@app.route("/api/learning-profile", methods=["POST"])
+@auth.login_required
+def api_learning_profile():
+    """Return parsed report history for a user's learning profile dashboard."""
+    data     = request.get_json() or {}
+    username = data.get("username", "").strip()
+
+    if username and username != session["user_id"]:
+        if session.get("role") != "admin":
+            return jsonify({"error": "forbidden"}), 403
+        if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
+            return jsonify({"error": "invalid username"}), 400
+    else:
+        username = session["user_id"]
+
+    all_users    = auth.load_users()
+    display_name = all_users.get(username, {}).get("display_name", username)
+
+    user_dir = REPORTS_BASE / username
+    reports:      list = []
+    hm_entries:   list = []
+    solo_entries: list = []
+    all_patterns: list = []
+    all_gaps:     list = []
+
+    if user_dir.is_dir():
+        for f in sorted(user_dir.glob("*.md")):
+            fname = f.name
+            m = re.search(r'(\d{8})_(\d{6})', fname)
+            if not m:
+                continue
+            d, t     = m.group(1), m.group(2)
+            ts_str   = f"{d[:4]}-{d[4:6]}-{d[6:]} {t[:2]}:{t[2:4]}:{t[4:]}"
+            date_str = f"{d[:4]}-{d[4:6]}-{d[6:]} {t[:2]}:{t[2:4]}"
+
+            try:
+                content = f.read_text(encoding="utf-8")
+                parsed  = report_parser.parse_report_md(content)
+            except Exception:
+                continue
+
+            rtype     = parsed.get("type", "scenario")
+            meta      = parsed.get("metadata", {})
+            score_str = meta.get("score") if rtype == "fr" else meta.get("average_score")
+            try:
+                score = int((score_str or "0").rstrip('%'))
+            except (ValueError, AttributeError):
+                score = 0
+
+            if rtype == "fr":
+                title = meta.get("prompt", "Free Response")
+            else:
+                sc_list = parsed.get("scenarios", [])
+                title   = sc_list[0]["title"] if sc_list else "Scenario"
+
+            url = (
+                f"/admin/report/{username}/{fname}"
+                if session.get("role") == "admin"
+                else f"/my-report/{fname}"
+            )
+
+            reports.append({
+                "filename":  fname,
+                "type":      rtype,
+                "timestamp": ts_str,
+                "date_str":  date_str,
+                "score":     score,
+                "title":     title,
+                "url":       url,
+            })
+
+            # collect aggregate analysis data
+            tp = parsed.get("thinking_profile")
+            if tp:
+                hm = tp.get("honey_mumford")
+                if hm and hm.get("style"):
+                    ev = hm.get("evidence", [])
+                    hm_entries.append({
+                        "style":      hm["style"],
+                        "confidence": hm.get("confidence", ""),
+                        "evidence":   ev if isinstance(ev, list) else ([ev] if ev else []),
+                        "reasoning":  hm.get("reasoning", ""),
+                        "date":       date_str,
+                        "type":       rtype,
+                        "score":      score,
+                    })
+                solo = tp.get("solo")
+                if solo and solo.get("level"):
+                    ev = solo.get("evidence", [])
+                    solo_entries.append({
+                        "level":      solo["level"],
+                        "confidence": solo.get("confidence", ""),
+                        "evidence":   ev if isinstance(ev, list) else ([ev] if ev else []),
+                        "reasoning":  solo.get("reasoning", ""),
+                        "date":       date_str,
+                        "type":       rtype,
+                        "score":      score,
+                    })
+                for p in (tp.get("patterns") or []):
+                    if p not in all_patterns:
+                        all_patterns.append(p)
+
+            is_m = parsed.get("instructor_summary")
+            if is_m:
+                for g in (is_m.get("learning_gaps") or []):
+                    if g not in all_gaps:
+                        all_gaps.append(g)
+
+    reports.sort(key=lambda r: r["timestamp"])
+
+    scores   = [r["score"] for r in reports]
+    sc_count = sum(1 for r in reports if r["type"] == "scenario")
+    fr_count = sum(1 for r in reports if r["type"] == "fr")
+    avg      = round(sum(scores) / len(scores)) if scores else 0
+    best     = max(scores) if scores else 0
+
+    if len(scores) >= 2:
+        mid   = len(scores) // 2
+        early = sum(scores[:mid]) / mid
+        late  = sum(scores[mid:]) / (len(scores) - mid)
+        trend = round(late - early)
+    else:
+        trend = 0
+
+    return jsonify({
+        "username":     username,
+        "display_name": display_name,
+        "reports":      reports,
+        "summary": {
+            "total":          len(reports),
+            "scenario_count": sc_count,
+            "fr_count":       fr_count,
+            "average_score":  avg,
+            "best_score":     best,
+            "trend":          trend,
+        },
+        "aggregate": {
+            "hm_entries":   hm_entries,
+            "solo_entries": solo_entries,
+            "all_patterns": all_patterns[:12],
+            "all_gaps":     all_gaps[:12],
+            "has_data":     bool(hm_entries or solo_entries or all_patterns or all_gaps),
+        },
+    })
+
+
+@app.route("/api/learning-profile/analysis", methods=["POST"])
+@auth.login_required
+def api_learning_profile_analysis():
+    """Generate an LLM-synthesised learning profile from all of a user's reports."""
+    import llm as llm_module
+
+    data     = request.get_json() or {}
+    username = data.get("username", "").strip()
+
+    if username and username != session["user_id"]:
+        if session.get("role") != "admin":
+            return jsonify({"error": "forbidden"}), 403
+        if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
+            return jsonify({"error": "invalid username"}), 400
+    else:
+        username = session["user_id"]
+
+    provider_name    = data.get("provider") or config.DEFAULT_PROVIDER
+    provider_cfg     = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
+    api_key_override = (data.get("api_key") or "").strip()
+    api_key          = api_key_override if api_key_override else provider_cfg["api_key"]
+    base_url         = provider_cfg["base_url"]
+    model            = data.get("model") or provider_cfg["model"]
+
+    if not engine.llm_is_available(api_key):
+        return jsonify({"error": "LLM not available — configure a provider with an API key."}), 400
+
+    all_users    = auth.load_users()
+    display_name = all_users.get(username, {}).get("display_name", username)
+    user_dir     = REPORTS_BASE / username
+    entries      = []
+
+    if user_dir.is_dir():
+        for f in sorted(user_dir.glob("*.md")):
+            fname = f.name
+            m = re.search(r'(\d{8})_(\d{6})', fname)
+            if not m:
+                continue
+            d, t     = m.group(1), m.group(2)
+            date_str = f"{d[:4]}-{d[4:6]}-{d[6:]} {t[:2]}:{t[2:4]}"
+            try:
+                content = f.read_text(encoding="utf-8")
+                parsed  = report_parser.parse_report_md(content)
+            except Exception:
+                continue
+
+            rtype     = parsed.get("type", "scenario")
+            meta      = parsed.get("metadata", {})
+            score_str = meta.get("score") if rtype == "fr" else meta.get("average_score")
+            try:
+                score = int((score_str or "0").rstrip('%'))
+            except (ValueError, AttributeError):
+                score = 0
+
+            entries.append({
+                "date":    date_str,
+                "type":    "Free Response" if rtype == "fr" else "Scenario",
+                "score":   score,
+                "summary": parsed.get("instructor_summary") or {},
+                "profile": parsed.get("thinking_profile"),
+            })
+
+    if not entries:
+        return jsonify({"error": "No reports found for this user."}), 404
+
+    # Build the synthesis prompt
+    lines = [
+        f"You are analysing the learning profile of {display_name} across "
+        f"{len(entries)} assessment(s).",
+        "",
+        "ASSESSMENT HISTORY (chronological):",
+    ]
+    for i, e in enumerate(entries, 1):
+        lines.append(f"\nAssessment {i} — {e['date']} ({e['type']}, score: {e['score']}%)")
+        s = e["summary"]
+        if s.get("assessment"):
+            lines.append(f"  Instructor assessment: {s['assessment']}")
+        if s.get("learning_gaps"):
+            lines.append(f"  Learning gaps: {', '.join(s['learning_gaps'])}")
+        if s.get("recommendations"):
+            lines.append(f"  Recommendations: {', '.join(s['recommendations'])}")
+        tp = e["profile"]
+        if tp:
+            hm = tp.get("honey_mumford")
+            if hm and hm.get("style"):
+                conf = f" ({hm['confidence']} confidence)" if hm.get("confidence") else ""
+                lines.append(f"  Learning style (Honey & Mumford): {hm['style']}{conf}")
+                if hm.get("reasoning"):
+                    lines.append(f"    Reasoning: {hm['reasoning']}")
+            solo = tp.get("solo")
+            if solo and solo.get("level"):
+                conf = f" ({solo['confidence']} confidence)" if solo.get("confidence") else ""
+                lines.append(f"  Cognitive level (SOLO Taxonomy): {solo['level']}{conf}")
+                if solo.get("reasoning"):
+                    lines.append(f"    Reasoning: {solo['reasoning']}")
+            if tp.get("patterns"):
+                lines.append(f"  Observed patterns: {'; '.join(tp['patterns'])}")
+            if tp.get("instructor_note"):
+                lines.append(f"  Instructor note: {tp['instructor_note']}")
+
+    lines += [
+        "",
+        "Synthesise a comprehensive, evidence-based learning profile.",
+        "Respond ONLY with valid JSON (no markdown, no extra text):",
+        "{",
+        '  "overall_narrative": "<2-3 sentence overarching summary of who this learner is>",',
+        '  "learning_style_summary": "<paragraph on their Honey & Mumford style consistency, '
+        'what it reveals about how they prefer to engage with tasks, and any evolution across assessments>",',
+        '  "cognitive_development": "<paragraph on SOLO level progression and what it reveals '
+        'about depth of understanding and conceptual integration>",',
+        '  "consistent_strengths": ["<strength 1>", "<strength 2>"],',
+        '  "development_areas": ["<area 1>", "<area 2>"],',
+        '  "recommendations": ["<concrete actionable recommendation 1>", '
+        '"<recommendation 2>", "<recommendation 3>"]',
+        "}",
+    ]
+
+    system = (
+        "You are an expert educational psychologist. "
+        "Synthesise assessment data into a clear, evidence-based learning profile. "
+        "Be specific — reference actual evidence from the assessments, not generic advice. "
+        "Respond only with valid JSON — no markdown, no extra text."
+    )
+
+    try:
+        raw    = llm_module.llm_chat(model, system, "\n".join(lines), api_key, base_url)
+        result = llm_module._extract_json(raw)
+        if not result:
+            result = {
+                "overall_narrative":     raw,
+                "learning_style_summary": "",
+                "cognitive_development":  "",
+                "consistent_strengths":   [],
+                "development_areas":      [],
+                "recommendations":        [],
+            }
+    except Exception as ex:
+        return jsonify({"error": str(ex)}), 500
+
+    return jsonify({"analysis": result, "report_count": len(entries)})
+
+
 if __name__ == "__main__":
     print("\n  Performative Assessment  →  http://localhost:5001")
     print("  Admin:    admin / admin123")

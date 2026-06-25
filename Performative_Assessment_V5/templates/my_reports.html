@@ -208,6 +208,55 @@ sel.addEventListener('change', function () {
     body: JSON.stringify({ theme: this.value }),
   }).catch(() => {});
 });
+
+// Rustic theme: random flying logo
+(function() {
+  var _flyTimer = null;
+  var RUST_IMG = '/static/login/rust_logo.png';
+  function _isRustic() { return document.documentElement.dataset.theme === 'rustic'; }
+  function _spawnFlyer() {
+    if (!_isRustic()) return;
+    var size = 100 + Math.random() * 900;
+    var W = window.innerWidth, H = window.innerHeight;
+    var edge = Math.floor(Math.random() * 4);
+    var sx, sy;
+    if      (edge === 0) { sx = Math.random() * W; sy = -size; }
+    else if (edge === 1) { sx = W;                 sy = Math.random() * H; }
+    else if (edge === 2) { sx = Math.random() * W; sy = H; }
+    else                 { sx = -size;              sy = Math.random() * H; }
+    var angleRanges = [[10,170],[100,260],[190,350],[280,440]];
+    var r = angleRanges[edge];
+    var angleDeg = r[0] + Math.random() * (r[1] - r[0]);
+    var rad = angleDeg * Math.PI / 180;
+    var speed = 1.5 + Math.random() * 4;
+    var vx = Math.cos(rad) * speed, vy = Math.sin(rad) * speed;
+    var rot = Math.random() * 360, rotSpeed = (Math.random() - 0.5) * 3;
+    var el = document.createElement('div');
+    el.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;'
+      + 'width:' + size + 'px;height:' + size + 'px;'
+      + 'background:url(' + RUST_IMG + ') center/contain no-repeat;'
+      + 'left:' + sx + 'px;top:' + sy + 'px;';
+    document.body.appendChild(el);
+    var px = sx, py = sy;
+    (function tick() {
+      px += vx; py += vy; rot += rotSpeed;
+      el.style.left = px + 'px';
+      el.style.top  = py + 'px';
+      el.style.transform = 'rotate(' + rot + 'deg)';
+      if (px < -(size+50) || px > W+size+50 || py < -(size+50) || py > H+size+50) { el.remove(); return; }
+      requestAnimationFrame(tick);
+    }());
+  }
+  function _scheduleNext() {
+    var delay = 10000 + Math.random() * 20000;
+    _flyTimer = setTimeout(function() { _spawnFlyer(); if (_isRustic()) _scheduleNext(); else _flyTimer = null; }, delay);
+  }
+  function _startFlyer() { if (_isRustic() && !_flyTimer) _scheduleNext(); }
+  function _stopFlyer()  { if (_flyTimer) { clearTimeout(_flyTimer); _flyTimer = null; } }
+  new MutationObserver(function() { if (_isRustic()) _startFlyer(); else _stopFlyer(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  _startFlyer();
+})();
 </script>
 </body>
 </html>

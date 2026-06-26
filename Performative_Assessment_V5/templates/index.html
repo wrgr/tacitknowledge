@@ -538,7 +538,31 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   appearance: auto;
 }
 #provider-select:focus, #model-select:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
-#api-key-input {
+#home-provider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+#home-provider-row label {
+  font-size: .85rem;
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+#home-provider-select, #home-model-select {
+  padding: 6px 14px 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: .88rem;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  appearance: auto;
+}
+#home-provider-select:focus, #home-model-select:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+#api-key-input, #home-api-key-input {
   padding: 6px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -549,12 +573,12 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   width: 160px;
   letter-spacing: .05em;
 }
-#api-key-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
-#api-key-input:disabled { opacity: .5; cursor: not-allowed; background: var(--bg); }
-#key-status { font-size: .8rem; white-space: nowrap; }
-#key-status.key-valid    { color: var(--green); }
-#key-status.key-invalid  { color: var(--red); }
-#key-status.key-checking { color: var(--muted); }
+#api-key-input:focus, #home-api-key-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+#api-key-input:disabled, #home-api-key-input:disabled { opacity: .5; cursor: not-allowed; background: var(--bg); }
+#key-status, #home-key-status { font-size: .8rem; white-space: nowrap; }
+#key-status.key-valid, #home-key-status.key-valid       { color: var(--green); }
+#key-status.key-invalid, #home-key-status.key-invalid   { color: var(--red); }
+#key-status.key-checking, #home-key-status.key-checking { color: var(--muted); }
 
 /* ── Dark mode ───────────────────────────────── */
 [data-theme="dark"] {
@@ -1131,6 +1155,17 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   <div id="home-inner">
     <span id="back-to-dash" class="back-home-link" onclick="showDashboard()" style="display:none">← Dashboard</span>
     <h2>What type of assessment are you taking?</h2>
+    <div id="home-provider-row" class="hidden">
+      <label for="home-provider-select">Provider</label>
+      <select id="home-provider-select"></select>
+      <label for="home-model-select">Model</label>
+      <select id="home-model-select"></select>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label for="home-api-key-input">API Key</label>
+        <input type="password" id="home-api-key-input" autocomplete="new-password">
+        <span id="home-key-status"></span>
+      </div>
+    </div>
     <div id="mode-cards">
       <div class="mode-card" id="mode-scenario">
         <div class="mode-icon">🎭</div>
@@ -1596,6 +1631,7 @@ function showHome() {
    'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
    'view-profile'].forEach(hide);
   show('view-home');
+  syncHomeSelectors();
   // show "← Dashboard" back link only for students
   const bd = $('back-to-dash');
   if (bd) bd.style.display = IS_ADMIN ? 'none' : 'inline';
@@ -1770,6 +1806,30 @@ function updateBadge() {
     : (S.provider || 'Keyword mode');
 }
 
+function syncHomeSelectors() {
+  const hps = $('home-provider-select');
+  const hms = $('home-model-select');
+  if (!hps || !hms) return;
+  const ps = $('provider-select');
+  const ms = $('model-select');
+
+  hps.innerHTML = '';
+  Array.from(ps.options).forEach(opt => {
+    const o = opt.cloneNode(true);
+    o.selected = (opt.value === S.provider);
+    hps.appendChild(o);
+  });
+
+  hms.innerHTML = '';
+  Array.from(ms.options).forEach(opt => {
+    const o = opt.cloneNode(true);
+    o.selected = (opt.value === S.model);
+    hms.appendChild(o);
+  });
+
+  if (ps.options.length > 0) show('home-provider-row');
+}
+
 async function fetchModels(providerName, preferredModel) {
   const sel = $('model-select');
   sel.innerHTML = '<option disabled>Loading…</option>';
@@ -1791,6 +1851,7 @@ async function fetchModels(providerName, preferredModel) {
     S.model = null;
   }
   updateBadge();
+  syncHomeSelectors();
 }
 
 function saveModelPref(provider, model) {
@@ -1805,20 +1866,24 @@ function saveModelPref(provider, model) {
 let _providerMeta = {};
 
 function updateKeyField() {
-  const meta     = _providerMeta[S.provider] || {};
-  const keyInput = $('api-key-input');
+  const meta         = _providerMeta[S.provider] || {};
+  const keyInput     = $('api-key-input');
+  const homeKeyInput = $('home-api-key-input');
 
   if (!meta.needs_key) {
     // Ollama — no API key needed
     keyInput.disabled    = true;
     keyInput.value       = '';
     keyInput.placeholder = 'No key required';
+    if (homeKeyInput) { homeKeyInput.disabled = true; homeKeyInput.value = ''; homeKeyInput.placeholder = 'No key required'; }
   } else if (meta.is_configured) {
     keyInput.disabled    = false;
     keyInput.placeholder = 'Key on file — enter to override';
+    if (homeKeyInput) { homeKeyInput.disabled = false; homeKeyInput.placeholder = 'Key on file — enter to override'; }
   } else {
     keyInput.disabled    = false;
     keyInput.placeholder = 'Enter API key';
+    if (homeKeyInput) { homeKeyInput.disabled = false; homeKeyInput.placeholder = 'Enter API key'; }
   }
 
   S.apiKey               = keyInput.value.trim();
@@ -1868,17 +1933,20 @@ async function loadScenarios() {
     });
 
     let _keyValidTimer = null;
+    function _applyKeyStatus(text, cls) {
+      const s = $('key-status'); s.textContent = text; s.className = cls;
+      const hs = $('home-key-status'); hs.textContent = text; hs.className = cls;
+    }
     $('api-key-input').addEventListener('input', function () {
       S.apiKey = this.value.trim();
-      const meta = _providerMeta[S.provider] || {};
+      $('home-api-key-input').value = this.value;
       if (S.apiKey || S.providerIsConfigured) hide('ollama-warning');
       else show('ollama-warning');
       updateFillAiButtons();
 
-      const status = $('key-status');
       clearTimeout(_keyValidTimer);
-      if (!S.apiKey) { status.textContent = ''; status.className = ''; return; }
-      status.textContent = 'Checking…'; status.className = 'key-checking';
+      if (!S.apiKey) { _applyKeyStatus('', ''); return; }
+      _applyKeyStatus('Checking…', 'key-checking');
       _keyValidTimer = setTimeout(async () => {
         try {
           const data = await api('/api/validate-key', {
@@ -1886,10 +1954,10 @@ async function loadScenarios() {
             model: $('model-select').value,
             api_key: S.apiKey,
           });
-          status.textContent = data.valid ? '✓ Valid' : ('✗ ' + (data.error || 'Invalid key'));
-          status.className   = data.valid ? 'key-valid' : 'key-invalid';
+          _applyKeyStatus(data.valid ? '✓ Valid' : ('✗ ' + (data.error || 'Invalid key')),
+                          data.valid ? 'key-valid' : 'key-invalid');
         } catch (_) {
-          status.textContent = '✗ Check failed'; status.className = 'key-invalid';
+          _applyKeyStatus('✗ Check failed', 'key-invalid');
         }
       }, 800);
     });
@@ -1901,6 +1969,49 @@ async function loadScenarios() {
     });
 
     show('provider-row');
+
+    $('home-provider-select').addEventListener('change', async function() {
+      S.provider = this.value;
+      $('provider-select').value = this.value;
+      $('api-key-input').value = '';
+      $('home-api-key-input').value = '';
+      _applyKeyStatus('', '');
+      updateKeyField();
+      await fetchModels(S.provider);
+      saveModelPref(S.provider, $('model-select').value);
+    });
+
+    $('home-model-select').addEventListener('change', function() {
+      S.model = this.value;
+      $('model-select').value = this.value;
+      updateBadge();
+      saveModelPref(S.provider, S.model);
+    });
+
+    $('home-api-key-input').addEventListener('input', function () {
+      S.apiKey = this.value.trim();
+      $('api-key-input').value = this.value;
+      if (S.apiKey || S.providerIsConfigured) hide('ollama-warning');
+      else show('ollama-warning');
+      updateFillAiButtons();
+
+      clearTimeout(_keyValidTimer);
+      if (!S.apiKey) { _applyKeyStatus('', ''); return; }
+      _applyKeyStatus('Checking…', 'key-checking');
+      _keyValidTimer = setTimeout(async () => {
+        try {
+          const data = await api('/api/validate-key', {
+            provider: S.provider,
+            model: $('model-select').value,
+            api_key: S.apiKey,
+          });
+          _applyKeyStatus(data.valid ? '✓ Valid' : ('✗ ' + (data.error || 'Invalid key')),
+                          data.valid ? 'key-valid' : 'key-invalid');
+        } catch (_) {
+          _applyKeyStatus('✗ Check failed', 'key-invalid');
+        }
+      }, 800);
+    });
   } else {
     show('ollama-warning');
     $('model-badge').textContent = 'Keyword mode';

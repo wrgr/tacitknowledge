@@ -9,213 +9,570 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --blue:    #3b82f6;
-  --blue-dk: #1d4ed8;
-  --green:   #10b981;
-  --bg:      #f1f5f9;
-  --card:    #ffffff;
-  --border:  #e2e8f0;
-  --text:    #1e293b;
-  --muted:   #64748b;
-  --radius:  12px;
+  --blue:      #3b82f6;
+  --blue-dk:   #1d4ed8;
+  --green:     #10b981;
+  --amber:     #f59e0b;
+  --bg:        #f1f5f9;
+  --card:      #ffffff;
+  --border:    #e2e8f0;
+  --text:      #1e293b;
+  --muted:     #64748b;
+  --radius:    12px;
+
+  /* dashboard-specific tokens */
+  --sidebar-w: 232px;
+  --topbar-h:  56px;
+  --soft:      #eff6ff;   /* tinted accent surface */
+  --panel-hd:  #f8fafc;   /* subtle header strip   */
 }
 
+html, body { height: 100%; }
+
 body {
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Header ── */
-header {
+a { color: inherit; }
+
+/* ─────────────────────────── Top bar ─────────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--topbar-h);
   background: var(--blue-dk);
   color: #fff;
-  padding: 14px 28px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  gap: 16px;
+  padding: 0 22px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.18);
 }
 
-header h1 { font-size: 1rem; font-weight: 600; }
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: .84rem;
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand img { width: 26px; height: 26px; border-radius: 6px; flex-shrink: 0; }
+.brand-text { line-height: 1.15; }
+.brand-text .b1 { font-size: .9rem; font-weight: 700; letter-spacing: .01em; }
+.brand-text .b2 {
+  font-size: .66rem; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: rgba(255,255,255,.7);
 }
 
-.admin-label {
-  background: rgba(255,255,255,.18);
-  padding: 3px 10px;
-  border-radius: 99px;
-  font-size: .78rem;
-}
+.topbar-spacer { flex: 1; }
 
-.header-right a {
-  color: rgba(255,255,255,.85);
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+
+.topbar-link {
   text-decoration: none;
-  padding: 5px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,.3);
+  color: rgba(255,255,255,.92);
+  font-size: .8rem; font-weight: 500;
+  padding: 6px 13px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,.28);
   transition: background .15s;
-  font-size: .82rem;
+  white-space: nowrap;
+}
+.topbar-link:hover { background: rgba(255,255,255,.14); }
+.topbar-link.danger { border-color: rgba(248,113,113,.55); color: #fecaca; }
+.topbar-link.danger:hover { background: rgba(248,113,113,.16); }
+
+/* ─────────────────────────── Layout ──────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  align-items: start;
 }
 
-.header-right a:hover { background: rgba(255,255,255,.12); }
-.header-right a.logout { border-color: rgba(255,80,80,.5); color: #fca5a5; }
+/* ─────────────────────────── Sidebar ─────────────────────────── */
+.sidebar {
+  position: sticky;
+  top: var(--topbar-h);
+  height: calc(100dvh - var(--topbar-h));
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  padding: 22px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  overflow-y: auto;
+}
 
-/* ── Main layout ── */
-main { max-width: 900px; margin: 0 auto; padding: 32px 20px; }
+.nav-group-label {
+  font-size: .66rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted);
+  padding: 0 10px; margin-bottom: 8px;
+}
 
-.page-title    { font-size: 1.25rem; font-weight: 700; margin-bottom: 6px; }
-.page-subtitle { font-size: .85rem; color: var(--muted); margin-bottom: 28px; }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: .86rem; font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.nav a:hover { background: var(--bg); }
+.nav a.active { background: var(--soft); color: var(--blue-dk); font-weight: 600; }
+.nav a .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted); flex-shrink: 0;
+}
+.nav a.active .dot { background: var(--blue-dk); }
+.nav a .count {
+  margin-left: auto;
+  font-size: .72rem; font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  padding: 1px 8px; border-radius: 99px;
+}
+.nav a.active .count { background: #fff; color: var(--blue-dk); }
 
-/* ── Stats bar ── */
-.stats-bar { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+.nav-ico { width: 17px; height: 17px; flex-shrink: 0; color: var(--muted); }
 
-.stat-card {
+.sidebar-foot { margin-top: auto; }
+
+/* account tab */
+.account { position: relative; }
+
+.account-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  cursor: pointer;
+  font: inherit; color: inherit;
+  text-align: left;
+  transition: background .12s, border-color .12s;
+}
+.account-btn:hover { background: var(--bg); }
+.account-btn[aria-expanded="true"] { border-color: var(--blue); background: var(--soft); }
+
+.account-avatar { width: 34px; height: 34px; font-size: .85rem; }
+
+.account-id { min-width: 0; flex: 1; line-height: 1.25; }
+.account-name {
+  display: block; font-size: .84rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.account-role {
+  display: block; font-size: .66rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+
+.account-caret {
+  width: 15px; height: 15px; flex-shrink: 0; color: var(--muted);
+  transition: transform .18s ease;
+}
+.account-btn[aria-expanded="true"] .account-caret { transform: rotate(180deg); }
+
+.account-menu {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: calc(100% + 8px);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.18);
+  padding: 6px;
+  display: none;
+  z-index: 60;
+}
+.account-menu.open { display: block; }
+
+.account-menu-head {
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.amh-name { font-size: .82rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.amh-sub  { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+
+.account-menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: .83rem; font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  transition: background .12s;
+}
+.account-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.account-menu-item:hover { background: var(--bg); }
+.account-menu-item.danger { color: #b91c1c; }
+.account-menu-item.danger:hover { background: rgba(220,38,38,.1); }
+
+/* ─────────────────────────── Main ────────────────────────────── */
+main {
+  padding: 28px 30px 60px;
+  max-width: 1080px;
+  width: 100%;
+}
+
+.page-head { margin-bottom: 22px; }
+.page-head h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -.01em; }
+.page-head p  { font-size: .86rem; color: var(--muted); margin-top: 4px; }
+
+/* ─────────────────────────── KPI cards ───────────────────────── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.kpi {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 20px;
-  min-width: 130px;
-  flex: 1;
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
 }
-
-.stat-value {
-  font-size: 1.8rem; font-weight: 700;
-  color: var(--blue-dk); line-height: 1; margin-bottom: 4px;
+.kpi::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--accent, var(--blue));
 }
-
-.stat-label {
-  font-size: .75rem; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .05em; font-weight: 600;
+.kpi .kpi-label {
+  font-size: .7rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
 }
-
-/* ── Section header ── */
-.section-header {
-  font-size: .7rem; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .08em;
-  color: var(--muted); margin-bottom: 12px;
-  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+.kpi .kpi-value {
+  font-size: 2rem; font-weight: 800; line-height: 1.1;
+  margin-top: 8px; color: var(--text);
 }
+.kpi .kpi-sub { font-size: .74rem; color: var(--muted); margin-top: 4px; }
+.kpi.is-users   { --accent: var(--blue-dk); }
+.kpi.is-student { --accent: var(--green); }
+.kpi.is-admin   { --accent: var(--amber); }
+.kpi.is-reports { --accent: var(--blue); }
 
-/* ── User cards ── */
-.user-card {
+/* ─────────────────────────── Panel ───────────────────────────── */
+.panel {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  margin-bottom: 14px;
   overflow: hidden;
 }
 
-.user-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 14px 18px;
+.panel-head {
+  display: flex; align-items: center; gap: 14px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--panel-hd);
+}
+.panel-head .panel-title {
+  font-size: .95rem; font-weight: 700;
+}
+.panel-head .panel-title span { color: var(--muted); font-weight: 500; }
+.panel-head .grow { flex: 1; }
+
+/* search */
+.search {
+  position: relative;
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+.search input {
+  width: 100%;
+  font: inherit;
+  font-size: .84rem;
+  padding: 8px 12px 8px 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+.search input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+.search .ico {
+  position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; pointer-events: none; color: var(--muted);
 }
 
+/* segmented role filter */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+}
+.segmented button {
+  font: inherit;
+  font-size: .8rem; font-weight: 600;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.active { background: var(--blue); color: #fff; }
+.segmented button:not(.active):hover { background: var(--bg); color: var(--text); }
+
+/* text button */
+.txt-btn {
+  font: inherit;
+  font-size: .8rem; font-weight: 600;
+  color: var(--blue-dk);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+  white-space: nowrap;
+}
+.txt-btn:hover { background: var(--soft); border-color: var(--blue); }
+
+/* ─────────────────────────── User rows ───────────────────────── */
+.user-list { display: flex; flex-direction: column; }
+
+.user-row { border-bottom: 1px solid var(--border); }
+.user-row:last-child { border-bottom: none; }
+.user-row[hidden] { display: none; }
+
+.user-summary {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: background .12s;
+}
+.user-summary:hover { background: var(--panel-hd); }
+
 .user-avatar {
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   background: var(--blue); color: #fff;
   display: flex; align-items: center; justify-content: center;
-  font-size: .85rem; font-weight: 700; flex-shrink: 0;
+  font-size: .95rem; font-weight: 800; flex-shrink: 0;
 }
 .user-avatar.admin { background: var(--blue-dk); }
 
-.user-info { flex: 1; }
-.user-display-name { font-size: .92rem; font-weight: 600; margin-bottom: 1px; }
-.user-meta { font-size: .76rem; color: var(--muted); }
+.user-id { min-width: 0; flex: 1; }
+.user-id .name {
+  font-size: .92rem; font-weight: 600;
+  display: flex; align-items: center; gap: 9px;
+}
+.user-id .handle { font-size: .77rem; color: var(--muted); margin-top: 2px; }
 
 .role-badge {
-  font-size: .72rem; padding: 2px 9px; border-radius: 99px;
-  font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  font-size: .66rem; padding: 2px 9px; border-radius: 99px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  flex-shrink: 0;
 }
 .role-badge.admin   { background: #dbeafe; color: #1e40af; }
 .role-badge.student { background: #d1fae5; color: #065f46; }
 
-.report-count { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.user-stats {
+  display: flex; align-items: center; gap: 20px;
+  flex-shrink: 0;
+}
+.user-stat { text-align: right; }
+.user-stat .v { font-size: .9rem; font-weight: 700; }
+.user-stat .l {
+  font-size: .66rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; font-weight: 600;
+}
 
-/* ── Report list ── */
-.report-list { padding: 10px 18px 14px; }
+.chevron {
+  width: 16px; height: 16px; flex-shrink: 0;
+  color: var(--muted);
+  transition: transform .18s ease;
+}
+.user-summary[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+
+/* report drawer */
+.report-drawer { display: none; padding: 4px 18px 16px 72px; }
+.user-summary[aria-expanded="true"] + .report-drawer { display: block; }
 
 .report-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
 }
 .report-item:last-child { border-bottom: none; }
 
 .report-icon {
-  width: 28px; height: 28px; border-radius: 6px;
-  background: #eff6ff;
+  width: 30px; height: 30px; border-radius: 7px;
+  background: var(--soft);
   display: flex; align-items: center; justify-content: center;
-  font-size: .8rem; flex-shrink: 0;
+  font-size: .85rem; flex-shrink: 0;
 }
 
+.report-info { flex: 1; min-width: 0; }
 .report-name {
-  font-size: .84rem; color: var(--text); flex: 1;
+  font-size: .82rem;
   font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.report-meta { font-size: .73rem; color: var(--muted); margin-top: 2px; }
+.report-meta .tag { color: var(--blue-dk); font-weight: 600; }
 
 .report-link {
-  display: inline-block; font-size: .78rem;
-  padding: 4px 10px; border-radius: 6px;
-  border: 1px solid var(--blue); color: var(--blue);
-  text-decoration: none; white-space: nowrap; transition: background .12s;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .78rem; font-weight: 600;
+  padding: 6px 13px; border-radius: 7px;
+  border: 1.5px solid var(--blue); color: var(--blue);
+  text-decoration: none; white-space: nowrap;
+  transition: background .12s, color .12s;
+  flex-shrink: 0;
 }
-.report-link:hover { background: #eff6ff; }
+.report-link:hover { background: var(--blue); color: #fff; }
 
-.no-reports { padding: 12px 0; font-size: .84rem; color: var(--muted); font-style: italic; }
+.no-reports {
+  font-size: .82rem; color: var(--muted); font-style: italic;
+  padding: 4px 0;
+}
 
-/* ── Dark mode overrides ── */
-[data-theme="dark"] .user-header       { background: #1a2535; }
-[data-theme="dark"] .role-badge.admin  { background: #1e3a5f; color: #93c5fd; }
-[data-theme="dark"] .role-badge.student{ background: #064e3b; color: #6ee7b7; }
-[data-theme="dark"] .report-icon       { background: #1e3a58; }
-[data-theme="dark"] .report-link       { color: var(--blue-dk); border-color: var(--blue-dk); }
-[data-theme="dark"] .report-link:hover { background: #162032; }
-[data-theme="dark"] .stat-value        { color: var(--blue-dk); }
+/* empty search state */
+.empty-state {
+  display: none;
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: .9rem;
+}
+.empty-state.show { display: block; }
 
-/* ── Rustic overrides ── */
-[data-theme="rustic"] .user-header  { background: #ede0c4; }
-[data-theme="rustic"] .report-icon  { background: #e8d5b0; }
+/* ─────────────────────── Responsive ──────────────────────────── */
+@media (max-width: 880px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  main { padding: 22px 16px 50px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .user-stats { gap: 12px; }
+  .report-drawer { padding-left: 18px; }
+}
+@media (max-width: 560px) {
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .user-stat.activity { display: none; }
+}
+
+/* ════════════════════════ Theme overrides ════════════════════════ */
+
+/* ── Dark ── */
+[data-theme="dark"] {
+  --soft:     #1e3a5f;
+  --panel-hd: #1a2433;
+}
+[data-theme="dark"] .topbar { background: #0b1120; border-bottom: 1px solid var(--border); }
+[data-theme="dark"] .nav a.active { background: #16243a; color: #93c5fd; }
+[data-theme="dark"] .nav a.active .count { background: #0b1120; color: #93c5fd; }
+[data-theme="dark"] .role-badge.admin   { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .role-badge.student { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .search input,
+[data-theme="dark"] .segmented,
+[data-theme="dark"] .txt-btn { background: var(--card); }
+
+/* ── Rustic ── */
+[data-theme="rustic"] {
+  --soft:     #ede0c4;
+  --panel-hd: #efe6cc;
+}
+[data-theme="rustic"] body { font-family: Georgia, 'Times New Roman', serif; }
+[data-theme="rustic"] .topbar { background: #2e1c06; }
 [data-theme="rustic"] .role-badge.admin   { background: #d9c9a8; color: #2e1c06; }
 [data-theme="rustic"] .role-badge.student { background: #d4e8c8; color: #1a3512; }
-[data-theme="rustic"] .report-link  { border-color: var(--blue); color: var(--blue); }
-[data-theme="rustic"] .report-link:hover { background: #ede0c4; }
+[data-theme="rustic"] .report-link { border-color: var(--blue); color: var(--blue); }
+[data-theme="rustic"] .report-link:hover { background: var(--blue); color: #f8f0dc; }
 
-/* ── Ultra-Dark overrides ── */
-[data-theme="ultra-dark"] header     { background: #000; border-bottom: 2px solid #00ff41; }
-[data-theme="ultra-dark"] .user-card { border-color: #00ff41; }
-[data-theme="ultra-dark"] .user-header { background: #000d00; border-bottom-color: #00ff41; }
+/* ── Ultra-Light ── */
+[data-theme="ultra-light"] {
+  --soft:     #e6e6ff;
+  --panel-hd: #f2f2f2;
+}
+[data-theme="ultra-light"] .topbar { background: #0000ff; border-bottom: 3px solid #000; }
+[data-theme="ultra-light"] .kpi,
+[data-theme="ultra-light"] .panel { border: 2px solid #000; border-radius: 0; }
+[data-theme="ultra-light"] .search input,
+[data-theme="ultra-light"] .segmented,
+[data-theme="ultra-light"] .txt-btn,
+[data-theme="ultra-light"] .nav a.active,
+[data-theme="ultra-light"] .report-link { border-radius: 0; }
+[data-theme="ultra-light"] .search input,
+[data-theme="ultra-light"] .segmented,
+[data-theme="ultra-light"] .txt-btn { border: 2px solid #000; }
+[data-theme="ultra-light"] .report-link { border: 2px solid #000; color: #000; }
+[data-theme="ultra-light"] .report-link:hover { background: #000; color: #fff; }
+[data-theme="ultra-light"] .role-badge { border: 1px solid #000; }
+[data-theme="ultra-light"] .account-btn,
+[data-theme="ultra-light"] .account-menu { border: 2px solid #000; border-radius: 0; }
+[data-theme="ultra-light"] .account-menu-item { border-radius: 0; }
+
+/* ── Ultra-Dark ── */
+[data-theme="ultra-dark"] {
+  --soft:     #001100;
+  --panel-hd: #000d00;
+}
+[data-theme="ultra-dark"] body { font-family: 'Courier New', monospace; }
+[data-theme="ultra-dark"] .topbar { background: #000; border-bottom: 2px solid #00ff41; }
+[data-theme="ultra-dark"] .topbar-link { border-color: #00ff41; color: #00ff41; }
+[data-theme="ultra-dark"] .topbar-link.danger { border-color: #ff0040; color: #ff5f7a; }
+[data-theme="ultra-dark"] .kpi,
+[data-theme="ultra-dark"] .panel,
+[data-theme="ultra-dark"] .sidebar { border-color: #00ff41; }
+[data-theme="ultra-dark"] .kpi .kpi-value { color: #00ffff; }
+[data-theme="ultra-dark"] .nav a.active { background: #001a1a; color: #00ffff; }
+[data-theme="ultra-dark"] .nav a.active .count { background: #000; color: #00ffff; }
+[data-theme="ultra-dark"] .nav a .count { background: #001100; }
+[data-theme="ultra-dark"] .user-avatar { color: #000; }
 [data-theme="ultra-dark"] .role-badge.admin   { background: #001a1a; color: #00ffff; border: 1px solid #00ffff; }
 [data-theme="ultra-dark"] .role-badge.student { background: #001a00; color: #00ff41; border: 1px solid #00ff41; }
-[data-theme="ultra-dark"] .report-icon { background: #001100; }
+[data-theme="ultra-dark"] .search input,
+[data-theme="ultra-dark"] .segmented,
+[data-theme="ultra-dark"] .txt-btn { border-color: #00ff41; background: #000; }
+[data-theme="ultra-dark"] .segmented button.active { background: #00ff41; color: #000; }
 [data-theme="ultra-dark"] .report-link { border-color: #00ff41; color: #00ff41; }
-[data-theme="ultra-dark"] .report-link:hover { background: #001100; }
-[data-theme="ultra-dark"] .stat-value  { color: #00ffff; }
-[data-theme="ultra-dark"] .stat-card   { border-color: #00ff41; }
-[data-theme="ultra-dark"] .section-header { border-bottom-color: #00ff41; }
-
-/* ── Ultra-Light overrides ── */
-[data-theme="ultra-light"] .user-card { border: 2px solid #000; border-radius: 0; }
-[data-theme="ultra-light"] .user-header { border-bottom: 2px solid #000; }
-[data-theme="ultra-light"] .stat-card  { border: 2px solid #000; border-radius: 0; }
-[data-theme="ultra-light"] .report-link { border-radius: 0; border: 2px solid #000; color: #000; }
-[data-theme="ultra-light"] .report-link:hover { background: #eee; }
-[data-theme="ultra-light"] header { background: #0000ff; border-bottom: 3px solid #000; }
+[data-theme="ultra-dark"] .report-link:hover { background: #00ff41; color: #000; }
+[data-theme="ultra-dark"] .account-btn,
+[data-theme="ultra-dark"] .account-menu { border-color: #00ff41; }
+[data-theme="ultra-dark"] .account-menu { box-shadow: 0 0 0 1px #00ff41, 0 10px 30px rgba(0,0,0,.6); }
+[data-theme="ultra-dark"] .account-menu-item.danger { color: #ff5f7a; }
+[data-theme="ultra-dark"] .account-menu-item.danger:hover { background: rgba(255,0,64,.15); }
+[data-theme="ultra-dark"] .account-role,
+[data-theme="ultra-dark"] .nav-ico { color: #008f11; }
 </style>
 <link rel="stylesheet" href="/static/themes.css">
 </head>
 <body>
 
-<header>
-  <h1>Performative Assessment — Admin</h1>
-  <div class="header-right">
+{# ── Pre-compute totals ── #}
+{% set total_reports = namespace(n=0) %}
+{% for u in users %}{% set total_reports.n = total_reports.n + report_tree[u.username]|length %}{% endfor %}
+{% set student_count = users|selectattr("role","eq","student")|list|length %}
+{% set admin_count   = users|selectattr("role","eq","admin")|list|length %}
+
+<header class="topbar">
+  <div class="brand">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+    <div class="brand-text">
+      <div class="b1">Performative Assessment</div>
+      <div class="b2">Administration</div>
+    </div>
+  </div>
+
+  <div class="topbar-spacer"></div>
+
+  <div class="topbar-actions">
     <select id="theme-select" class="theme-sel" title="Choose theme">
       <option value="ultra-light">🔆 Ultra-Light</option>
       <option value="light">☀️ Light</option>
@@ -223,72 +580,184 @@ main { max-width: 900px; margin: 0 auto; padding: 32px 20px; }
       <option value="dark">🌙 Dark</option>
       <option value="ultra-dark">☠️ Ultra-Dark</option>
     </select>
-    <span class="admin-label">{{ admin_name }}</span>
-    <a href="/">Assessment App</a>
-    <a href="/logout" class="logout">Sign Out</a>
+    <a href="/logout" class="topbar-link danger">Sign Out</a>
   </div>
 </header>
 
-<main>
-  <div class="page-title">Admin Dashboard</div>
-  <div class="page-subtitle">View all student accounts and their generated reports.</div>
-
-  {% set total_reports = namespace(n=0) %}
-  {% for u in users %}{% set total_reports.n = total_reports.n + report_tree[u.username]|length %}{% endfor %}
-
-  <div class="stats-bar">
-    <div class="stat-card">
-      <div class="stat-value">{{ users|length }}</div>
-      <div class="stat-label">Users</div>
+<div class="layout">
+  <aside class="sidebar">
+    <div>
+      <div class="nav-group-label">Dashboard</div>
+      <nav class="nav">
+        <a href="#overview" class="active" data-nav><span class="dot"></span> Overview</a>
+        <a href="#directory" data-nav><span class="dot"></span> User Directory <span class="count">{{ users|length }}</span></a>
+      </nav>
     </div>
-    <div class="stat-card">
-      <div class="stat-value">{{ users|selectattr("role","eq","student")|list|length }}</div>
-      <div class="stat-label">Students</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value">{{ total_reports.n }}</div>
-      <div class="stat-label">Total Reports</div>
-    </div>
-  </div>
 
-  <div class="section-header">All Users &amp; Reports</div>
+    <div>
+      <div class="nav-group-label">Application</div>
+      <nav class="nav">
+        <a href="/">
+          <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"></path>
+          </svg>
+          Assessment App
+        </a>
+      </nav>
+    </div>
 
-  {% for user in users %}
-  <div class="user-card">
-    <div class="user-header">
-      <div class="user-avatar {{ user.role }}">{{ user.display_name[0]|upper }}</div>
-      <div class="user-info">
-        <div class="user-display-name">{{ user.display_name }}</div>
-        <div class="user-meta">@{{ user.username }}</div>
+    <div class="sidebar-foot">
+      <div class="account">
+        <button class="account-btn" id="account-btn" aria-expanded="false" aria-haspopup="true">
+          <span class="user-avatar admin account-avatar">{{ admin_name[0]|upper }}</span>
+          <span class="account-id">
+            <span class="account-name">{{ admin_name }}</span>
+            <span class="account-role">Administrator</span>
+          </span>
+          <svg class="account-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div class="account-menu" id="account-menu" role="menu">
+          <div class="account-menu-head">
+            <div class="amh-name">{{ admin_name }}</div>
+            <div class="amh-sub">Administrator account</div>
+          </div>
+          <a href="/" class="account-menu-item" role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"></path>
+            </svg>
+            Assessment App
+          </a>
+          <a href="/logout" class="account-menu-item danger" role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            Sign out
+          </a>
+        </div>
       </div>
-      <span class="role-badge {{ user.role }}">{{ user.role }}</span>
-      <span class="report-count">{{ report_tree[user.username]|length }} report{% if report_tree[user.username]|length != 1 %}s{% endif %}</span>
+    </div>
+  </aside>
+
+  <main>
+    <div class="page-head" id="overview">
+      <h1>Overview</h1>
+      <p>Monitor accounts and review the assessment reports generated across the platform.</p>
     </div>
 
-    <div class="report-list">
-      {% if report_tree[user.username] %}
-        {% for filename in report_tree[user.username] %}
-        <div class="report-item">
-          <div class="report-icon">📄</div>
-          <span class="report-name">{{ filename }}</span>
-          <a class="report-link"
-             href="/admin/report/{{ user.username }}/{{ filename }}"
-             target="_blank" rel="noopener">View</a>
+    <section class="kpi-grid">
+      <div class="kpi is-users">
+        <div class="kpi-label">Total Users</div>
+        <div class="kpi-value">{{ users|length }}</div>
+        <div class="kpi-sub">All registered accounts</div>
+      </div>
+      <div class="kpi is-student">
+        <div class="kpi-label">Students</div>
+        <div class="kpi-value">{{ student_count }}</div>
+        <div class="kpi-sub">Assessment takers</div>
+      </div>
+      <div class="kpi is-admin">
+        <div class="kpi-label">Administrators</div>
+        <div class="kpi-value">{{ admin_count }}</div>
+        <div class="kpi-sub">Staff accounts</div>
+      </div>
+      <div class="kpi is-reports">
+        <div class="kpi-label">Total Reports</div>
+        <div class="kpi-value">{{ total_reports.n }}</div>
+        <div class="kpi-sub">Generated to date</div>
+      </div>
+    </section>
+
+    <section class="panel" id="directory">
+      <div class="panel-head">
+        <div class="panel-title">User Directory <span>· {{ users|length }} account{{ '' if users|length == 1 else 's' }}</span></div>
+        <div class="grow"></div>
+        <div class="search">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line>
+          </svg>
+          <input id="user-search" type="search" placeholder="Search name or username…" autocomplete="off">
+        </div>
+        <div class="segmented" id="role-filter" role="group" aria-label="Filter by role">
+          <button class="active" data-role="all">All</button>
+          <button data-role="admin">Admins</button>
+          <button data-role="student">Students</button>
+        </div>
+        <button class="txt-btn" id="toggle-all" data-state="expanded">Collapse all</button>
+      </div>
+
+      <div class="user-list" id="user-list">
+        {% for user in users %}
+        {% set reports = report_tree[user.username] %}
+        <div class="user-row"
+             data-role="{{ user.role }}"
+             data-name="{{ (user.display_name ~ ' @' ~ user.username)|lower }}">
+          <button class="user-summary" aria-expanded="true">
+            <span class="user-avatar {{ user.role }}">{{ user.display_name[0]|upper }}</span>
+            <span class="user-id">
+              <span class="name">
+                {{ user.display_name }}
+                <span class="role-badge {{ user.role }}">{{ user.role }}</span>
+              </span>
+              <span class="handle">@{{ user.username }}</span>
+            </span>
+            <span class="user-stats">
+              <span class="user-stat activity">
+                <span class="v" data-activity>—</span>
+                <span class="l">Last Active</span>
+              </span>
+              <span class="user-stat">
+                <span class="v">{{ reports|length }}</span>
+                <span class="l">Report{{ '' if reports|length == 1 else 's' }}</span>
+              </span>
+            </span>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 6 15 12 9 18"></polyline>
+            </svg>
+          </button>
+
+          <div class="report-drawer">
+            {% if reports %}
+              {% for filename in reports %}
+                {% set is_fr = filename.startswith('fr_') %}
+                {% set label = 'Free Response' if is_fr else 'Scenario-Based' %}
+                {% set parts = filename.replace('.md','').split('_') %}
+                {% if parts|length >= 3 and parts[-2]|length == 8 and parts[-1]|length >= 4 %}
+                  {% set d = parts[-2] %}{% set t = parts[-1] %}
+                  {% set date_str = d[:4] ~ '-' ~ d[4:6] ~ '-' ~ d[6:] ~ '  ' ~ t[:2] ~ ':' ~ t[2:4] %}
+                  {% set ts = d ~ t[:6] %}
+                {% else %}
+                  {% set date_str = '' %}{% set ts = '' %}
+                {% endif %}
+                <div class="report-item" data-ts="{{ ts }}">
+                  <span class="report-icon">📄</span>
+                  <span class="report-info">
+                    <span class="report-name">{{ filename }}</span>
+                    <span class="report-meta"><span class="tag">{{ label }}</span>{% if date_str %} · {{ date_str }}{% endif %}</span>
+                  </span>
+                  <a class="report-link"
+                     href="/admin/report/{{ user.username }}/{{ filename }}"
+                     target="_blank" rel="noopener">View report</a>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p class="no-reports">No reports generated yet.</p>
+            {% endif %}
+          </div>
         </div>
         {% endfor %}
-      {% else %}
-        <p class="no-reports">No reports generated yet.</p>
-      {% endif %}
-    </div>
-  </div>
-  {% endfor %}
-</main>
+
+        <div class="empty-state" id="empty-state">No users match your search.</div>
+      </div>
+    </section>
+  </main>
+</div>
 
 <script>
+/* ── Theme switcher ── */
 const themeSelect = document.getElementById('theme-select');
-const t = document.documentElement.dataset.theme || 'light';
-themeSelect.value = t;
-
+themeSelect.value = document.documentElement.dataset.theme || 'light';
 themeSelect.addEventListener('change', function () {
   document.documentElement.dataset.theme = this.value === 'light' ? '' : this.value;
   fetch('/api/save-theme', {
@@ -298,14 +767,124 @@ themeSelect.addEventListener('change', function () {
   }).catch(() => {});
 });
 
-// Rustic theme: random flying logo
+/* ── Account tab menu ── */
+(function () {
+  var btn = document.getElementById('account-btn');
+  var menu = document.getElementById('account-menu');
+  if (!btn || !menu) return;
+  function close() { menu.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
+  function open()  { menu.classList.add('open');    btn.setAttribute('aria-expanded', 'true'); }
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    menu.classList.contains('open') ? close() : open();
+  });
+  document.addEventListener('click', function (e) {
+    if (!menu.contains(e.target) && !btn.contains(e.target)) close();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+})();
+
+/* ── Per-user "last active" from report timestamps ── */
+(function () {
+  function fmt(ts) {
+    // ts = YYYYMMDDHHMMSS
+    return ts.slice(0,4) + '-' + ts.slice(4,6) + '-' + ts.slice(6,8);
+  }
+  document.querySelectorAll('.user-row').forEach(function (row) {
+    var stamps = [].slice.call(row.querySelectorAll('.report-item[data-ts]'))
+      .map(function (el) { return el.getAttribute('data-ts'); })
+      .filter(function (s) { return s && s.length >= 8; })
+      .sort();
+    var target = row.querySelector('[data-activity]');
+    if (target) target.textContent = stamps.length ? fmt(stamps[stamps.length - 1]) : 'None';
+  });
+})();
+
+/* ── Collapse / expand individual users ── */
+document.querySelectorAll('.user-summary').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var open = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+  });
+});
+
+/* ── Expand / collapse all ── */
+var toggleAll = document.getElementById('toggle-all');
+toggleAll.addEventListener('click', function () {
+  var collapse = toggleAll.dataset.state === 'expanded';
+  document.querySelectorAll('.user-row:not([hidden]) .user-summary').forEach(function (b) {
+    b.setAttribute('aria-expanded', collapse ? 'false' : 'true');
+  });
+  toggleAll.dataset.state = collapse ? 'collapsed' : 'expanded';
+  toggleAll.textContent = collapse ? 'Expand all' : 'Collapse all';
+});
+
+/* ── Search + role filtering ── */
+(function () {
+  var search = document.getElementById('user-search');
+  var rows = [].slice.call(document.querySelectorAll('.user-row'));
+  var empty = document.getElementById('empty-state');
+  var roleBtns = [].slice.call(document.querySelectorAll('#role-filter button'));
+  var activeRole = 'all';
+
+  function apply() {
+    var q = search.value.trim().toLowerCase();
+    var shown = 0;
+    rows.forEach(function (row) {
+      var matchRole = activeRole === 'all' || row.dataset.role === activeRole;
+      var matchText = !q || row.dataset.name.indexOf(q) !== -1;
+      var visible = matchRole && matchText;
+      row.hidden = !visible;
+      if (visible) {
+        shown++;
+        // auto-expand matches when actively searching
+        if (q) row.querySelector('.user-summary').setAttribute('aria-expanded', 'true');
+      }
+    });
+    empty.classList.toggle('show', shown === 0);
+  }
+
+  search.addEventListener('input', apply);
+  roleBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      roleBtns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      activeRole = btn.dataset.role;
+      apply();
+    });
+  });
+})();
+
+/* ── Sidebar nav active state on scroll ── */
+(function () {
+  var links = [].slice.call(document.querySelectorAll('.nav a[data-nav]'));
+  var map = {};
+  links.forEach(function (l) {
+    var id = l.getAttribute('href').slice(1);
+    var sec = document.getElementById(id);
+    if (sec) map[id] = l;
+  });
+  var sections = Object.keys(map).map(function (id) { return document.getElementById(id); });
+  if (!('IntersectionObserver' in window) || !sections.length) return;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) {
+        links.forEach(function (l) { l.classList.remove('active'); });
+        map[e.target.id].classList.add('active');
+      }
+    });
+  }, { rootMargin: '-45% 0px -50% 0px' });
+  sections.forEach(function (s) { io.observe(s); });
+})();
+
+/* ── Rustic theme: random flying logo ── */
 (function() {
   var _flyTimer = null;
   var RUST_IMG = '/static/login/rust_logo.png';
   function _isRustic() { return document.documentElement.dataset.theme === 'rustic'; }
   function _spawnFlyer() {
     if (!_isRustic()) return;
-    var size = 100 + Math.random() * 900;
+    var size = 80 + Math.random() * 70;
     var W = window.innerWidth, H = window.innerHeight;
     var edge = Math.floor(Math.random() * 4);
     var sx, sy;

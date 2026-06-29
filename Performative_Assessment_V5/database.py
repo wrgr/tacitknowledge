@@ -92,6 +92,61 @@ def all_users():
         return {r["username"]: dict(r) for r in rows}
 
 
+def set_password(username: str, new_password: str) -> bool:
+    """Replace a user's password hash. Returns True if a row was updated."""
+    with _conn() as c:
+        cur = c.execute(
+            "UPDATE users SET password_hash=? WHERE username=?",
+            (generate_password_hash(new_password, method=_HASH_METHOD), username),
+        )
+        c.commit()
+        return cur.rowcount > 0
+
+
+def count_admins() -> int:
+    with _conn() as c:
+        return c.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
+
+
+def update_user(old_username: str, new_username: str,
+                display_name: str, role: str):
+    """Update a user's username (PK), display name, and role.
+
+    Returns (True, None) on success or (False, error_message) on failure.
+    """
+    if role not in ("admin", "student"):
+        return False, "Invalid role."
+    with _conn() as c:
+        existing = c.execute(
+            "SELECT role FROM users WHERE username=?", (old_username,)
+        ).fetchone()
+        if not existing:
+            return False, "User not found."
+        # Block removing the final admin (demotion or rename both count).
+        if existing["role"] == "admin" and role != "admin":
+            others = c.execute(
+                "SELECT COUNT(*) FROM users WHERE role='admin' AND username!=?",
+                (old_username,),
+            ).fetchone()[0]
+            if others == 0:
+                return False, "Cannot demote the last remaining admin."
+        if new_username != old_username:
+            taken = c.execute(
+                "SELECT 1 FROM users WHERE username=?", (new_username,)
+            ).fetchone()
+            if taken:
+                return False, "That username is already taken."
+        try:
+            c.execute(
+                "UPDATE users SET username=?, display_name=?, role=? WHERE username=?",
+                (new_username, display_name, role, old_username),
+            )
+        except sqlite3.IntegrityError:
+            return False, "Could not update user (constraint violation)."
+        c.commit()
+        return True, None
+
+
 # ── Preferences ───────────────────────────────────────────────────────────────
 
 def set_theme(username: str, theme: str):

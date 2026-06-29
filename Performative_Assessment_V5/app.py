@@ -336,6 +336,98 @@ def api_save_model_pref():
     return jsonify({"ok": True})
 
 
+_USERNAME_RE = re.compile(r'^[a-z0-9_\-]{3,64}$')
+
+
+@app.route("/admin/user/<username>", methods=["GET"])
+@auth.admin_required
+def admin_edit_user(username):
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
+        abort(400)
+    user = db.get_user(username)
+    if not user:
+        abort(404)
+    return render_template(
+        "admin_user_edit.html",
+        admin_name=session.get("display_name", "Admin"),
+        user=user,
+        target=username,
+        is_self=(username == session.get("user_id")),
+        csrf_token=_new_csrf(),
+        error=None,
+        user_theme=_user_theme(),
+    )
+
+
+@app.route("/admin/user/<username>", methods=["POST"])
+@auth.admin_required
+def admin_update_user(username):
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
+        abort(400)
+    user = db.get_user(username)
+    if not user:
+        abort(404)
+
+    form_tok = request.form.get("csrf_token", "")
+    sess_tok = session.pop("csrf_token", "")
+    if not form_tok or not hmac.compare_digest(form_tok, sess_tok):
+        abort(400)
+
+    new_username = auth.sanitize_str(request.form.get("username", ""), 64).lower()
+    display_name = auth.sanitize_str(request.form.get("display_name", ""), 128)
+    role         = auth.sanitize_str(request.form.get("role", ""), 16)
+    new_password = request.form.get("new_password", "")
+
+    def _re_render(error):
+        merged = dict(user)
+        merged.update(username=new_username or username,
+                      display_name=display_name or user["display_name"],
+                      role=role or user["role"])
+        return render_template(
+            "admin_user_edit.html",
+            admin_name=session.get("display_name", "Admin"),
+            user=merged, target=username, is_self=(username == session.get("user_id")),
+            csrf_token=_new_csrf(), error=error, user_theme=_user_theme(),
+        )
+
+    if not _USERNAME_RE.match(new_username):
+        return _re_render("Username must be 3–64 chars: lowercase letters, digits, '-' or '_'.")
+    if not display_name:
+        return _re_render("Display name cannot be empty.")
+    if role not in ("admin", "student"):
+        return _re_render("Role must be 'admin' or 'student'.")
+    if new_password and len(new_password) < 8:
+        return _re_render("Password must be at least 8 characters.")
+    if len(new_password) > 256:
+        return _re_render("Password is too long.")
+
+    ok, err = db.update_user(username, new_username, display_name, role)
+    if not ok:
+        return _re_render(err)
+
+    # Move the user's report directory if the username changed.
+    if new_username != username:
+        base    = REPORTS_BASE.resolve()
+        old_dir = (REPORTS_BASE / username).resolve()
+        new_dir = (REPORTS_BASE / new_username).resolve()
+        # Defence-in-depth: ensure both paths stay inside REPORTS_BASE even
+        # though the username regexes already forbid separators and dots.
+        if old_dir.parent == base and new_dir.parent == base:
+            if old_dir.is_dir() and not new_dir.exists():
+                old_dir.rename(new_dir)
+
+    if new_password:
+        db.set_password(new_username, new_password)
+
+    # Keep the live session coherent if an admin edited their own account.
+    if username == session.get("user_id"):
+        session["user_id"]      = new_username
+        session["role"]         = role
+        session["display_name"] = display_name
+
+    return redirect(url_for("admin_dashboard"))
+
+
 # ── API endpoints ──────────────────────────────────────────────────────────────
 
 @app.route("/api/scenarios", methods=["POST"])

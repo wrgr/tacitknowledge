@@ -443,6 +443,21 @@ main {
   padding: 4px 0;
 }
 
+/* ── Configure account button ── */
+.drawer-actions {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+.config-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: .78rem; font-weight: 600;
+  padding: 7px 14px; border-radius: 7px;
+  border: 1.5px solid var(--blue); color: var(--blue);
+  text-decoration: none; white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.config-link:hover { background: var(--blue); color: #fff; }
+
 /* empty search state */
 .empty-state {
   display: none;
@@ -744,6 +759,16 @@ main {
             {% else %}
               <p class="no-reports">No reports generated yet.</p>
             {% endif %}
+
+            <div class="drawer-actions">
+              <a class="config-link" href="/admin/user/{{ user.username }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                Configure account
+              </a>
+            </div>
           </div>
         </div>
         {% endfor %}

@@ -11,7 +11,7 @@ Combined score = coverage_weight × Coverage + quality_weight × Quality
 
 import re
 
-from llm import llm_chat, _extract_json
+from llm import llm_chat_json, _extract_json
 
 
 _STOP = frozenset({
@@ -163,7 +163,7 @@ def check_fr_with_llm(model, api_key, base_url, prompt_data, text):
         "Respond with valid JSON only."
     )
 
-    raw    = llm_chat(model, system, prompt, api_key, base_url)
+    raw    = llm_chat_json(model, system, prompt, api_key, base_url)
     result = _extract_json(raw)
 
     matched     = result.get("matched_points", [])
@@ -257,7 +257,7 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text):
         "Respond only with valid JSON — no markdown, no extra text."
     )
 
-    raw    = llm_chat(model, system, prompt, api_key, base_url)
+    raw    = llm_chat_json(model, system, prompt, api_key, base_url)
     result = _extract_json(raw)
 
     matched = result.get("matched_points", [])
@@ -415,7 +415,7 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "Respond only with valid JSON — no markdown, no extra text."
     )
 
-    raw    = llm_chat(model, system, prompt, api_key, base_url)
+    raw    = llm_chat_json(model, system, prompt, api_key, base_url)
     result = _extract_json(raw)
 
     matched = result.get("matched_points", [])

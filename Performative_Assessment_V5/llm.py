@@ -289,7 +289,7 @@ def llm_chat(model, system, message, api_key, base_url):
     # Full structured response — used for evaluation and report generation.
     # think=False prevents thinking models from spending their token budget on
     # reasoning and truncating the JSON response.
-    return _call_llm(model, api_key, base_url, 4096, system, message, think=False)
+    return _call_llm(model, api_key, base_url, 8192, system, message, think=False)
 
 
 def llm_chat_json(model, system, message, api_key, base_url):

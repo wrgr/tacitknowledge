@@ -9,7 +9,7 @@ exists but wasn't spontaneously surfaced.
 
 import re
 
-from llm import llm_chat_json, _extract_json
+from llm import llm_chat_json, _extract_json, clip
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WORD-CHOICE ANALYSIS
@@ -130,23 +130,34 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
     # Build transcript section — show phases separately when available
     if recall_transcript and probe_transcript:
         transcript_section = (
-            "RECALL TRANSCRIPT (what the learner volunteered without prompting):\n"
-            + recall_transcript + "\n\n"
-            "PROBING TRANSCRIPT (responses to structured follow-up questions):\n"
-            + probe_transcript
+            "RECALL TRANSCRIPT (use for H&M style — shows how the learner spontaneously "
+            "organises and expresses knowledge without any prompting):\n"
+            + clip(recall_transcript) + "\n\n"
+            "PROBING TRANSCRIPT (Socratic dialogue — examiner asked WHY, WHAT WOULD HAPPEN, "
+            "and HOW THE LEARNER DECIDED; use for SOLO level and as additional H&M evidence):\n"
+            + clip(probe_transcript)
         )
         probe_comparison_note = (
-            "\n## Probe Phase Improvement Signal\n"
-            "Compare the learner's recall responses to their probing responses:\n"
-            "- Did specificity, depth, or conditional reasoning notably INCREASE under probing?\n"
-            "- If yes: this signals knowledge exists but was not spontaneously surfaced (consistent "
-            "with Reflector or Theorist style, and Relational/EA SOLO level under structured elicitation)\n"
-            "- If no improvement: either knowledge is genuinely shallow OR the learner expressed "
-            "everything in free recall (Activist tendency, or Multistructural ceiling)\n"
-            "Set probe_phase_improvement accordingly.\n"
+            "\n## Using Both Transcripts for Classification\n"
+            "The probing phase was Socratic — the examiner asked about reasoning, not missing facts. "
+            "This means probe responses are direct evidence of thinking depth:\n\n"
+            "H&M style signals in probe responses:\n"
+            "- Conditional or hedged answers ('it depends...', 'usually, but...') → Reflector\n"
+            "- Explains mechanisms, goals, or underlying principles ('the purpose is...', "
+            "'because otherwise...') → Theorist\n"
+            "- Short, action-focused answers with no elaboration → Activist or Pragmatist\n"
+            "- 'What works in practice' framing without theory → Pragmatist\n\n"
+            "SOLO level — probe responses are especially diagnostic here:\n"
+            "- Relational: explains WHY steps connect, what consequences follow, conditional reasoning\n"
+            "- Extended Abstract: raises edge cases or principles unprompted in their probe answers\n"
+            "- Multistructural ceiling: even when asked WHY, gives another list instead of reasoning\n\n"
+            "Use recall as the primary H&M signal (spontaneous style). "
+            "Use probe responses as primary SOLO evidence (reasoning depth under direct questioning). "
+            "Set probe_phase_improvement: true if reasoning in probe responses was notably richer "
+            "than what the recall transcript alone would have suggested.\n"
         )
     else:
-        transcript_section = "Transcript:\n" + transcript
+        transcript_section = "Transcript:\n" + clip(transcript)
         probe_comparison_note = ""
 
     prompt = (
@@ -164,19 +175,19 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
         "- Pragmatist: practical and direct, skips theory, focuses on what works\n\n"
 
         "## Framework 2 — SOLO Taxonomy (depth of understanding)\n"
-        "Choose exactly one:\n"
+        "Choose exactly one. Base this primarily on the PROBING transcript, since the Socratic "
+        "questions directly test reasoning depth ('why?', 'what would happen?', 'how do you decide?'):\n"
         "- Prestructural: misses the point, irrelevant or no response to the task\n"
         "- Unistructural: identifies one relevant element, nothing more\n"
         "- Multistructural: covers several relevant elements but treats them in isolation; "
-        "flat step list without integrating how they connect — does NOT articulate goals, "
-        "conditions, or consequences\n"
-        "- Relational: integrates elements coherently, shows how they connect; articulates "
-        "why steps matter, what happens if steps are skipped, or conditions under which "
-        "actions apply — especially in response to rationale or decision probes\n"
-        "- Extended Abstract: generalises beyond the task, considers edge cases or broader "
-        "principles; addresses error detection and contraindications unprompted\n\n"
-        "NOTE: A learner who lists many steps without explaining their connections or rationale "
-        "is Multistructural, not Relational — even if their recall is fluent and complete.\n\n"
+        "flat step list without integrating how they connect — when asked WHY, gives another "
+        "list rather than reasoning\n"
+        "- Relational: integrates elements coherently; when asked WHY, explains goals, "
+        "consequences, or conditions — 'I do X because otherwise Y happens', 'it depends on Z'\n"
+        "- Extended Abstract: generalises beyond the task; raises edge cases, principles, or "
+        "contraindications unprompted — even in probe responses\n\n"
+        "NOTE: A learner who lists many steps fluently in recall but cannot explain the reasoning "
+        "behind them when probed is Multistructural, not Relational.\n\n"
 
         "## Evidence and reasoning requirements\n"
         "- honey_mumford_evidence: list 2-3 direct quotes or close paraphrases from the transcript\n"

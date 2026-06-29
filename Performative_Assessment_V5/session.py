@@ -2,7 +2,7 @@
 session.py — Session tracks all evaluations across one sitting.
 """
 
-from scoring import score_with_llm, score_with_keywords
+from scoring import score_with_llm, score_with_keywords, merge_phase_scores
 
 
 class Session:
@@ -24,19 +24,28 @@ class Session:
         """
         evaluations = []
         for expert_answer in scenario["expert_answers"]:
-            if self.use_llm:
+            if recall_transcript and probe_transcript:
+                if self.use_llm:
+                    recall_ev = score_with_llm(
+                        self.model, self.api_key, self.base_url,
+                        scenario, recall_transcript, expert_answer,
+                    )
+                    probe_ev = score_with_llm(
+                        self.model, self.api_key, self.base_url,
+                        scenario, probe_transcript, expert_answer,
+                    )
+                else:
+                    recall_ev = score_with_keywords(scenario, recall_transcript, expert_answer)
+                    probe_ev  = score_with_keywords(scenario, probe_transcript,  expert_answer)
+                ev = merge_phase_scores(recall_ev, probe_ev, scenario, expert_answer,
+                                        full_transcript=transcript)
+            elif self.use_llm:
                 ev = score_with_llm(
                     self.model, self.api_key, self.base_url,
                     scenario, transcript, expert_answer,
-                    recall_transcript=recall_transcript,
-                    probe_transcript=probe_transcript,
                 )
             else:
-                ev = score_with_keywords(
-                    scenario, transcript, expert_answer,
-                    recall_transcript=recall_transcript,
-                    probe_transcript=probe_transcript,
-                )
+                ev = score_with_keywords(scenario, transcript, expert_answer)
             evaluations.append(ev)
 
         self.results.append((scenario, evaluations))

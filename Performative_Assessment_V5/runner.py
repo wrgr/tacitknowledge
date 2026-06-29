@@ -234,14 +234,19 @@ class ScenarioRunner:
         # order: sequencing → how → rationale → decision → error → edge_case
         TYPE_ORDER = ["sequencing", "how", "rationale", "decision", "error", "edge_case"]
 
-        # separate probes by type; include probes where coverage is 'missing' or 'partial'
+        # Reasoning probes (rationale/decision/error/edge_case) target WHY — they are always
+        # included regardless of coverage, because we want to probe the thinking behind what
+        # the learner said, not just whether they mentioned the topic.
+        # Gap-filling probes (sequencing/how) are only included when not already covered.
+        REASONING_TYPES = {"rationale", "decision", "error", "edge_case"}
+
         buckets = {t: [] for t in TYPE_ORDER}
         for probe in probe_bank:
             ptype = probe.get("probe_type", "sequencing")
             if ptype not in buckets:
                 ptype = "sequencing"
             coverage = coverage_map.get(probe.get("probe_text", ""), "missing")
-            if coverage in ("missing", "partial"):
+            if ptype in REASONING_TYPES or coverage in ("missing", "partial"):
                 buckets[ptype].append(probe)
 
         # guarantee at minimum one error and one edge_case probe
@@ -325,19 +330,26 @@ class ScenarioRunner:
             "EDGE CASES:\n" + ec_text + "\n\n"
             "LEARNER'S FREE RECALL:\n" + recall_txt + "\n\n"
             "Generate a structured probe bank covering all six probe types. "
+            "The goal is to explore HOW the learner thinks — not just what they know.\n\n"
+            "Probe design rules:\n"
+            "- rationale, decision, error, edge_case probes: always reference something the learner "
+            "ALREADY SAID in recall ('you mentioned X — why do you do it that way?'). "
+            "These probe the reasoning BEHIND their recall, not gaps in it.\n"
+            "- sequencing, how probes: target genuine gaps — things not mentioned in recall.\n"
+            "- success_criteria for reasoning probes: 'learner explains the reason/consequence/condition "
+            "behind their action' — NOT 'learner mentions key point Y'.\n\n"
             "Return JSON array — each item has:\n"
             '  "probe_type": one of sequencing|how|rationale|decision|error|edge_case\n'
-            '  "target_key_point": the key point this probe targets (string)\n'
+            '  "target_key_point": the key point or decision this probe explores (string)\n'
             '  "probe_text": the exact question the examiner should ask\n'
             '  "success_criteria": what a satisfactory answer looks like\n\n'
             "Include at least one probe of each type. Total 8-12 probes. "
-            "Focus probes on gaps in the free recall above. "
             "Return only the JSON array, no markdown."
         )
         system = (
             "You are an expert CTA (Cognitive Task Analysis) practitioner. "
-            "Generate structured diagnostic probes covering sequencing, how-to, rationale, "
-            "decision points, error handling, and edge cases. "
+            "Generate Socratic probes that surface the learner's causal reasoning, "
+            "decision logic, and consequence awareness — not just factual recall. "
             "Respond only with a valid JSON array."
         )
         try:
@@ -393,17 +405,23 @@ class ScenarioRunner:
             # no criteria defined — treat as satisfied after any substantive response
             return len(user_input.split()) >= 5
 
+        probe_type = probe.get("probe_type", "")
         prompt = (
+            f'PROBE TYPE: {probe_type}\n'
             f'PROBE: "{probe.get("probe_text", "")}"\n'
             f'SUCCESS CRITERIA: {criteria}\n'
             f'LEARNER RESPONSE: "{user_input}"\n\n'
-            "Does the learner's response adequately satisfy the success criteria? "
-            "Be strict: vague or evasive answers are NOT adequate. "
+            "Did the learner articulate genuine reasoning — a 'why', 'what would happen', "
+            "or 'how they decided'? "
+            "Accept any answer that shows real thinking, even if imperfect or incomplete. "
+            "Reject only non-answers ('I don't know'), pure restatements with no reasoning, "
+            "or completely off-topic responses. "
             'Return JSON: {"adequate": true|false, "reason": "<one sentence>"}'
         )
         system = (
-            "You evaluate whether a learner's answer meets specific success criteria. "
-            "Be strict — generic, partial, or off-topic answers are not adequate. "
+            "You evaluate whether a learner articulated genuine reasoning — not whether they gave "
+            "the correct answer. A partial or imperfect explanation with real reasoning is adequate. "
+            "Only reject non-answers, pure restatements, or evasions. "
             "Respond only with valid JSON."
         )
         try:
@@ -443,12 +461,16 @@ class ScenarioRunner:
         recall_summary = self.recall_transcript[-800:] if self.recall_transcript else ""
 
         type_guidance = {
-            "sequencing":  "You are confirming/clarifying step order and completeness.",
-            "how":         "You are probing HOW the learner would execute — specific actions, states, amounts.",
-            "rationale":   "You are probing WHY — the purpose or goal behind the action.",
-            "decision":    "You are probing a decision point or 'what if' — adaptive reasoning.",
-            "error":       "You are probing error detection and recovery knowledge.",
-            "edge_case":   "You are probing a boundary condition — when the standard approach does not apply.",
+            "sequencing":  "Ask about step order and why that order matters — not just what comes next.",
+            "how":         "Ask what the action looks like in practice — specific, observable detail.",
+            "rationale":   "Ask WHY they would do what they described — the goal or consequence behind it. "
+                           "E.g. 'You mentioned X — why do you do it that way?' or 'What's the purpose of that step?'",
+            "decision":    "Ask how they would adapt if conditions changed — 'what if X were different?' or "
+                           "'how would you decide between A and B?'",
+            "error":       "Ask what could go wrong and how they would know — 'what would happen if you skipped that?' "
+                           "or 'how would you spot a problem at that point?'",
+            "edge_case":   "Ask when the standard approach would NOT apply — 'when would you do something different?' "
+                           "or 'is there a situation where that wouldn't work?'",
         }.get(probe_type, "")
 
         prompt = (
@@ -456,19 +478,19 @@ class ScenarioRunner:
             "LEARNER'S RECALL (excerpt):\n" + recall_summary + "\n\n"
             "PROBE TYPE: " + probe_type + "\n"
             "GUIDANCE: " + type_guidance + "\n"
-            "TARGET KEY POINT: " + target_kp + "\n"
+            "TARGET: " + target_kp + "\n"
             "PROBE QUESTION TO DELIVER: " + probe_text + "\n\n"
-            "Rephrase this probe question naturally for the examiner to ask, "
-            "referencing the learner's specific words from their recall where possible. "
-            "Ask only ONE focused question. "
-            "Tone: curious and collaborative, not interrogative. "
-            "Do NOT volunteer correct answers or hint at what was missed. "
-            "Write only the question, no preamble."
+            "Rephrase this as a natural question that references what the learner already said. "
+            "The goal is to surface their reasoning — ask WHY they said what they said, "
+            "WHAT WOULD HAPPEN if they skipped a step, or HOW they would adapt in different conditions. "
+            "Do NOT ask about things they omitted. Do NOT hint at gaps or correct answers. "
+            "The tone should feel like genuine curiosity about their thinking, not a test of knowledge. "
+            "Ask only ONE focused question. Write only the question, no preamble."
         )
         system = (
-            "You are a disciplined CTA examiner delivering structured knowledge probes. "
-            "Ask one focused question. Reference the learner's prior words. "
-            "Never volunteer information or hint at correct answers. "
+            "You are a Socratic examiner exploring the learner's reasoning, not testing their recall. "
+            "Ask one focused question that references their own words and probes the thinking behind them. "
+            "Never hint at what was missed or what the correct answer is. "
             "Write only the question."
         )
         try:
@@ -487,16 +509,17 @@ class ScenarioRunner:
         """Generate a single follow-up clarification for an inadequate response."""
         prompt = (
             f'PROBE ASKED: "{probe.get("probe_text", "")}"\n'
-            f'LEARNER RESPONSE: "{user_input}"\n'
-            f'SUCCESS CRITERIA: {probe.get("success_criteria", "")}\n\n'
-            "The learner's response was incomplete or vague. "
-            "Write ONE short follow-up question to elicit the missing detail. "
-            "Do not ask multiple questions. Do not hint at the correct answer. "
-            "Write only the follow-up question."
+            f'LEARNER RESPONSE: "{user_input}"\n\n'
+            "The learner didn't explain their reasoning. "
+            "Write ONE short follow-up that pushes for the thinking behind their answer — "
+            "ask WHY, WHAT WOULD HAPPEN, or HOW THEY DECIDED. "
+            "Examples: 'Why do you do it that way?', 'What would happen if you skipped that?', "
+            "'How would you know if something went wrong?', 'What are you trying to achieve there?' "
+            "Do not hint at the correct answer. Write only the follow-up question."
         )
         system = (
-            "You are a CTA examiner. Ask one focused follow-up to get more specific information. "
-            "Never volunteer correct answers. Write only the question."
+            "You are a Socratic examiner. Ask one short follow-up that surfaces the learner's "
+            "causal reasoning or decision logic. Never give correct answers. Write only the question."
         )
         try:
             raw = llm_chat(self.model, system, prompt, self.api_key, self.base_url).strip()

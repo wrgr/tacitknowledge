@@ -297,3 +297,10 @@ def llm_chat_json(model, system, message, api_key, base_url):
     # Uses a higher token budget (8192) because structured JSON responses with evidence
     # quotes and multi-field schemas are larger than typical prose completions.
     return _call_llm(model, api_key, base_url, 8192, system, message, think=False, json_mode=True)
+
+
+def clip(text, max_chars=8000):
+    """Truncate long text so the prompt fits within the model's context window."""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n... [truncated for length]"

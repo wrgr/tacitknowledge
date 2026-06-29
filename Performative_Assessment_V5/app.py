@@ -608,6 +608,17 @@ def api_evaluate():
             "missed_points":   ev["missed_points"],
             "quality_ratings": ev.get("quality_ratings", {}),
             "point_sources":   ev.get("point_sources", {}),
+            # Per-phase scores (present only when recall/probe phases were scored separately)
+            "recall_score":           ev.get("recall_score"),
+            "recall_coverage_score":  ev.get("recall_coverage_score"),
+            "recall_quality_score":   ev.get("recall_quality_score"),
+            "recall_matched_points":  ev.get("recall_matched_points"),
+            "recall_missed_points":   ev.get("recall_missed_points"),
+            "probe_score":            ev.get("probe_score"),
+            "probe_coverage_score":   ev.get("probe_coverage_score"),
+            "probe_quality_score":    ev.get("probe_quality_score"),
+            "probe_matched_points":   ev.get("probe_matched_points"),
+            "probe_missed_points":    ev.get("probe_missed_points"),
         }
         for ev in evaluations
     ]

@@ -11,7 +11,7 @@ Combined score = coverage_weight × Coverage + quality_weight × Quality
 
 import re
 
-from llm import llm_chat_json, _extract_json
+from llm import llm_chat, llm_chat_json, _extract_json, clip
 
 
 _STOP = frozenset({
@@ -123,6 +123,44 @@ def _determine_point_sources(recall_text, probe_text, matched_set):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# EVIDENCE EXTRACTION  (pre-pass compression before scoring)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _extract_evidence(model, api_key, base_url, text, key_points):
+    """Compress a transcript or submission to one evidence sentence per key point.
+
+    Produces a compact block like:
+        • loosen lug nuts: said "crack them first so they don't spin when jacked"
+        • check torque: not addressed
+
+    The scoring call then works from this summary instead of the full text,
+    keeping the scoring prompt short regardless of how long the original was.
+    Falls back to a hard clip if the LLM call fails.
+    """
+    if not key_points or not text.strip():
+        return text
+
+    kp_text = "\n".join("- " + p for p in key_points)
+    prompt = (
+        "KEY POINTS:\n" + kp_text + "\n\n"
+        "TEXT:\n" + clip(text, 6000) + "\n\n"
+        "For each key point, write ONE concise sentence summarising the most relevant thing "
+        "the person said — use their own words where possible. "
+        "If the key point was not addressed at all, write 'not addressed'.\n"
+        "Format each line exactly as: '• <key point>: <sentence>'\n"
+        "No extra text. One line per key point."
+    )
+    system = (
+        "You extract concise per-topic evidence from text. "
+        "One sentence per topic, using the person's own words. No extra commentary."
+    )
+    try:
+        return llm_chat(model, system, prompt, api_key, base_url).strip() or clip(text, 3000)
+    except Exception:
+        return clip(text, 3000)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # FREE-RESPONSE SCORING  (unchanged from original)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -230,31 +268,24 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text):
         if prompt_data.get("constraints") else "- (none specified)"
     )
 
+    # Pre-pass: compress the submission to per-key-point evidence before scoring.
+    evidence = _extract_evidence(model, api_key, base_url, text, key_points)
+
     prompt = (
-        "WRITING TASK: " + prompt_data.get("prompt_text", prompt_data.get("description", "")) + "\n\n"
-        "CONSTRAINTS:\n" + constraints_text + "\n\n"
-        "EXPERT REFERENCE ANSWER:\n" + ea.get("answer", "(none)") + "\n\n"
         "KEY POINTS WITH IMPORTANCE WEIGHTS:\n" + key_points_text + "\n\n"
-        "LEARNER'S SUBMISSION:\n" + text + "\n\n"
-        "GRADING INSTRUCTIONS:\n"
-        "- Determine which key points the learner clearly addressed in their written response.\n"
-        "- Credit semantic equivalence — the learner does not need to use the exact phrasing.\n"
-        "- Do NOT give credit for vague, off-topic, or entirely absent coverage.\n"
-        "- Feedback must be direct and specific to the written submission.\n\n"
-        "Return this JSON exactly — no markdown, no extra text:\n"
-        "{\n"
-        '  "matched_points": [<copy the exact key point strings the learner clearly addressed>],\n'
-        '  "missed_points":  [<copy the exact key point strings omitted or inadequate>],\n'
-        '  "strengths": [<1-3 specific things done well>],\n'
-        '  "gaps": [<one sentence per gap explaining what was missing and why it matters>],\n'
-        '  "feedback": "<2-3 sentences of direct feedback for the learner>"\n'
-        "}"
+        "LEARNER EVIDENCE (extracted from submission):\n" + evidence + "\n\n"
+        "Grade the evidence against the key points. Credit semantic equivalence.\n\n"
+        "Return this JSON — no markdown, no extra text:\n"
+        '{"matched_points":[<exact key point strings addressed>],'
+        '"missed_points":[<exact key point strings omitted>],'
+        '"strengths":[<1-3 short phrases>],'
+        '"gaps":[<one sentence per gap>],'
+        '"feedback":"<2-3 sentences>"}'
     )
 
     system = (
-        "You are an impartial grader evaluating a written response. "
-        "Credit what is clearly demonstrated — exact wording is not required, semantic equivalence counts. "
-        "Respond only with valid JSON — no markdown, no extra text."
+        "You are an impartial grader. Score the learner's evidence against the key points. "
+        "Credit semantic equivalence. Respond only with valid JSON."
     )
 
     raw    = llm_chat_json(model, system, prompt, api_key, base_url)
@@ -360,59 +391,43 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
     else:
         constraints_text = "- (none specified)"
 
-    # Show recall and probe transcripts separately when available
-    transcript_section = ""
+    # Pre-pass: compress each transcript to per-key-point evidence sentences.
+    # The scoring prompt then works from this compact summary rather than the raw text,
+    # keeping input size predictable regardless of how long the transcript was.
     if recall_transcript and probe_transcript:
-        transcript_section = (
-            "RECALL TRANSCRIPT (free recall — what the learner volunteered unprompted):\n"
-            + recall_transcript + "\n\n"
-            "PROBING TRANSCRIPT (responses to structured probes):\n"
-            + probe_transcript
+        recall_evidence = _extract_evidence(model, api_key, base_url, recall_transcript, key_points)
+        probe_evidence  = _extract_evidence(model, api_key, base_url, probe_transcript,  key_points)
+        evidence_section = (
+            "RECALL EVIDENCE (what the learner volunteered unprompted):\n" + recall_evidence + "\n\n"
+            "PROBE EVIDENCE (what the learner said when questioned on their reasoning):\n" + probe_evidence
         )
     else:
-        transcript_section = "ASSESSMENT TRANSCRIPT:\n" + transcript
+        evidence_section = "LEARNER EVIDENCE:\n" + _extract_evidence(
+            model, api_key, base_url, transcript, key_points
+        )
 
     prompt = (
-        "SCENARIO: " + scenario["description"] + "\n\n"
-        "CONSTRAINTS (the response must satisfy every one of these):\n"
-        + constraints_text + "\n\n"
-        "EXPERT ANSWER (the complete ideal response — use this as your benchmark):\n"
-        + expert_answer["answer"] + "\n\n"
         "KEY POINTS WITH IMPORTANCE WEIGHTS:\n"
         + key_points_text + "\n\n"
-        + transcript_section + "\n\n"
-        "GRADING INSTRUCTIONS:\n"
-        "1. COVERAGE: Identify which key points the learner demonstrated across the full transcript "
-        "(recall + probing combined). Credit semantic equivalence.\n"
-        "2. EXPLANATION QUALITY: For each matched key point, rate the quality of the learner's "
-        "explanation on a 0-2 scale:\n"
-        "   0 = stated/named only (flat recitation, e.g. 'I would loosen the lug nuts')\n"
-        "   1 = partial explanation (ONE of: conditional reasoning, goal-linked statement, "
-        "or consequence awareness)\n"
-        "   2 = full explanation (TWO OR MORE of: 'you do X because...', 'the purpose of X is...', "
-        "'if you skip X then...')\n"
-        "IMPORTANT: Fluency, confidence, and prose quality are NOT evidence of quality. "
-        "Only conditional, goal-linked, and consequence-aware language counts.\n"
-        "Do NOT give credit for vague references or enthusiasm without substance.\n\n"
-        "Return this JSON exactly — no markdown, no extra text:\n"
-        "{\n"
-        '  "matched_points": [<copy the exact key point strings the learner clearly demonstrated>],\n'
-        '  "missed_points":  [<copy the exact key point strings the learner omitted or got wrong>],\n'
-        '  "quality_ratings": {<"key point string": 0|1|2, for each matched point>},\n'
-        '  "quality_evidence": {<"key point string": "<quote that justifies the quality rating>">},\n'
-        '  "strengths": [<1-3 specific things done correctly, as short phrases>],\n'
-        '  "gaps": [<one sentence per gap explaining what was missing and why it matters>],\n'
-        '  "feedback": "<2-3 sentences of direct, honest feedback for the learner>"\n'
-        "}"
+        + evidence_section + "\n\n"
+        "QUALITY SCALE (per matched point):\n"
+        "  0 = stated only, no reasoning\n"
+        "  1 = partial — ONE of: conditional, goal-linked, or consequence-aware\n"
+        "  2 = full — TWO OR MORE of the above\n"
+        "Fluency and length are NOT quality. Credit semantic equivalence for coverage.\n\n"
+        "Return this JSON — no markdown, no extra text:\n"
+        '{"matched_points":[<exact key point strings demonstrated>],'
+        '"missed_points":[<exact key point strings omitted>],'
+        '"quality_ratings":{"<key point>":0|1|2},'
+        '"strengths":[<1-3 short phrases>],'
+        '"gaps":[<one sentence per gap>],'
+        '"feedback":"<2-3 sentences>"}'
     )
 
     system = (
-        "You are an impartial grader for a performative assessment. "
-        "Your role is to evaluate performance against explicit criteria. "
-        "Credit what is clearly demonstrated — exact wording is not required, semantic equivalence counts. "
-        "Be critical: missing a CRITICAL or HIGH point is a significant failure and must be named. "
-        "Quality scores must reflect genuine conditional/goal/consequence reasoning — NOT fluency or length. "
-        "Respond only with valid JSON — no markdown, no extra text."
+        "You are an impartial grader. Score the learner's evidence against the key points. "
+        "Credit semantic equivalence. Quality scores must reflect conditional/goal/consequence "
+        "reasoning — not fluency. Respond only with valid JSON."
     )
 
     raw    = llm_chat_json(model, system, prompt, api_key, base_url)
@@ -459,7 +474,7 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "matched_points":   matched,
         "missed_points":    missed,
         "quality_ratings":  quality_ratings,
-        "quality_evidence": result.get("quality_evidence", {}),
+        "quality_evidence": {},
         "point_sources":    sources,
         "coverage_score":   round(coverage, 4),
         "quality_score":    round(quality, 4),
@@ -467,4 +482,70 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "feedback":         result.get("feedback", ""),
         "strengths":        result.get("strengths", []),
         "gaps":             result.get("gaps", []),
+    }
+
+
+def merge_phase_scores(recall_ev, probe_ev, scenario, expert_answer, full_transcript=""):
+    """Combine per-phase scoring results into a single evaluation dict.
+
+    recall_ev and probe_ev are the outputs of score_with_llm / score_with_keywords
+    called with each phase transcript individually.  The combined score is derived
+    in Python from the union of matched points — no extra LLM call needed.
+    """
+    key_points = expert_answer.get("key_points", [])
+    rubric     = expert_answer.get("rubric", {})
+    weights    = scenario.get("scoring_weights", {"coverage": 0.6, "quality": 0.4})
+
+    recall_matched = set(recall_ev["matched_points"])
+    probe_matched  = set(probe_ev["matched_points"])
+    combined_matched = recall_matched | probe_matched
+
+    # Take the highest quality rating demonstrated across either phase
+    combined_quality = {}
+    for p in combined_matched:
+        r = recall_ev.get("quality_ratings", {}).get(p, 0)
+        pr = probe_ev.get("quality_ratings", {}).get(p, 0)
+        combined_quality[p] = max(r, pr)
+
+    coverage = _compute_coverage_score(combined_matched, key_points, rubric)
+    quality  = _compute_quality_score(combined_quality, combined_matched)
+    combined = _compute_combined_score(coverage, quality, weights)
+
+    matched = [p for p in key_points if p in combined_matched]
+    missed  = [p for p in key_points if p not in combined_matched]
+
+    # A point is credited to recall if shown there; otherwise it came from probing
+    point_sources = {p: ("recall" if p in recall_matched else "probe") for p in combined_matched}
+
+    return {
+        "scenario_id":       scenario["id"],
+        "transcript":        full_transcript or recall_ev["transcript"],
+        "recall_transcript": recall_ev["transcript"],
+        "probe_transcript":  probe_ev["transcript"],
+        "expert_answer":     expert_answer,
+        # Combined
+        "matched_points":    matched,
+        "missed_points":     missed,
+        "quality_ratings":   combined_quality,
+        "quality_evidence":  {**recall_ev.get("quality_evidence", {}), **probe_ev.get("quality_evidence", {})},
+        "point_sources":     point_sources,
+        "coverage_score":    round(coverage, 4),
+        "quality_score":     round(quality, 4),
+        "score":             max(0.0, min(1.0, combined)),
+        "feedback":          probe_ev.get("feedback") or recall_ev.get("feedback", ""),
+        "strengths":         probe_ev.get("strengths") or recall_ev.get("strengths", []),
+        "gaps":              probe_ev.get("gaps") or recall_ev.get("gaps", []),
+        # Per-phase
+        "recall_score":           recall_ev["score"],
+        "recall_coverage_score":  recall_ev["coverage_score"],
+        "recall_quality_score":   recall_ev["quality_score"],
+        "recall_matched_points":  recall_ev["matched_points"],
+        "recall_missed_points":   recall_ev["missed_points"],
+        "recall_quality_ratings": recall_ev.get("quality_ratings", {}),
+        "probe_score":            probe_ev["score"],
+        "probe_coverage_score":   probe_ev["coverage_score"],
+        "probe_quality_score":    probe_ev["quality_score"],
+        "probe_matched_points":   probe_ev["matched_points"],
+        "probe_missed_points":    probe_ev["missed_points"],
+        "probe_quality_ratings":  probe_ev.get("quality_ratings", {}),
     }

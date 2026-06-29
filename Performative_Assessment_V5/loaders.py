@@ -18,6 +18,9 @@ def load_prompt(path):
     with open(path) as f:
         data = json.load(f)
 
+    if "id" not in data:
+        data["id"] = Path(path).stem
+
     # fill in default values for optional fields so callers don't need to guard every key
     if "description" not in data:
         data["description"] = ""
@@ -54,6 +57,10 @@ def load_scenario(path):
     # open and parse one scenario JSON file
     with open(path) as f:
         data = json.load(f)
+
+    # inject id from filename if not present in the JSON
+    if "id" not in data:
+        data["id"] = Path(path).stem
 
     # fill in default values for optional fields so we don't have to check later
     if "description" not in data:

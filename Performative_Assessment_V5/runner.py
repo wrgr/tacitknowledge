@@ -209,6 +209,17 @@ class ScenarioRunner:
             expert_answer = ea.get("answer", "")
             key_points    = ea.get("key_points", [])
 
+        # normalise probe dicts: accept both {type,question} and {probe_type,probe_text}
+        normalised = []
+        for p in probe_bank:
+            normalised.append({
+                "probe_type":        p.get("probe_type") or p.get("type", "sequencing"),
+                "probe_text":        p.get("probe_text") or p.get("question", ""),
+                "target_key_point":  p.get("target_key_point", ""),
+                "success_criteria":  p.get("success_criteria", ""),
+            })
+        probe_bank = normalised
+
         # if no probe_bank, generate probes dynamically
         if not probe_bank:
             probe_bank = self._generate_dynamic_probes(recall_txt, expert_answer, key_points)

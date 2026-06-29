@@ -61,28 +61,40 @@
   ],
   "probe_bank": [
     {
-      "type": "sequencing",
-      "question": "You mentioned loosening the wheel nuts — at exactly what point in the sequence do you do that, and why does the order matter?"
+      "probe_type": "sequencing",
+      "probe_text": "You mentioned loosening the wheel nuts — at exactly what point in the sequence do you do that, and why does the order matter?",
+      "target_key_point": "loosen nuts before jacking",
+      "success_criteria": "Learner explains that nuts must be loosened while the tyre is on the ground so the wheel cannot spin freely, and that doing it after jacking risks destabilising the car."
     },
     {
-      "type": "how",
-      "question": "How do you know where to position the jack under the car without damaging it?"
+      "probe_type": "how",
+      "probe_text": "How do you know where to position the jack under the car without damaging it?",
+      "target_key_point": "correct jack point",
+      "success_criteria": "Learner mentions consulting the vehicle handbook or owner's manual, or describes locating the manufacturer-designated reinforced jack point on the sill or chassis."
     },
     {
-      "type": "rationale",
-      "question": "Why do you tighten the wheel nuts in a diagonal pattern rather than going around the wheel in order?"
+      "probe_type": "rationale",
+      "probe_text": "Why do you tighten the wheel nuts in a diagonal pattern rather than going around the wheel in order?",
+      "target_key_point": "diagonal nut tightening",
+      "success_criteria": "Learner explains that diagonal (star) tightening ensures even seating of the wheel against the hub, preventing warping or uneven clamping force."
     },
     {
-      "type": "decision",
-      "question": "How would your approach change if the spare in the boot is a compact space-saver rather than a full-size spare?"
+      "probe_type": "decision",
+      "probe_text": "How would your approach change if the spare in the boot is a compact space-saver rather than a full-size spare?",
+      "target_key_point": "speed restriction on spare",
+      "success_criteria": "Learner identifies the speed restriction (typically 50 mph / 80 km/h), the need to replace or repair the tyre as soon as possible, and any handling limitations."
     },
     {
-      "type": "error",
-      "question": "What could go wrong if you raised the car on the jack before loosening the wheel nuts?"
+      "probe_type": "error",
+      "probe_text": "What could go wrong if you raised the car on the jack before loosening the wheel nuts?",
+      "target_key_point": "loosen nuts before jacking",
+      "success_criteria": "Learner explains that the wheel spins freely once off the ground, making loosening impossible, and that the torque applied could destabilise the car on the jack."
     },
     {
-      "type": "edge_case",
-      "question": "What would you do differently if you discovered the flat tyre while on a live motorway lane rather than the hard shoulder?"
+      "probe_type": "edge_case",
+      "probe_text": "What would you do differently if you discovered the flat tyre while on a live motorway lane rather than the hard shoulder?",
+      "target_key_point": "passengers away from traffic",
+      "success_criteria": "Learner states they would NOT attempt to change the tyre on a live lane, would call emergency services or breakdown assistance, keep occupants in the car with seatbelts on, and activate hazard lights."
     }
   ],
   "scoring_weights": {

@@ -1566,6 +1566,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 </div>
 
 <script>
+// @ts-nocheck
 const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 
 // ── State ──────────────────────────────────────
@@ -2920,9 +2921,9 @@ $('btn-save-scenario').addEventListener('click', async () => {
 
   const probeBank = [];
   $('probe-list').querySelectorAll('.dynamic-item').forEach(item => {
-    const type     = item.querySelector('select').value;
-    const question = item.querySelector('input').value.trim();
-    if (question) probeBank.push({ type, question });
+    const probe_type = item.querySelector('select').value;
+    const probe_text = item.querySelector('input').value.trim();
+    if (probe_text) probeBank.push({ probe_type, probe_text });
   });
 
   const covWeight  = parseFloat($('f-cov-weight').value)  || 0.6;

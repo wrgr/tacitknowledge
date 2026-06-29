@@ -1,14 +1,5 @@
 """
 engine.py — re-exports all program logic so that `import engine` still works.
-
-Logic lives in:
-  llm.py      — LLM provider dispatch and JSON extraction
-  loaders.py  — JSON loading for scenarios and free-response prompts
-  scoring.py  — keyword and LLM-based scoring
-  runner.py   — ScenarioRunner and generate_scenario_draft
-  session.py  — Session class
-  thinking.py — Honey & Mumford / SOLO taxonomy analysis
-  reports.py  — Markdown report generation
 """
 
 from llm import (
@@ -36,8 +27,8 @@ from runner import (
     ScenarioRunner,
     generate_scenario_draft,
     generate_prompt_draft,
-    FALLBACK_PROMPTS,
-    FALLBACK_CLOSING,
+    FALLBACK_RECALL_ACK,
+    FALLBACK_PROBE,
 )
 from session import Session
 from thinking import analyse_thinking_profile

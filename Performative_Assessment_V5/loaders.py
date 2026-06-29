@@ -67,6 +67,20 @@ def load_scenario(path):
     if "metadata" not in data:
         data["metadata"] = {}
 
+    # new CTA probe-bank schema fields — fall back to empty lists so existing
+    # scenarios continue to work without modification
+    if "decision_points" not in data:
+        data["decision_points"] = []
+    if "failure_modes" not in data:
+        data["failure_modes"] = []
+    if "edge_cases" not in data:
+        data["edge_cases"] = []
+    if "probe_bank" not in data:
+        # empty → probes generated dynamically at runtime from key_points + expert answer
+        data["probe_bank"] = []
+    if "scoring_weights" not in data:
+        data["scoring_weights"] = {"coverage": 0.6, "quality": 0.4}
+
     # do the same for each expert answer inside the scenario
     for ea in data.get("expert_answers", []):
         if "key_points" not in ea:

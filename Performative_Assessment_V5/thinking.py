@@ -1,12 +1,10 @@
 """
 thinking.py — Honey & Mumford / SOLO taxonomy analysis of learner responses.
 
-Looks at HOW the learner responded — sequencing, confidence, level of detail,
-whether they anticipated issues — to classify their thinking and learning style.
-Also incorporates writing process metrics (typing speed, deletions, word choice,
-pauses) collected by the frontend to enrich the behavioural analysis.
-Runs as a separate call after scoring so the score appears without delay.
-Results accumulate across sessions to build a longitudinal profile.
+Now uses separate recall and probe transcripts to detect probe_phase_improvement:
+whether the learner demonstrated notably richer or more specific knowledge under
+structured probing than in free recall — a meaningful signal of whether depth
+exists but wasn't spontaneously surfaced.
 """
 
 import re
@@ -29,8 +27,8 @@ def _word_choice_metrics(text):
     words = re.findall(r'\b[a-z]+\b', text.lower())
     if not words:
         return {}
-    unique     = set(words)
-    hedging    = sum(1 for w in words if w in _HEDGING_WORDS)
+    unique  = set(words)
+    hedging = sum(1 for w in words if w in _HEDGING_WORDS)
     return {
         'word_count':        len(words),
         'unique_word_ratio': round(len(unique) / len(words), 3),
@@ -40,12 +38,7 @@ def _word_choice_metrics(text):
 
 
 def _format_process_section(writing_metrics, user_inputs):
-    """Build a 'Writing Process Data' block for the LLM prompt.
-
-    writing_metrics — list of per-turn dicts from the frontend tracker
-    user_inputs     — list of final submitted strings, one per turn
-    Both lists are aligned by index; missing entries are treated as empty.
-    """
+    """Build a 'Writing Process Data' block for the LLM prompt."""
     if not writing_metrics and not user_inputs:
         return ""
 
@@ -107,10 +100,8 @@ def _strip_md(val):
         return [_strip_md(v) for v in val]
     if not isinstance(val, str):
         return val
-    # bold/italic: **x**, *x*, __x__, _x_
     val = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', val)
     val = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', val)
-    # stray $ signs
     val = val.replace('$', '')
     return val
 
@@ -120,7 +111,8 @@ def _strip_md(val):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
-                             prior_profiles=None, writing_metrics=None, user_inputs=None):
+                             prior_profiles=None, writing_metrics=None, user_inputs=None,
+                             recall_transcript="", probe_transcript=""):
     system = (
         "You are an educational psychologist. "
         "Classify a learner's response using two established frameworks. "
@@ -135,59 +127,87 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
 
     process_section = _format_process_section(writing_metrics, user_inputs)
 
+    # Build transcript section — show phases separately when available
+    if recall_transcript and probe_transcript:
+        transcript_section = (
+            "RECALL TRANSCRIPT (what the learner volunteered without prompting):\n"
+            + recall_transcript + "\n\n"
+            "PROBING TRANSCRIPT (responses to structured follow-up questions):\n"
+            + probe_transcript
+        )
+        probe_comparison_note = (
+            "\n## Probe Phase Improvement Signal\n"
+            "Compare the learner's recall responses to their probing responses:\n"
+            "- Did specificity, depth, or conditional reasoning notably INCREASE under probing?\n"
+            "- If yes: this signals knowledge exists but was not spontaneously surfaced (consistent "
+            "with Reflector or Theorist style, and Relational/EA SOLO level under structured elicitation)\n"
+            "- If no improvement: either knowledge is genuinely shallow OR the learner expressed "
+            "everything in free recall (Activist tendency, or Multistructural ceiling)\n"
+            "Set probe_phase_improvement accordingly.\n"
+        )
+    else:
+        transcript_section = "Transcript:\n" + transcript
+        probe_comparison_note = ""
+
     prompt = (
         "Scenario: " + scenario["title"] + "\n\n"
-        "Transcript:\n" + transcript + "\n\n"
+        + transcript_section + "\n\n"
         + (process_section + "\n\n" if process_section else "")
+        + probe_comparison_note
         + "## Framework 1 — Honey & Mumford Learning Style\n"
         "Choose exactly one:\n"
         "- Activist: dives straight in, action-first, minimal planning, energetic language\n"
-        "- Reflector: considers options before acting, hedged language, weighs consequences\n"
-        "- Theorist: explains the reasoning and underlying rules, logical and sequential\n"
+        "- Reflector: considers options before acting, hedged language, weighs consequences; "
+        "may give richer answers when specifically asked (more under probing than in recall)\n"
+        "- Theorist: explains the reasoning and underlying rules, logical and sequential; "
+        "likely to explain WHY steps matter when prompted by rationale/decision probes\n"
         "- Pragmatist: practical and direct, skips theory, focuses on what works\n\n"
 
         "## Framework 2 — SOLO Taxonomy (depth of understanding)\n"
         "Choose exactly one:\n"
         "- Prestructural: misses the point, irrelevant or no response to the task\n"
         "- Unistructural: identifies one relevant element, nothing more\n"
-        "- Multistructural: covers several relevant elements but treats them in isolation\n"
-        "- Relational: integrates elements coherently, shows how they connect\n"
-        "- Extended Abstract: generalises beyond the task, considers edge cases or broader principles\n\n"
+        "- Multistructural: covers several relevant elements but treats them in isolation; "
+        "flat step list without integrating how they connect — does NOT articulate goals, "
+        "conditions, or consequences\n"
+        "- Relational: integrates elements coherently, shows how they connect; articulates "
+        "why steps matter, what happens if steps are skipped, or conditions under which "
+        "actions apply — especially in response to rationale or decision probes\n"
+        "- Extended Abstract: generalises beyond the task, considers edge cases or broader "
+        "principles; addresses error detection and contraindications unprompted\n\n"
+        "NOTE: A learner who lists many steps without explaining their connections or rationale "
+        "is Multistructural, not Relational — even if their recall is fluent and complete.\n\n"
 
         "## Evidence and reasoning requirements\n"
-        "- honey_mumford_evidence: list 2-3 direct quotes or close paraphrases from the transcript "
-        "that support the style classification. If the transcript is very short, list everything usable.\n"
-        "- honey_mumford_reasoning: explain the chain of logic — WHY does each piece of evidence "
-        "point to this style and not an adjacent one (e.g. why Theorist and not Pragmatist).\n"
-        "- honey_mumford_confidence: 'high' if ≥2 distinct evidence signals; 'medium' if only one "
-        "signal or if another style was plausible; 'low' if the transcript barely has enough to judge.\n"
-        "- solo_evidence: list 2-3 specific moments from the transcript that reveal the learner's "
-        "depth of understanding.\n"
-        "- solo_reasoning: explain WHY these moments place the learner at this SOLO level and not "
-        "the level above or below.\n"
-        "- solo_confidence: same scale as above.\n"
-        "- insufficient_data_note: if the transcript is too short or ambiguous for a confident "
-        "classification in EITHER framework, describe exactly what is missing, state your most "
-        "probable interpretation, and cite the specific transcript text that drove that guess. "
-        "Set to null when evidence is sufficient for both frameworks.\n"
+        "- honey_mumford_evidence: list 2-3 direct quotes or close paraphrases from the transcript\n"
+        "- honey_mumford_reasoning: explain WHY the evidence points to this style and not an adjacent one\n"
+        "- honey_mumford_confidence: 'high' if ≥2 distinct signals; 'medium' if only one or adjacent style plausible; 'low' if barely enough\n"
+        "- solo_evidence: list 2-3 specific transcript moments showing depth\n"
+        "- solo_reasoning: explain WHY these place the learner at this SOLO level, not above or below\n"
+        "- solo_confidence: same scale\n"
+        "- insufficient_data_note: describe what is missing if either framework can't be classified confidently; null otherwise\n"
         "- observed_patterns: 2-3 entries; each must name the behaviour AND quote the transcript moment "
-        "or process metric that illustrates it (format: '<behaviour>: \"<quote or metric>\"'). "
-        "Writing process signals (e.g. heavy deletion, copy-paste, long pauses) are valid patterns "
-        "when they are interpretable and relevant to the learning style classification.\n\n"
+        "or process metric that illustrates it (format: '<behaviour>: \"<quote or metric>\"')\n"
+        "- probe_phase_improvement: boolean — true if the learner's answers were notably richer "
+        "(more specific, more conditional, more goal-linked) in the probing phase than in free recall\n"
+        "- probe_phase_improvement_note: one sentence explaining the evidence for your probe_phase_improvement "
+        "judgement (or null if no probe phase data)\n\n"
 
         "Return this JSON exactly — no markdown, no extra text:\n"
         "{\n"
-        '  "honey_mumford_style":     "<Activist | Reflector | Theorist | Pragmatist>",\n'
-        '  "honey_mumford_evidence":  [<2-3 direct quotes or close paraphrases from the transcript>],\n'
-        '  "honey_mumford_reasoning": "<explanation of why this evidence points to this style>",\n'
-        '  "honey_mumford_confidence":"<high | medium | low>",\n'
-        '  "solo_level":              "<Prestructural | Unistructural | Multistructural | Relational | Extended Abstract>",\n'
-        '  "solo_evidence":           [<2-3 specific transcript moments showing depth of understanding>],\n'
-        '  "solo_reasoning":          "<explanation of why this evidence places the learner at this SOLO level>",\n'
-        '  "solo_confidence":         "<high | medium | low>",\n'
-        '  "insufficient_data_note":  null | "<what is missing, most probable interpretation, and supporting quote>",\n'
-        '  "observed_patterns":       [<2-3 strings: \'<behaviour>: "<quote from transcript>"\'>],\n'
-        '  "instructor_note":         "<one sentence on how to scaffold learning for this learner>"\n'
+        '  "honey_mumford_style":            "<Activist | Reflector | Theorist | Pragmatist>",\n'
+        '  "honey_mumford_evidence":         [<2-3 direct quotes or close paraphrases>],\n'
+        '  "honey_mumford_reasoning":        "<explanation>",\n'
+        '  "honey_mumford_confidence":       "<high | medium | low>",\n'
+        '  "solo_level":                     "<Prestructural | Unistructural | Multistructural | Relational | Extended Abstract>",\n'
+        '  "solo_evidence":                  [<2-3 specific transcript moments>],\n'
+        '  "solo_reasoning":                 "<explanation>",\n'
+        '  "solo_confidence":                "<high | medium | low>",\n'
+        '  "insufficient_data_note":         null | "<what is missing and most probable interpretation>",\n'
+        '  "observed_patterns":              [<2-3 strings: \'<behaviour>: "<quote>"\'>],\n'
+        '  "probe_phase_improvement":        true | false,\n'
+        '  "probe_phase_improvement_note":   "<one sentence>" | null,\n'
+        '  "instructor_note":                "<one sentence on how to scaffold learning for this learner>"\n'
         "}"
     )
 
@@ -198,6 +218,7 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
         "honey_mumford_evidence", "honey_mumford_reasoning",
         "solo_evidence", "solo_reasoning",
         "insufficient_data_note", "observed_patterns", "instructor_note",
+        "probe_phase_improvement_note",
     )
     for field in _prose_fields:
         if field in result:

@@ -1199,10 +1199,15 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <span id="assess-title"></span>
     <span id="assess-meta"></span>
   </div>
+  <div id="probing-banner" class="hidden" style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:8px 20px;font-size:.82rem;color:#1d4ed8;display:flex;align-items:center;gap:8px;flex-shrink:0">
+    <span style="font-weight:700">Probing Phase</span>
+    <span style="color:#64748b" id="probe-progress"></span>
+    <span style="color:#64748b;font-style:italic">— answer each question as specifically as you can.</span>
+  </div>
   <div id="chat-area"></div>
   <div id="input-area">
     <textarea id="user-input" rows="1" placeholder="Describe what you would do…"></textarea>
-    <button class="btn btn-ghost"   id="btn-finish">Finish</button>
+    <button class="btn btn-ghost"   id="btn-done" style="white-space:nowrap;border-color:#10b981;color:#10b981" title="I've said everything I want to say — move to follow-up questions">I'm Done</button>
     <button class="btn btn-primary" id="btn-send">Send</button>
   </div>
 </div>
@@ -1233,15 +1238,9 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <label>One-sentence description (shown in the scenario list)</label>
         <input type="text" id="f-description" placeholder="e.g. The learner must demonstrate the correct response to a suspected stroke.">
       </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Learner's role</label>
-          <input type="text" id="f-role" value="participant" placeholder="e.g. nurse, driver, technician">
-        </div>
-        <div class="field">
-          <label>Max turns</label>
-          <input type="number" id="f-turns" value="8" min="2" max="20">
-        </div>
+      <div class="field">
+        <label>Learner's role</label>
+        <input type="text" id="f-role" value="participant" placeholder="e.g. nurse, driver, technician">
       </div>
     </div>
 
@@ -1276,6 +1275,50 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
       <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Short phrases the learner must mention. Weight = how many points each is worth when scoring.</p>
       <div class="dynamic-list" id="keypoint-list"></div>
       <button class="btn-add" id="btn-add-keypoint">+ Add key point</button>
+    </div>
+
+    <!-- Decision points -->
+    <div class="form-section">
+      <h3>Decision Points <span style="font-weight:400;color:var(--muted);font-size:.78rem">— key branching moments in the procedure (optional)</span></h3>
+      <div class="dynamic-list" id="decision-list"></div>
+      <button class="btn-add" id="btn-add-decision">+ Add decision point</button>
+    </div>
+
+    <!-- Failure modes -->
+    <div class="form-section">
+      <h3>Failure Modes <span style="font-weight:400;color:var(--muted);font-size:.78rem">— common errors learners make (optional)</span></h3>
+      <div class="dynamic-list" id="failure-list"></div>
+      <button class="btn-add" id="btn-add-failure">+ Add failure mode</button>
+    </div>
+
+    <!-- Edge cases -->
+    <div class="form-section">
+      <h3>Edge Cases <span style="font-weight:400;color:var(--muted);font-size:.78rem">— atypical situations that change the correct response (optional)</span></h3>
+      <div class="dynamic-list" id="edge-list"></div>
+      <button class="btn-add" id="btn-add-edge">+ Add edge case</button>
+    </div>
+
+    <!-- Probe bank -->
+    <div class="form-section">
+      <h3>Probe Bank <span style="font-weight:400;color:var(--muted);font-size:.78rem">— follow-up questions for the probing phase (optional; generated automatically if empty)</span></h3>
+      <div class="dynamic-list" id="probe-list"></div>
+      <button class="btn-add" id="btn-add-probe">+ Add probe</button>
+    </div>
+
+    <!-- Scoring weights -->
+    <div class="form-section">
+      <h3>Scoring Weights</h3>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Coverage and quality weights must sum to 1.0. Combined score = coverage_weight × coverage + quality_weight × quality.</p>
+      <div class="field-row">
+        <div class="field">
+          <label>Coverage weight (0–1)</label>
+          <input type="number" id="f-cov-weight" value="0.6" min="0" max="1" step="0.05">
+        </div>
+        <div class="field">
+          <label>Quality weight (0–1)</label>
+          <input type="number" id="f-qual-weight" value="0.4" min="0" max="1" step="0.05">
+        </div>
+      </div>
     </div>
 
     <div class="create-actions">
@@ -1526,7 +1569,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 
 // ── State ──────────────────────────────────────
-const S  = { sessionId: null, maxTurns: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
+const S  = { sessionId: null, phase: 'recall', probeCount: 0, probeNumber: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
 const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null,
              llmCheckTimer: null, llmLastWordCount: 0, llmInFlight: false };
 
@@ -1786,14 +1829,19 @@ function hideTyping() {
 }
 
 function updateMeta() {
-  $('assess-meta').textContent = `Turn ${S.turn} of ${S.maxTurns}`;
+  if (S.phase === 'probing') {
+    $('assess-meta').textContent = `Probe ${S.probeNumber} of ${S.probeCount}`;
+    $('probe-progress').textContent = `(${S.probeNumber} / ${S.probeCount})`;
+  } else {
+    $('assess-meta').textContent = 'Recall Phase';
+  }
 }
 
 function lock(on) {
   S.busy = on;
   $('user-input').disabled = on;
   $('btn-send').disabled   = on;
-  $('btn-finish').disabled = on;
+  $('btn-done').disabled   = on;
 }
 
 // ── Scenarios ──────────────────────────────────
@@ -2026,9 +2074,9 @@ async function loadScenarios() {
       <div class="info">
         <h3>${s.title}</h3>
         <p>${s.description}</p>
-        <div class="meta">${s.max_turns} turns</div>
+        ${s.has_probe_bank ? '<div class="meta" style="color:#10b981">&#10003; Probe bank</div>' : ''}
       </div>`;
-    card.addEventListener('click', () => startScenario(s.index, s.title, s.max_turns));
+    card.addEventListener('click', () => startScenario(s.index, s.title));
     list.appendChild(card);
   });
 }
@@ -2038,14 +2086,19 @@ async function startScenario(index, title) {
   $('chat-area').innerHTML = '';
   $('assess-title').textContent = title;
   S.turn = 0;
+  S.phase = 'recall';
+  S.probeCount = 0;
+  S.probeNumber = 0;
 
   const data = await api('/api/start', { index, provider: S.provider, model: S.model, api_key: S.apiKey || undefined });
   S.sessionId = data.session_id;
-  S.maxTurns  = data.max_turns;
+  S.phase = data.phase || 'recall';
   updateMeta();
 
   hide('view-scenarios');
   show('view-assess');
+  hide('probing-banner');
+  $('btn-done').style.display = '';
   addBubble('examiner', data.opening);
   WritingTracker.reset();
   $('user-input').focus();
@@ -2070,6 +2123,15 @@ async function send() {
     const data = await api('/api/respond', { session_id: S.sessionId, user_input: text, writing_metrics: writingMetrics });
     hideTyping();
     S.turn++;
+    if (data.phase) {
+      S.phase = data.phase;
+      if (data.probe_count)  S.probeCount  = data.probe_count;
+      if (data.probe_number) S.probeNumber = data.probe_number;
+      if (S.phase === 'probing') {
+        show('probing-banner');
+        hide('btn-done');
+      }
+    }
     updateMeta();
     if (data.narration) addBubble('examiner', data.narration);
     if (data.concluded) {
@@ -2175,24 +2237,43 @@ function renderProfile(p) {
   $('profile-content').innerHTML = _buildProfileHTML(p);
 }
 
-// ── Finish button ──────────────────────────────
-$('btn-finish').addEventListener('click', async () => {
-  if (S.busy) return;
-  if (!confirm('End the assessment now and see your results?')) return;
+// ── End recall (I'm Done button) ───────────────
+async function endRecall() {
+  if (S.busy || S.phase !== 'recall') return;
   const text = $('user-input').value.trim();
+  const writingMetrics = WritingTracker.collect(text);
   if (text) {
-    const writingMetrics = WritingTracker.collect(text);
     addBubble('user', text);
     $('user-input').value = '';
-    lock(true);
-    showTyping();
-    try { await api('/api/respond', { session_id: S.sessionId, user_input: text, writing_metrics: writingMetrics }); } catch (_) {}
-    hideTyping();
-  } else {
-    lock(true);
+    $('user-input').style.height = 'auto';
   }
-  await evaluate();
-});
+  lock(true);
+  showTyping();
+  WritingTracker.reset();
+  try {
+    const data = await api('/api/end-recall', { session_id: S.sessionId, final_text: text || null, writing_metrics: writingMetrics });
+    hideTyping();
+    if (data.concluded) {
+      await evaluate();
+      return;
+    }
+    S.phase = data.phase || 'probing';
+    S.probeCount  = data.probe_count  || 0;
+    S.probeNumber = data.probe_number || 1;
+    show('probing-banner');
+    hide('btn-done');
+    updateMeta();
+    if (data.first_probe) addBubble('examiner', data.first_probe);
+    lock(false);
+    $('user-input').focus();
+  } catch (err) {
+    hideTyping();
+    addBubble('examiner', `⚠ ${err.message}`);
+    lock(false);
+  }
+}
+
+$('btn-done').addEventListener('click', endRecall);
 
 // ── Input wiring ───────────────────────────────
 $('btn-send').addEventListener('click', send);
@@ -2220,13 +2301,44 @@ function renderResults(data) {
   const pct = Math.round((ev.score || 0) * 100);
   const col = scoreColor(ev.score || 0);
 
-  let html = `
+  const hasTwoDim = ev.coverage_score != null && ev.quality_score != null;
+  let scoreHtml = '';
+  if (hasTwoDim) {
+    const covPct  = Math.round((ev.coverage_score || 0) * 100);
+    const qualPct = Math.round((ev.quality_score  || 0) * 100);
+    scoreHtml = `
+    <div class="score-card" style="padding-bottom:8px">
+      <div style="display:flex;gap:24px;justify-content:center;margin-bottom:12px;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Coverage</div>
+          <div style="font-size:2rem;font-weight:700;color:${scoreColor(ev.coverage_score||0)}">${covPct}%</div>
+          <div style="font-size:.7rem;color:var(--muted)">steps recalled</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Explanation Quality</div>
+          <div style="font-size:2rem;font-weight:700;color:${scoreColor(ev.quality_score||0)}">${qualPct}%</div>
+          <div style="font-size:.7rem;color:var(--muted)">depth of reasoning</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Overall</div>
+          <div class="score-number" style="color:${col};font-size:2.4rem">${pct}%</div>
+          <div style="font-size:.7rem;color:var(--muted)">combined</div>
+        </div>
+      </div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill" id="score-fill" style="background:${col}"></div>
+      </div>
+    </div>`;
+  } else {
+    scoreHtml = `
     <div class="score-card">
       <div class="score-number" style="color:${col}">${pct}%</div>
       <div class="score-bar-bg">
         <div class="score-bar-fill" id="score-fill" style="background:${col}"></div>
       </div>
     </div>`;
+  }
+  let html = scoreHtml;
 
   if (ev.feedback) {
     html += `<div class="result-section">
@@ -2575,16 +2687,20 @@ $('btn-fr-again').addEventListener('click', () => {
 // ── Scenario Creator ───────────────────────────
 
 function showCreate() {
-  // clear the form before showing it
   $('ai-description').value  = '';
   $('f-title').value         = '';
   $('f-description').value   = '';
   $('f-situation').value     = '';
   $('f-role').value          = 'participant';
-  $('f-turns').value         = '8';
   $('f-answer').value        = '';
+  $('f-cov-weight').value    = '0.6';
+  $('f-qual-weight').value   = '0.4';
   $('constraint-list').innerHTML = '';
   $('keypoint-list').innerHTML   = '';
+  $('decision-list').innerHTML   = '';
+  $('failure-list').innerHTML    = '';
+  $('edge-list').innerHTML       = '';
+  $('probe-list').innerHTML      = '';
   $('create-note').textContent   = '';
   hide('view-scenarios');
   show('view-create');
@@ -2642,8 +2758,65 @@ function addKeyPointRow(value, weight) {
   list.appendChild(item);
 }
 
+function addSimpleRow(listId, placeholder, value) {
+  const list = $(listId);
+  const item = document.createElement('div');
+  item.className = 'dynamic-item';
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.placeholder = placeholder;
+  input.value       = value || '';
+  const remove = document.createElement('button');
+  remove.className   = 'btn-remove';
+  remove.title       = 'Remove';
+  remove.textContent = '×';
+  remove.addEventListener('click', () => item.remove());
+  item.appendChild(input);
+  item.appendChild(remove);
+  list.appendChild(item);
+}
+
+const PROBE_TYPES = ['sequencing','how','rationale','decision','error','edge_case'];
+
+function addProbeRow(probe) {
+  const list = $('probe-list');
+  const item = document.createElement('div');
+  item.className = 'dynamic-item';
+
+  const sel = document.createElement('select');
+  sel.title = 'Probe type';
+  sel.style.width = '140px';
+  PROBE_TYPES.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value       = t;
+    opt.textContent = t;
+    if (probe && probe.type === t) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.placeholder = 'Probe question text…';
+  input.value       = (probe && probe.question) || '';
+
+  const remove = document.createElement('button');
+  remove.className   = 'btn-remove';
+  remove.title       = 'Remove';
+  remove.textContent = '×';
+  remove.addEventListener('click', () => item.remove());
+
+  item.appendChild(sel);
+  item.appendChild(input);
+  item.appendChild(remove);
+  list.appendChild(item);
+}
+
 $('btn-add-constraint').addEventListener('click', () => addConstraintRow());
 $('btn-add-keypoint').addEventListener('click',   () => addKeyPointRow());
+$('btn-add-decision').addEventListener('click',   () => addSimpleRow('decision-list', 'e.g. Is the patient conscious?'));
+$('btn-add-failure').addEventListener('click',    () => addSimpleRow('failure-list',  'e.g. Forgetting to check for hazards'));
+$('btn-add-edge').addEventListener('click',       () => addSimpleRow('edge-list',     'e.g. Patient is pregnant'));
+$('btn-add-probe').addEventListener('click',      () => addProbeRow(null));
 
 $('btn-cancel-create').addEventListener('click', () => {
   hide('view-create');
@@ -2664,19 +2837,33 @@ $('btn-fill-ai').addEventListener('click', async () => {
     const data = await api('/api/generate-scenario', { description: desc, provider: S.provider, model: S.model, api_key: S.apiKey || undefined });
     const s    = data.scenario;
 
-    // populate each form field with the AI draft
-    $('f-title').value       = s.title        || '';
-    $('f-description').value = s.description  || '';
-    $('f-situation').value   = s.situation    || '';
-    $('f-role').value        = s.user_role    || 'participant';
-    $('f-turns').value       = s.max_turns    || 8;
-    $('f-answer').value      = s.expert_answer|| '';
+    $('f-title').value       = s.title         || '';
+    $('f-description').value = s.description   || '';
+    $('f-situation').value   = s.situation     || '';
+    $('f-role').value        = s.user_role     || 'participant';
+    $('f-answer').value      = s.expert_answer || '';
+    if (s.scoring_weights) {
+      $('f-cov-weight').value  = s.scoring_weights.coverage || 0.6;
+      $('f-qual-weight').value = s.scoring_weights.quality  || 0.4;
+    }
 
     $('constraint-list').innerHTML = '';
     (s.constraints || []).forEach(c => addConstraintRow(c));
 
     $('keypoint-list').innerHTML = '';
     (s.key_points || []).forEach(p => addKeyPointRow(p, s.rubric ? s.rubric[p] : 2));
+
+    $('decision-list').innerHTML = '';
+    (s.decision_points || []).forEach(d => addSimpleRow('decision-list', 'e.g. Is the patient conscious?', d));
+
+    $('failure-list').innerHTML = '';
+    (s.failure_modes || []).forEach(f => addSimpleRow('failure-list', 'e.g. Forgetting to check for hazards', f));
+
+    $('edge-list').innerHTML = '';
+    (s.edge_cases || []).forEach(e => addSimpleRow('edge-list', 'e.g. Patient is pregnant', e));
+
+    $('probe-list').innerHTML = '';
+    (s.probe_bank || []).forEach(pb => addProbeRow(pb));
 
     $('create-note').textContent = 'AI draft loaded — review and edit each field before saving.';
   } catch (err) {
@@ -2711,11 +2898,35 @@ $('btn-save-scenario').addEventListener('click', async () => {
     if (text) { keyPoints.push(text); rubric[text] = weight; }
   });
 
-  // collect constraints from the dynamic rows
   const constraints = [];
   $('constraint-list').querySelectorAll('.dynamic-item input').forEach(input => {
     if (input.value.trim()) constraints.push(input.value.trim());
   });
+
+  const decisionPoints = [];
+  $('decision-list').querySelectorAll('.dynamic-item input').forEach(input => {
+    if (input.value.trim()) decisionPoints.push(input.value.trim());
+  });
+
+  const failureModes = [];
+  $('failure-list').querySelectorAll('.dynamic-item input').forEach(input => {
+    if (input.value.trim()) failureModes.push(input.value.trim());
+  });
+
+  const edgeCases = [];
+  $('edge-list').querySelectorAll('.dynamic-item input').forEach(input => {
+    if (input.value.trim()) edgeCases.push(input.value.trim());
+  });
+
+  const probeBank = [];
+  $('probe-list').querySelectorAll('.dynamic-item').forEach(item => {
+    const type     = item.querySelector('select').value;
+    const question = item.querySelector('input').value.trim();
+    if (question) probeBank.push({ type, question });
+  });
+
+  const covWeight  = parseFloat($('f-cov-weight').value)  || 0.6;
+  const qualWeight = parseFloat($('f-qual-weight').value) || 0.4;
 
   const btn = $('btn-save-scenario');
   btn.innerHTML = '<span class="spinner"></span>Saving…';
@@ -2723,15 +2934,19 @@ $('btn-save-scenario').addEventListener('click', async () => {
 
   try {
     const data = await api('/api/save-scenario', {
-      title:         title,
-      description:   $('f-description').value.trim(),
-      situation:     situation,
-      user_role:     $('f-role').value.trim() || 'participant',
-      max_turns:     parseInt($('f-turns').value) || 8,
-      constraints:   constraints,
-      expert_answer: answer,
-      key_points:    keyPoints,
-      rubric:        rubric,
+      title:            title,
+      description:      $('f-description').value.trim(),
+      situation:        situation,
+      user_role:        $('f-role').value.trim() || 'participant',
+      constraints:      constraints,
+      expert_answer:    answer,
+      key_points:       keyPoints,
+      rubric:           rubric,
+      decision_points:  decisionPoints,
+      failure_modes:    failureModes,
+      edge_cases:       edgeCases,
+      probe_bank:       probeBank,
+      scoring_weights:  { coverage: covWeight, quality: qualWeight },
     });
 
     $('create-note').textContent = 'Saved — returning to scenario list…';

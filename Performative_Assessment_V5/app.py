@@ -347,7 +347,7 @@ def api_scenarios():
             "id":          s["id"],
             "title":       s["title"],
             "description": s["description"],
-            "max_turns":   s["max_turns"],
+            "has_probe_bank": bool(s.get("probe_bank")),
         }
         for i, s in enumerate(scenarios)
     ]
@@ -434,7 +434,38 @@ def api_start():
     return jsonify({
         "session_id": sid,
         "opening":    opening,
-        "max_turns":  scenario["max_turns"],
+        "phase":      "recall",
+    })
+
+
+@app.route("/api/end-recall", methods=["POST"])
+@auth.login_required
+def api_end_recall():
+    """Called when the learner clicks 'I'm Done' in the recall phase.
+    Triggers gap analysis, builds the probe queue, transitions to probing phase,
+    and returns the first probe question."""
+    data = request.get_json()
+    st, err = _get_state(data)
+    if err:
+        return err
+
+    runner = st["runner"]
+    if runner.phase != "recall":
+        return jsonify({"error": "not in recall phase"}), 400
+
+    # submit any final text typed before clicking I'm Done
+    final_text = (data.get("final_text") or "").strip()
+    if final_text:
+        runner.respond(final_text, writing_metrics=data.get("writing_metrics"))
+
+    first_probe, concluded = runner.end_recall()
+
+    return jsonify({
+        "first_probe":   first_probe,
+        "concluded":     concluded,
+        "phase":         runner.phase,
+        "probe_count":   runner.probe_count(),
+        "probe_number":  runner.current_probe_number(),
     })
 
 
@@ -445,8 +476,15 @@ def api_respond():
     st, err = _get_state(data)
     if err:
         return err
-    narration, concluded = st["runner"].respond(data["user_input"], writing_metrics=data.get("writing_metrics"))
-    return jsonify({"narration": narration, "concluded": concluded})
+    runner = st["runner"]
+    narration, concluded = runner.respond(data["user_input"], writing_metrics=data.get("writing_metrics"))
+    return jsonify({
+        "narration":    narration,
+        "concluded":    concluded,
+        "phase":        runner.phase,
+        "probe_number": runner.current_probe_number() if runner.phase == "probing" else None,
+        "probe_count":  runner.probe_count() if runner.phase == "probing" else None,
+    })
 
 
 @app.route("/api/evaluate", methods=["POST"])
@@ -459,16 +497,25 @@ def api_evaluate():
 
     runner      = st["runner"]
     sess        = st["session"]
-    evaluations = sess.evaluate(runner.scenario, transcript=runner.transcript())
+    evaluations = sess.evaluate(
+        runner.scenario,
+        transcript=runner.transcript(),
+        recall_transcript=runner.recall_transcript,
+        probe_transcript=runner.probe_transcript,
+    )
 
     eval_list = [
         {
-            "score":          ev["score"],
-            "feedback":       ev["feedback"],
-            "strengths":      ev["strengths"],
-            "gaps":           ev["gaps"],
-            "matched_points": ev["matched_points"],
-            "missed_points":  ev["missed_points"],
+            "score":           ev["score"],
+            "coverage_score":  ev.get("coverage_score", ev["score"]),
+            "quality_score":   ev.get("quality_score", 0.0),
+            "feedback":        ev["feedback"],
+            "strengths":       ev["strengths"],
+            "gaps":            ev["gaps"],
+            "matched_points":  ev["matched_points"],
+            "missed_points":   ev["missed_points"],
+            "quality_ratings": ev.get("quality_ratings", {}),
+            "point_sources":   ev.get("point_sources", {}),
         }
         for ev in evaluations
     ]
@@ -502,6 +549,8 @@ def api_thinking_profile():
         model=sess.model, api_key=sess.api_key, base_url=sess.base_url,
         writing_metrics=runner.writing_metrics,
         user_inputs=runner.user_inputs,
+        recall_transcript=runner.recall_transcript,
+        probe_transcript=runner.probe_transcript,
     )
     st["profile"] = profile
     return jsonify({"profile": profile})
@@ -526,6 +575,8 @@ def api_report():
             model=sess.model, api_key=sess.api_key, base_url=sess.base_url,
             writing_metrics=st["runner"].writing_metrics,
             user_inputs=st["runner"].user_inputs,
+            recall_transcript=st["runner"].recall_transcript,
+            probe_transcript=st["runner"].probe_transcript,
         )
         st["profile"] = thinking_profile
 
@@ -575,14 +626,26 @@ def api_save_scenario():
         return jsonify({"error": "title is required"}), 400
 
     scenario_id   = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
+    # normalize scoring weights
+    sw = data.get("scoring_weights", {})
+    cw = float(sw.get("coverage", 0.6))
+    qw = float(sw.get("quality",  0.4))
+    total_w = cw + qw
+    if total_w > 0 and abs(total_w - 1.0) > 0.01:
+        cw, qw = round(cw / total_w, 4), round(qw / total_w, 4)
+
     scenario_data = {
-        "id":          scenario_id,
-        "title":       title,
-        "description": data.get("description", ""),
-        "situation":   data.get("situation", ""),
-        "user_role":   data.get("user_role", "participant"),
-        "max_turns":   int(data.get("max_turns", 8)),
-        "constraints": data.get("constraints", []),
+        "id":              scenario_id,
+        "title":           title,
+        "description":     data.get("description", ""),
+        "situation":       data.get("situation", ""),
+        "user_role":       data.get("user_role", "participant"),
+        "constraints":     data.get("constraints", []),
+        "decision_points": data.get("decision_points", []),
+        "failure_modes":   data.get("failure_modes", []),
+        "edge_cases":      data.get("edge_cases", []),
+        "probe_bank":      data.get("probe_bank", []),
+        "scoring_weights": {"coverage": cw, "quality": qw},
         "expert_answers": [
             {
                 "id":         "expert_001",

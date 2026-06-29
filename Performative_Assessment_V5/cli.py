@@ -11,7 +11,7 @@ import engine        # all the program logic lives in engine.py
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"  # path to the scenarios/ folder
 WIDTH = 64           # width of the decorative divider lines
-EXIT_WORDS = {"done", "end", "no", "nothing", "nope", "none"}  # words that end a session
+RECALL_DONE_WORDS = {"done", "end", "finished", "complete"}  # words that end recall phase
 _provider_cfg = {}  # set in main() once the provider is resolved; used by run_assessment()
 
 
@@ -35,52 +35,102 @@ def pick_scenario(scenarios):
 
 
 def run_assessment(scenario):
-    # run the live back-and-forth conversation for one scenario
     p = _provider_cfg
     runner = engine.ScenarioRunner(scenario, model=p["model"], api_key=p["api_key"], base_url=p["base_url"])
 
     print("\n  Walk through everything you would do, step by step.")
-    print("  Type 'done' when you have finished.\n")
+    print("  Type 'done' when you have said everything.\n")
     divider("=")
-    print("\n" + runner.start() + "\n")  # print the opening situation + "What do you do?"
+    print("\n" + runner.start() + "\n")
     divider()
 
+    # ── Recall phase ──────────────────────────────
     while True:
         try:
-            user_input = input("You: ").strip()  # read one line from the user
+            user_input = input("You: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
-            break  # Ctrl-D or Ctrl-C exits gracefully
+            break
 
         if not user_input:
-            continue  # ignore blank lines, ask again
+            continue
 
-        if user_input.lower() in EXIT_WORDS:
-            break  # the user is done
+        if user_input.lower() in RECALL_DONE_WORDS:
+            break  # end recall, move to probing
 
-        print("\n[...]\n", flush=True)  # show a waiting indicator while the API responds
+        print("\n[...]\n", flush=True)
 
         try:
-            narration, concluded = runner.respond(user_input)  # send input, get examiner response
+            narration, concluded = runner.respond(user_input)
         except (ConnectionError, KeyboardInterrupt):
             print("(interrupted)")
             break
 
-        print(narration + "\n")  # print what the examiner says back
+        print(narration + "\n")
         divider()
 
         if concluded:
-            break  # max turns reached — end the session
+            if runner.recall_history or runner.probe_history:
+                return runner
+            return None
 
-    if runner.user_inputs:
-        return runner  # return the runner so the caller can read the transcript
-    return None        # return None if the learner never typed anything
+    # ── Transition to probing ──────────────────────
+    if not runner.recall_history:
+        return None  # nothing was said
+
+    print("\n[...]\n", flush=True)
+    try:
+        first_probe, concluded = runner.end_recall()
+    except (ConnectionError, KeyboardInterrupt):
+        print("(interrupted)")
+        return runner
+
+    if concluded:
+        return runner
+
+    divider("=")
+    print("  PROBING PHASE")
+    print("  Answer each question as specifically as you can.\n")
+    divider("=")
+    print("\n" + first_probe + "\n")
+    divider()
+
+    # ── Probing phase ──────────────────────────────
+    while True:
+        try:
+            user_input = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+
+        if not user_input:
+            continue
+
+        print("\n[...]\n", flush=True)
+
+        try:
+            narration, concluded = runner.respond(user_input)
+        except (ConnectionError, KeyboardInterrupt):
+            print("(interrupted)")
+            break
+
+        print(narration + "\n")
+        divider()
+
+        if concluded:
+            break
+
+    return runner
 
 
 def show_evaluation(evaluations):
-    # print scores, strengths, gaps, and feedback for each evaluation
     for ev in evaluations:
-        print("\nScore: " + f"{ev['score']:.0%}" + "\n")  # e.g. "Score: 75%"
+        if ev.get("coverage_score") is not None and ev.get("quality_score") is not None:
+            print(f"\n  Coverage:   {ev['coverage_score']:.0%}  (steps recalled)")
+            print(f"  Quality:    {ev['quality_score']:.0%}  (depth of reasoning)")
+            print(f"  Overall:    {ev['score']:.0%}\n")
+        else:
+            print("\nScore: " + f"{ev['score']:.0%}" + "\n")
         if ev["strengths"]:
             print("Strengths:")
             for s in ev["strengths"]:
@@ -122,10 +172,15 @@ def main():
 
         runner = run_assessment(scenario)
 
-        if runner:  # runner is None if the learner didn't say anything
+        if runner:
             print("\n[Evaluating...]\n", flush=True)
             divider()
-            evaluations = session.evaluate(scenario, transcript=runner.transcript())
+            evaluations = session.evaluate(
+                scenario,
+                transcript=runner.transcript(),
+                recall_transcript=runner.recall_transcript,
+                probe_transcript=runner.probe_transcript,
+            )
             show_evaluation(evaluations)
             divider()
 

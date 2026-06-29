@@ -1,50 +1,92 @@
 {
-  "id": "scenario_000",
-  "title": "Flat Tire — Roadside Emergency",
-  "description": "The learner must demonstrate the correct and safe process for changing a flat tire.",
-  "situation": "You are driving alone on a rural highway at dusk when you hear a loud bang and your car begins pulling sharply to the right. You slow down, steer safely onto the shoulder, and stop. You get out and confirm the rear passenger tire is completely flat. It is getting dark, there is light traffic passing, and you have a full spare tire kit in the trunk — spare tire, car jack, lug wrench, and owner's manual.",
+  "title": "Changing a Flat Tyre",
+  "description": "The learner must walk through the complete procedure for safely changing a flat tyre on the roadside.",
+  "situation": "You are driving on a motorway when you notice the car is pulling to one side and handling oddly. You pull over to the hard shoulder and discover you have a flat tyre. Your spare tyre and jack are in the boot. Walk through exactly what you would do — step by step, in as much detail as you can. When you feel you've said everything, click 'I'm Done' to continue.",
   "user_role": "driver",
-  "max_turns": 10,
   "constraints": [
-    "Safety must be established first: vehicle fully off the road, hazard lights on, parking brake set",
-    "Lug nuts must be loosened before the vehicle is jacked up",
-    "The jack must be placed at the vehicle manufacturer's designated jack point",
-    "Lug nuts must be tightened in a star/cross pattern",
-    "The learner must check the spare tire's pressure before driving",
-    "The learner must acknowledge the spare tire's speed and distance limitations"
+    "The car must be parked on level ground away from traffic before jacking",
+    "The handbrake must be applied before any wheel is removed",
+    "Wheel nuts must be tightened in a diagonal pattern and to the manufacturer's specification"
   ],
   "expert_answers": [
     {
-      "id": "expert_001",
-      "answer": "Move the vehicle completely off the road onto a stable, flat surface. Turn on hazard lights immediately and apply the parking brake. Retrieve the spare tire, jack, and lug wrench from the trunk. With the flat still on the ground, break the lug nuts loose — do not remove them yet. Locate the manufacturer's designated jack point under the frame (consult the owner's manual if needed) and position the jack there. Raise the vehicle until the flat tire is a few inches off the ground. Remove the lug nuts fully and pull off the flat. Mount the spare tire and hand-tighten the lug nuts in a star pattern. Lower the vehicle until the spare just contacts the ground, then torque the lug nuts fully in a star pattern. Lower completely and remove the jack. Check the spare's pressure with a gauge before driving. Stow all equipment and the flat in the trunk. Drive at or below 50 mph and reach a tire shop within 50–70 miles — compact spares are not rated for extended use.",
+      "answer": "1. Signal and move to the hard shoulder; switch on hazard lights. 2. Apply the handbrake and switch off the engine. 3. Get all occupants out of the vehicle and behind the barrier or well away from traffic. 4. Retrieve the spare tyre, jack, wheel brace, and locking wheel-nut key from the boot. 5. Place warning triangle at least 45 metres behind the car. 6. Loosen the wheel nuts on the flat tyre slightly while the wheel is still on the ground (break torque). 7. Consult the vehicle handbook to locate the correct jack point for that corner. 8. Position the jack under the correct jacking point and raise the car until the flat tyre clears the ground. 9. Remove the wheel nuts completely and keep them safe. 10. Remove the flat tyre and mount the spare, aligning holes to studs. 11. Hand-tighten the wheel nuts in a diagonal/star pattern. 12. Lower the car fully until the jack is no longer bearing weight. 13. Tighten the wheel nuts fully in diagonal order to the recommended torque. 14. Stow the flat tyre, jack, and equipment securely. 15. Check the spare tyre pressure at the earliest opportunity. 16. Observe any speed restriction on the spare (typically 50 mph for a space-saver). 17. Have the punctured tyre inspected or replaced as soon as possible.",
       "key_points": [
         "hazard lights",
-        "parking brake",
-        "loosen lug nuts before jacking",
-        "jack point",
-        "raise the vehicle",
-        "remove flat tire",
-        "mount spare",
-        "star pattern",
-        "check spare tire pressure",
-        "spare tire speed and distance limit"
+        "handbrake",
+        "passengers away from traffic",
+        "warning triangle",
+        "loosen nuts before jacking",
+        "correct jack point",
+        "jack until tyre clears ground",
+        "diagonal nut tightening",
+        "lower fully before final torque",
+        "check spare tyre pressure",
+        "speed restriction on spare"
       ],
       "rubric": {
         "hazard lights": 2,
-        "parking brake": 2,
-        "loosen lug nuts before jacking": 4,
-        "jack point": 3,
-        "raise the vehicle": 1,
-        "remove flat tire": 1,
-        "mount spare": 1,
-        "star pattern": 3,
-        "check spare tire pressure": 2,
-        "spare tire speed and distance limit": 2
+        "handbrake": 2,
+        "passengers away from traffic": 3,
+        "warning triangle": 2,
+        "loosen nuts before jacking": 3,
+        "correct jack point": 3,
+        "jack until tyre clears ground": 2,
+        "diagonal nut tightening": 2,
+        "lower fully before final torque": 3,
+        "check spare tyre pressure": 2,
+        "speed restriction on spare": 2
       }
     }
   ],
-  "metadata": {
-    "domain": "automotive_safety",
-    "difficulty": "medium"
+  "decision_points": [
+    "Is the car in a safe position to jack — level, firm ground, away from traffic?",
+    "Is the spare a full-size spare or a space-saver, and does this change any steps?",
+    "Is there a locking wheel-nut key, and do you have it before raising the car?"
+  ],
+  "failure_modes": [
+    "Loosening wheel nuts after raising the car (wheel spins freely; car may fall off jack)",
+    "Jacking on the wrong bodywork point (risk of chassis damage or jack collapse)",
+    "Not applying the handbrake before jacking (car can roll off jack)",
+    "Overtightening or undertightening wheel nuts by hand without final torque check",
+    "Leaving passengers in the car while working on the hard shoulder",
+    "Forgetting to stow the flat tyre and equipment before driving off"
+  ],
+  "edge_cases": [
+    "The car has run-flat tyres — these may not need an immediate tyre change but must be inspected",
+    "There is no spare tyre — must call breakdown assistance instead",
+    "The flat is on a live motorway lane — never change a tyre there; call for assistance",
+    "The jack is damaged or missing — do not attempt to change; call for assistance",
+    "Another tyre is also low on pressure — check all tyres before driving off"
+  ],
+  "probe_bank": [
+    {
+      "type": "sequencing",
+      "question": "You mentioned loosening the wheel nuts — at exactly what point in the sequence do you do that, and why does the order matter?"
+    },
+    {
+      "type": "how",
+      "question": "How do you know where to position the jack under the car without damaging it?"
+    },
+    {
+      "type": "rationale",
+      "question": "Why do you tighten the wheel nuts in a diagonal pattern rather than going around the wheel in order?"
+    },
+    {
+      "type": "decision",
+      "question": "How would your approach change if the spare in the boot is a compact space-saver rather than a full-size spare?"
+    },
+    {
+      "type": "error",
+      "question": "What could go wrong if you raised the car on the jack before loosening the wheel nuts?"
+    },
+    {
+      "type": "edge_case",
+      "question": "What would you do differently if you discovered the flat tyre while on a live motorway lane rather than the hard shoulder?"
+    }
+  ],
+  "scoring_weights": {
+    "coverage": 0.6,
+    "quality": 0.4
   }
 }

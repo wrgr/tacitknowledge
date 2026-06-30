@@ -523,11 +523,14 @@ def api_start():
         "user_id":  session["user_id"],
     }
 
-    return jsonify({
+    result = {
         "session_id": sid,
         "opening":    opening,
         "phase":      "recall",
-    })
+    }
+    if session.get("role") == "admin" and scenario.get("expert_answers"):
+        result["debug_expert_answer"] = scenario["expert_answers"][0].get("answer", "")
+    return jsonify(result)
 
 
 @app.route("/api/end-recall", methods=["POST"])
@@ -587,14 +590,17 @@ def api_evaluate():
     if err:
         return err
 
-    runner      = st["runner"]
-    sess        = st["session"]
-    evaluations = sess.evaluate(
-        runner.scenario,
-        transcript=runner.transcript(),
-        recall_transcript=runner.recall_transcript,
-        probe_transcript=runner.probe_transcript,
-    )
+    runner = st["runner"]
+    sess   = st["session"]
+    try:
+        evaluations = sess.evaluate(
+            runner.scenario,
+            transcript=runner.transcript(),
+            recall_transcript=runner.recall_transcript,
+            probe_transcript=runner.probe_transcript,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
     eval_list = [
         {
@@ -647,14 +653,17 @@ def api_thinking_profile():
     if not sess.use_llm:
         return jsonify({"profile": None})
 
-    profile = engine.analyse_thinking_profile(
-        scenario, runner.transcript(),
-        model=sess.model, api_key=sess.api_key, base_url=sess.base_url,
-        writing_metrics=runner.writing_metrics,
-        user_inputs=runner.user_inputs,
-        recall_transcript=runner.recall_transcript,
-        probe_transcript=runner.probe_transcript,
-    )
+    try:
+        profile = engine.analyse_thinking_profile(
+            scenario, runner.transcript(),
+            model=sess.model, api_key=sess.api_key, base_url=sess.base_url,
+            writing_metrics=runner.writing_metrics,
+            user_inputs=runner.user_inputs,
+            recall_transcript=runner.recall_transcript,
+            probe_transcript=runner.probe_transcript,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     st["profile"] = profile
     return jsonify({"profile": profile})
 
@@ -683,14 +692,17 @@ def api_report():
         )
         st["profile"] = thinking_profile
 
-    path = engine.generate_report(
-        sess,
-        model=sess.model,
-        api_key=sess.api_key,
-        base_url=sess.base_url,
-        output_dir=user_reports_dir,
-        thinking_profile=thinking_profile,
-    )
+    try:
+        path = engine.generate_report(
+            sess,
+            model=sess.model,
+            api_key=sess.api_key,
+            base_url=sess.base_url,
+            output_dir=user_reports_dir,
+            thinking_profile=thinking_profile,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     return jsonify({"path": str(path)})
 
 
@@ -829,16 +841,19 @@ def api_save_prompt():
 @app.route("/api/fr/prompts", methods=["POST"])
 @auth.login_required
 def api_fr_prompts():
-    prompt_list = [
-        {
+    is_admin = session.get("role") == "admin"
+    prompt_list = []
+    for i, p in enumerate(prompts):
+        entry = {
             "index":       i,
             "id":          p["id"],
             "title":       p["title"],
             "description": p["description"],
             "word_limit":  p.get("word_limit"),
         }
-        for i, p in enumerate(prompts)
-    ]
+        if is_admin and p.get("expert_answers"):
+            entry["expert_answer"] = p["expert_answers"][0].get("answer", "")
+        prompt_list.append(entry)
     return jsonify({"prompts": prompt_list})
 
 
@@ -950,12 +965,15 @@ def api_fr_thinking_profile():
     if not engine.llm_is_available(st["api_key"]):
         return jsonify({"profile": None})
 
-    profile = engine.analyse_thinking_profile(
-        st["prompt"], st["evaluation"]["text"],
-        model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
-        writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
-        user_inputs=[st["evaluation"]["text"]],
-    )
+    try:
+        profile = engine.analyse_thinking_profile(
+            st["prompt"], st["evaluation"]["text"],
+            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
+            writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
+            user_inputs=[st["evaluation"]["text"]],
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     st["profile"] = profile
     return jsonify({"profile": profile})
 
@@ -985,12 +1003,15 @@ def api_fr_report():
         )
         st["profile"] = thinking_profile
 
-    path = engine.generate_fr_report(
-        st["prompt"], st["evaluation"],
-        model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
-        output_dir=user_reports_dir,
-        thinking_profile=thinking_profile,
-    )
+    try:
+        path = engine.generate_fr_report(
+            st["prompt"], st["evaluation"],
+            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
+            output_dir=user_reports_dir,
+            thinking_profile=thinking_profile,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     return jsonify({"path": str(path)})
 
 

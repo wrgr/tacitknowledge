@@ -386,6 +386,26 @@ def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, js
         ) from e
 
 
+_RETRYABLE = (LLMRateLimitError, ConnectionError)
+_CHAT_MAX_RETRIES = 3
+
+
+def _with_retry(fn, *args, **kwargs):
+    """Retry fn on transient failures (rate limits, network errors) with exponential backoff.
+
+    Delays: 5 s → 10 s before attempts 2 and 3. Non-retryable errors (auth, bad
+    request) are re-raised immediately without waiting.
+    """
+    for attempt in range(_CHAT_MAX_RETRIES):
+        try:
+            return fn(*args, **kwargs)
+        except _RETRYABLE:
+            if attempt < _CHAT_MAX_RETRIES - 1:
+                time.sleep(min(5 * 2 ** attempt, 60))
+                continue
+            raise
+
+
 def llm_generate(model, prompt, api_key, base_url):
     # One-sentence narration — thinking mode disabled so reasoning models respond directly.
     return _call_llm(model, api_key, base_url, 512, "", prompt, think=False)
@@ -395,14 +415,14 @@ def llm_chat(model, system, message, api_key, base_url):
     # Full structured response — used for evaluation and report generation.
     # think=False prevents thinking models from spending their token budget on
     # reasoning and truncating the JSON response.
-    return _call_llm(model, api_key, base_url, 8192, system, message, think=False)
+    return _with_retry(_call_llm, model, api_key, base_url, 8192, system, message, think=False)
 
 
 def llm_chat_json(model, system, message, api_key, base_url):
     # Like llm_chat but enables JSON mode (Ollama: format=json, OpenAI: response_format).
     # Uses a higher token budget (8192) because structured JSON responses with evidence
     # quotes and multi-field schemas are larger than typical prose completions.
-    return _call_llm(model, api_key, base_url, 8192, system, message, think=False, json_mode=True)
+    return _with_retry(_call_llm, model, api_key, base_url, 8192, system, message, think=False, json_mode=True)
 
 
 def clip(text, max_chars=8000):

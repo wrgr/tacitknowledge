@@ -1209,6 +1209,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <textarea id="user-input" rows="1" placeholder="Describe what you would do…"></textarea>
     <button class="btn btn-ghost"   id="btn-done" style="white-space:nowrap;border-color:#10b981;color:#10b981" title="I've said everything I want to say — move to follow-up questions">I'm Done</button>
     <button class="btn btn-primary" id="btn-send">Send</button>
+    {% if is_admin %}<button class="btn btn-ghost" id="btn-debug-autorun" style="white-space:nowrap;border-color:#f59e0b;color:#f59e0b;font-size:.8rem" title="Auto-run this scenario using the expert answer (admin debug)">⚡ Auto-run</button>{% endif %}
   </div>
 </div>
 
@@ -1444,6 +1445,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   <div id="fr-write-header">
     <button class="btn btn-ghost" id="btn-fr-back" style="padding:6px 12px;font-size:.8rem">← Back</button>
     <span id="fr-write-title"></span>
+    {% if is_admin %}<button class="btn btn-ghost" id="btn-fr-debug-autofill" style="border-color:#f59e0b;color:#f59e0b;font-size:.8rem" title="Auto-fill and submit using the expert answer (admin debug)">⚡ Auto-submit</button>{% endif %}
     <button class="btn btn-primary" id="btn-fr-submit">Submit</button>
   </div>
   <div id="fr-write-body">
@@ -1664,7 +1666,13 @@ async function api(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const d = await r.json();
+  let d;
+  try {
+    d = await r.json();
+  } catch (_) {
+    if (r.status === 401 || r.status === 302) throw new Error('Session expired — please log in again.');
+    throw new Error(`Server error (HTTP ${r.status})`);
+  }
   if (d.error) throw new Error(d.error);
   return d;
 }
@@ -2094,12 +2102,18 @@ async function startScenario(index, title) {
   const data = await api('/api/start', { index, provider: S.provider, model: S.model, api_key: S.apiKey || undefined });
   S.sessionId = data.session_id;
   S.phase = data.phase || 'recall';
+  S.debugExpertAnswer = data.debug_expert_answer || '';
   updateMeta();
 
   hide('view-scenarios');
   show('view-assess');
   hide('probing-banner');
   $('btn-done').style.display = '';
+  if (IS_ADMIN) {
+    const dbg = $('btn-debug-autorun');
+    dbg.disabled = !S.debugExpertAnswer;
+    dbg.style.display = '';
+  }
   addBubble('examiner', data.opening);
   WritingTracker.reset();
   $('user-input').focus();
@@ -2275,6 +2289,104 @@ async function endRecall() {
 }
 
 $('btn-done').addEventListener('click', endRecall);
+
+{% if is_admin %}
+// ── Debug: Auto-run scenario (admin only) ──────
+$('btn-debug-autorun').addEventListener('click', autoRunScenario);
+
+async function autoRunScenario() {
+  if (S.busy || S.phase !== 'recall' || !S.debugExpertAnswer) return;
+
+  const PROBE_ANSWER =
+    'I would carry out this step carefully because it is essential to the correct outcome. ' +
+    'The reason this matters is that skipping it could cause problems or safety issues. ' +
+    'The sequence is important because each step depends on the previous one being done correctly.';
+
+  hide('btn-debug-autorun');
+  lock(true);
+
+  try {
+    // Phase 1: send the expert answer as the recall response
+    addBubble('user', S.debugExpertAnswer);
+    showTyping();
+    const recallResp = await api('/api/respond', {
+      session_id: S.sessionId,
+      user_input: S.debugExpertAnswer,
+    });
+    hideTyping();
+    S.turn++;
+    if (recallResp.narration) addBubble('examiner', recallResp.narration);
+
+    // Phase 2: end recall and receive first probe (or go straight to evaluate)
+    showTyping();
+    const endResp = await api('/api/end-recall', {
+      session_id: S.sessionId,
+      final_text: null,
+    });
+    hideTyping();
+
+    if (endResp.concluded) {
+      lock(false);
+      await evaluate();
+      return;
+    }
+
+    S.phase       = endResp.phase       || 'probing';
+    S.probeCount  = endResp.probe_count  || 0;
+    S.probeNumber = endResp.probe_number || 1;
+    show('probing-banner');
+    hide('btn-done');
+    updateMeta();
+    if (endResp.first_probe) addBubble('examiner', endResp.first_probe);
+
+    // Phase 3: answer every probe with a canned reasoning response
+    while (S.phase === 'probing') {
+      await new Promise(r => setTimeout(r, 400));
+      addBubble('user', PROBE_ANSWER);
+      showTyping();
+      const probeResp = await api('/api/respond', {
+        session_id: S.sessionId,
+        user_input: PROBE_ANSWER,
+      });
+      hideTyping();
+      S.turn++;
+      if (probeResp.phase) {
+        S.phase = probeResp.phase;
+        if (probeResp.probe_count)  S.probeCount  = probeResp.probe_count;
+        if (probeResp.probe_number) S.probeNumber = probeResp.probe_number;
+      }
+      updateMeta();
+      if (probeResp.narration) addBubble('examiner', probeResp.narration);
+      if (probeResp.concluded) {
+        lock(false);
+        await evaluate();
+        return;
+      }
+    }
+
+    lock(false);
+  } catch (err) {
+    hideTyping();
+    addBubble('examiner', `⚠ Auto-run error: ${err.message}`);
+    lock(false);
+    show('btn-debug-autorun');
+  }
+}
+
+// ── Debug: Auto-submit free response (admin only) ─
+$('btn-fr-debug-autofill').addEventListener('click', autoFillFr);
+
+async function autoFillFr() {
+  const answer = FR.promptData && FR.promptData.expert_answer;
+  if (!answer) return;
+  const ta = $('fr-textarea');
+  ta.value = answer;
+  ta.dispatchEvent(new Event('input'));
+  // let word-count and key-point checks fire before submitting
+  await new Promise(r => setTimeout(r, 900));
+  $('btn-fr-submit').click();
+}
+{% endif %}
 
 // ── Input wiring ───────────────────────────────
 $('btn-send').addEventListener('click', send);

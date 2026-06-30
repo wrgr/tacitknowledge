@@ -33,5 +33,49 @@
         "Final departure": 2
       }
     }
+  ],
+  "probe_bank": [
+    {
+      "probe_type": "sequencing",
+      "probe_text": "You mentioned letting the dog out — at what point in the routine do you do that, and why does it come before feeding?",
+      "target_key_point": "Initial outdoor elimination/potty break",
+      "success_criteria": "Learner explains that the potty break comes before feeding to allow the dog to relieve herself after a night in the crate, and that feeding before going outside could cause discomfort or accidents."
+    },
+    {
+      "probe_type": "how",
+      "probe_text": "How do you safely release the dog from the crate without her rushing out and injuring herself or you?",
+      "target_key_point": "Safe crate release",
+      "success_criteria": "Learner describes calmly opening the crate door, waiting for the dog to settle or sit before exiting, and controlling the pace of exit to prevent bolting or collisions."
+    },
+    {
+      "probe_type": "rationale",
+      "probe_text": "Why is it important to refresh the water bowl rather than just topping it off?",
+      "target_key_point": "Refreshing the water source",
+      "success_criteria": "Learner explains that overnight water can become stale, contain bacteria, or have debris, and that fully refreshing it ensures the dog has clean, safe hydration."
+    },
+    {
+      "probe_type": "decision",
+      "probe_text": "While checking the dog before her final exit, you notice she is limping slightly. How does that change what you do next?",
+      "target_key_point": "Checking for visible injuries or unusual behavior",
+      "success_criteria": "Learner recognises the limp as a sign of possible injury, describes inspecting the paw and leg for cuts or swelling, and identifies when to contact a vet rather than continuing the normal routine."
+    },
+    {
+      "probe_type": "error",
+      "probe_text": "What could go wrong if you attached the leash while the dog is still excited and jumping at the door?",
+      "target_key_point": "Securing the dog with appropriate containment (leash)",
+      "success_criteria": "Learner identifies risks such as the dog bolting through the door, the leash being clipped incorrectly, or injury to the dog or owner from sudden lunging, and explains the value of asking the dog to sit or calm before attaching the leash."
+    },
+    {
+      "probe_type": "edge_case",
+      "probe_text": "What would you do differently if the dog refused to eat her meal during the morning routine?",
+      "target_key_point": "Feeding the proper meal",
+      "success_criteria": "Learner notes that food refusal can indicate illness or stress, describes leaving the food down for a set time before removing it, monitoring for other symptoms, and knowing when to contact a vet if refusal persists."
+    },
+    {
+      "probe_type": "how",
+      "probe_text": "How do you make sure the dog is ready and safe before the final departure from the house?",
+      "target_key_point": "Final departure",
+      "success_criteria": "Learner describes confirming the leash is securely attached, the dog is calm, all supplies are gathered, and the exit is controlled so the dog does not rush into the street."
+    }
   ]
 }

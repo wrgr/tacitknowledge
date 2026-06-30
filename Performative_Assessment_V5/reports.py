@@ -182,6 +182,12 @@ def generate_report(session, model, api_key, base_url, output_dir, thinking_prof
         instructor = {"overall_assessment": "Summary unavailable — no LLM API key configured.",
                       "learning_gaps": [], "recommendations": []}
 
+    # Normalise: LLM sometimes returns string fields as lists
+    if isinstance(instructor.get("overall_assessment"), list):
+        instructor["overall_assessment"] = " ".join(instructor["overall_assessment"])
+    instructor["learning_gaps"]    = [str(g) for g in instructor.get("learning_gaps", []) if g]
+    instructor["recommendations"]  = [str(r) for r in instructor.get("recommendations", []) if r]
+
     lines = []
     lines.append("# Performative Assessment — Instructor Report")
     lines.append("")
@@ -316,6 +322,11 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
     except Exception:
         instructor = {"overall_assessment": "Summary unavailable — no LLM API key configured.",
                       "learning_gaps": [], "recommendations": []}
+
+    if isinstance(instructor.get("overall_assessment"), list):
+        instructor["overall_assessment"] = " ".join(instructor["overall_assessment"])
+    instructor["learning_gaps"]   = [str(g) for g in instructor.get("learning_gaps", []) if g]
+    instructor["recommendations"] = [str(r) for r in instructor.get("recommendations", []) if r]
 
     lines = []
     lines.append("# Free Response Assessment — Instructor Report")

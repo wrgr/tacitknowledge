@@ -61,6 +61,20 @@ def _phrase_in_text(phrase, text_lower):
     return False
 
 
+def _coerce_str(val):
+    """Return val as a plain string; joins lists, converts anything else via str()."""
+    if isinstance(val, list):
+        return " ".join(str(v) for v in val)
+    return val if isinstance(val, str) else str(val)
+
+
+def _coerce_str_list(val):
+    """Return val as a flat list of strings; flattens one level of nesting."""
+    if not isinstance(val, list):
+        return [_coerce_str(val)] if val else []
+    return [_coerce_str(item) for item in val]
+
+
 def _resolve_llm_matches(matched_from_llm, key_points):
     """Map LLM-returned matched_points back to the canonical key_points list."""
     resolved = set()
@@ -145,16 +159,21 @@ def _extract_evidence(model, api_key, base_url, text, key_points):
     kp_text = "\n".join("- " + p for p in key_points)
     prompt = (
         "KEY POINTS:\n" + kp_text + "\n\n"
-        "TEXT:\n" + clip(text, 6000) + "\n\n"
-        "For each key point, write ONE concise sentence summarising the most relevant thing "
-        "the person said — use their own words where possible. "
-        "If the key point was not addressed at all, write 'not addressed'.\n"
+        "TRANSCRIPT:\n" + clip(text, 6000) + "\n\n"
+        "The transcript contains turns labelled 'Examiner:' and learner turns (any other label). "
+        "IMPORTANT: Only credit what the LEARNER said in their own turns. "
+        "Do not attribute anything the Examiner says to the learner — even if the Examiner's "
+        "question names or references a key point, credit only comes from the learner's response.\n\n"
+        "For each key point, write ONE concise sentence quoting or paraphrasing what the LEARNER "
+        "said that relates to it. If the learner did not address the key point in their own words, "
+        "write 'not addressed'.\n"
         "Format each line exactly as: '• <key point>: <sentence>'\n"
         "No extra text. One line per key point."
     )
     system = (
-        "You extract concise per-topic evidence from text. "
-        "One sentence per topic, using the person's own words. No extra commentary."
+        "You extract concise per-topic evidence from transcripts. "
+        "Credit only what the learner said — never the examiner's questions or framing. "
+        "One sentence per topic. No extra commentary."
     )
     try:
         return llm_chat(model, system, prompt, api_key, base_url).strip() or clip(text, 3000)
@@ -317,9 +336,9 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text):
         "matched_points": matched,
         "missed_points":  missed,
         "score":          max(0.0, min(1.0, score)),
-        "feedback":       result.get("feedback", ""),
-        "strengths":      result.get("strengths", []),
-        "gaps":           result.get("gaps", []),
+        "feedback":       _coerce_str(result.get("feedback", "")),
+        "strengths":      _coerce_str_list(result.get("strengths", [])),
+        "gaps":           _coerce_str_list(result.get("gaps", [])),
     }
 
 
@@ -485,9 +504,9 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "coverage_score":   round(coverage, 4),
         "quality_score":    round(quality, 4),
         "score":            max(0.0, min(1.0, combined)),
-        "feedback":         result.get("feedback", ""),
-        "strengths":        result.get("strengths", []),
-        "gaps":             result.get("gaps", []),
+        "feedback":         _coerce_str(result.get("feedback", "")),
+        "strengths":        _coerce_str_list(result.get("strengths", [])),
+        "gaps":             _coerce_str_list(result.get("gaps", [])),
     }
 
 

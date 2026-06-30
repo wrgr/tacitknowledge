@@ -65,6 +65,8 @@ def _resolve_llm_matches(matched_from_llm, key_points):
     """Map LLM-returned matched_points back to the canonical key_points list."""
     resolved = set()
     for m in matched_from_llm:
+        if not isinstance(m, str):
+            continue
         m_lower = m.lower().strip()
         for p in key_points:
             p_lower = p.lower()
@@ -446,7 +448,11 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
     raw_ratings = result.get("quality_ratings", {})
     quality_ratings = {}
     for llm_key, rating in raw_ratings.items():
+        if not isinstance(llm_key, str):
+            continue
         for p in matched_set:
+            if not isinstance(p, str):
+                continue
             if p.lower() in llm_key.lower() or llm_key.lower() in p.lower():
                 quality_ratings[p] = int(rating) if str(rating).isdigit() else 0
                 break

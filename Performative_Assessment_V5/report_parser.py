@@ -222,7 +222,7 @@ def _parse_thinking_profile(lines):
             else:
                 solo['level'] = rest
         elif stripped.startswith('**Probe phase improvement:**'):
-            state = None; in_patterns = False
+            state = 'ppi'; in_patterns = False
             val = stripped[len('**Probe phase improvement:**'):].strip()
             profile['probe_phase_improvement'] = (val.lower() == 'yes')
         elif stripped == '**Observed patterns:**':
@@ -237,11 +237,13 @@ def _parse_thinking_profile(lines):
             if m_ev:
                 hm['evidence'].append(m_ev.group(1))
             elif m_rs:
-                if not hm['reasoning']:
-                    hm['reasoning'] = m_rs.group(1)
-                else:
-                    # could be probe_phase_improvement_note if under that heading
-                    profile['probe_phase_improvement_note'] = m_rs.group(1)
+                hm['reasoning'] = m_rs.group(1)
+        elif state == 'ppi':
+            m_rs = re.match(r'^\s+>\s+(.*)', line)
+            if m_rs:
+                profile['probe_phase_improvement_note'] = m_rs.group(1)
+            elif stripped.startswith('**'):
+                state = None
         elif state == 'solo':
             m_ev = re.match(r'^\s+-\s+_"(.+)"_', line)
             m_rs = re.match(r'^\s+>\s+(.*)', line)
@@ -253,12 +255,7 @@ def _parse_thinking_profile(lines):
             m = re.match(r'^\s+-\s+(.*)', line)
             if m:
                 profile['patterns'].append(m.group(1).strip())
-            elif stripped.startswith('**Probe phase improvement:**'):
-                in_patterns = False
-                val = stripped[len('**Probe phase improvement:**'):].strip()
-                profile['probe_phase_improvement'] = (val.lower() == 'yes')
             elif stripped.startswith('**') and not stripped.startswith('**Observed'):
-                # next section heading — stop patterns
                 in_patterns = False
 
     if hm['style']:
@@ -333,15 +330,7 @@ def _parse_scenario(header, lines):
         elif stripped == '**Gaps:**':
             state = 'gaps'
         elif stripped.startswith('**Key points covered:**'):
-            # parse items with attribution: "point — (volunteered) — _stated only_"
-            val = stripped.split('**Key points covered:**')[1].strip()
-            matched = []
-            for item in val.split(','):
-                pt = item.split('—')[0].strip() if '—' in item else item.strip()
-                if pt:
-                    matched.append(pt)
-            scenario['matched_points'] = matched
-            state = None
+            state = 'matched'
         elif stripped.startswith('**Key points missed:**'):
             val = stripped.split('**Key points missed:**')[1].strip()
             scenario['missed_points'] = [p.strip() for p in val.split(',') if p.strip()]
@@ -388,11 +377,14 @@ def _parse_scenario(header, lines):
                 scenario['gaps'].append(m2.group(1).strip())
             elif stripped.startswith('**'):
                 state = None
-
-    # set matched_points from sub-items if they were in list form
-    if not scenario['matched_points'] and recall_lines:
-        # parse the list-style key points covered section
-        pass  # handled above
+        elif state == 'matched':
+            m2 = re.match(r'^\s+-\s+(.*)', line)
+            if m2:
+                pt = m2.group(1).split('—')[0].strip()
+                if pt:
+                    scenario['matched_points'].append(pt)
+            elif stripped.startswith('**'):
+                state = None
 
     scenario['transcript']       = '\n'.join(transcript_lines).strip()
     scenario['recall_transcript']= '\n'.join(recall_lines).strip()

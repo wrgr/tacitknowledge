@@ -1209,7 +1209,16 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <textarea id="user-input" rows="1" placeholder="Describe what you would do…"></textarea>
     <button class="btn btn-ghost"   id="btn-done" style="white-space:nowrap;border-color:#10b981;color:#10b981" title="I've said everything I want to say — move to follow-up questions">I'm Done</button>
     <button class="btn btn-primary" id="btn-send">Send</button>
-    {% if is_admin %}<button class="btn btn-ghost" id="btn-debug-autorun" style="white-space:nowrap;border-color:#f59e0b;color:#f59e0b;font-size:.8rem" title="Auto-run this scenario using the expert answer (admin debug)">⚡ Auto-run</button>{% endif %}
+    {% if is_admin %}<div id="autorun-wrapper" style="position:relative;display:inline-block">
+      <button class="btn btn-ghost" id="btn-debug-autorun" style="white-space:nowrap;border-color:#f59e0b;color:#f59e0b;font-size:.8rem" title="Auto-run this scenario (admin debug)">⚡ Auto-run</button>
+      <div id="autorun-menu" style="display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-card,#1e1e2e);border:1px solid #f59e0b;border-radius:8px;padding:6px;min-width:190px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.4)">
+        <div style="font-size:.7rem;color:#f59e0b;padding:2px 8px 6px;font-weight:600;letter-spacing:.05em">SELECT RESPONSE QUALITY</div>
+        <button class="autorun-opt" data-mode="gibberish" style="display:block;width:100%;text-align:left;padding:6px 10px;border-radius:5px;border:none;background:transparent;color:inherit;cursor:pointer;font-size:.82rem">🎲 Gibberish</button>
+        <button class="autorun-opt" data-mode="poor"      style="display:block;width:100%;text-align:left;padding:6px 10px;border-radius:5px;border:none;background:transparent;color:inherit;cursor:pointer;font-size:.82rem">📉 Poor (on-topic)</button>
+        <button class="autorun-opt" data-mode="alright"   style="display:block;width:100%;text-align:left;padding:6px 10px;border-radius:5px;border:none;background:transparent;color:inherit;cursor:pointer;font-size:.82rem">📊 Alright</button>
+        <button class="autorun-opt" data-mode="ace"       style="display:block;width:100%;text-align:left;padding:6px 10px;border-radius:5px;border:none;background:transparent;color:inherit;cursor:pointer;font-size:.82rem">🏆 Ace it</button>
+      </div>
+    </div>{% endif %}
   </div>
 </div>
 
@@ -2110,9 +2119,8 @@ async function startScenario(index, title) {
   hide('probing-banner');
   $('btn-done').style.display = '';
   if (IS_ADMIN) {
-    const dbg = $('btn-debug-autorun');
-    dbg.disabled = !S.debugExpertAnswer;
-    dbg.style.display = '';
+    const wrapper = $('autorun-wrapper');
+    wrapper.style.display = S.debugExpertAnswer ? 'inline-block' : 'none';
   }
   addBubble('examiner', data.opening);
   WritingTracker.reset();
@@ -2292,26 +2300,73 @@ $('btn-done').addEventListener('click', endRecall);
 
 {% if is_admin %}
 // ── Debug: Auto-run scenario (admin only) ──────
-$('btn-debug-autorun').addEventListener('click', autoRunScenario);
 
-async function autoRunScenario() {
+// Toggle the mode-picker popup
+$('btn-debug-autorun').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (S.busy || S.phase !== 'recall' || !S.debugExpertAnswer) return;
+  const menu = $('autorun-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+});
+// Hover highlight on options
+document.querySelectorAll('.autorun-opt').forEach(btn => {
+  btn.addEventListener('mouseenter', () => btn.style.background = 'rgba(245,158,11,.15)');
+  btn.addEventListener('mouseleave', () => btn.style.background = 'transparent');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('autorun-menu').style.display = 'none';
+    autoRunScenario(btn.dataset.mode);
+  });
+});
+// Close menu on outside click
+document.addEventListener('click', () => { $('autorun-menu').style.display = 'none'; });
+
+const AUTO_RUN_RESPONSES = {
+  gibberish: {
+    recall: 'The purple elephant carefully rotates seventeen times before the kitchen sink downloads a bicycle. ' +
+            'Clouds taste like Thursday when the calculator forgets to sneeze. ' +
+            'I would definitely consider the implications of this process going forward in a meaningful way.',
+    probe:  'Yes, exactly, that is what I would do in this situation. The thing about it is that it depends ' +
+            'on various factors which I have already considered at this point in time.',
+  },
+  poor: {
+    recall: 'I would pull over and stop the car. Then I would get the spare tyre out and put it on. ' +
+            'After that I would drive away carefully and hope for the best.',
+    probe:  "I'm not really sure about that specific part. I would just do what seems right at the time.",
+  },
+  alright: {
+    recall: 'I would put on the hazard lights and pull onto the hard shoulder. Apply the handbrake. ' +
+            'Get the spare tyre and jack from the boot. Jack up the car on a solid point, remove the flat, ' +
+            'fit the spare and tighten the wheel nuts. Lower the car and drive off, ' +
+            'making sure to check the tyre pressure when I can.',
+    probe:  'I would do that step carefully to make sure everything is safe and secure. ' +
+            'It is important to follow the correct order so the car stays stable throughout.',
+  },
+  ace: {
+    recall: null,   // filled at runtime from S.debugExpertAnswer
+    probe:  'I would carry out this step carefully because it is essential to the correct outcome. ' +
+            'The reason this matters is that skipping it could cause problems or safety issues. ' +
+            'The sequence is important because each step depends on the previous one being done correctly.',
+  },
+};
+
+async function autoRunScenario(mode) {
   if (S.busy || S.phase !== 'recall' || !S.debugExpertAnswer) return;
 
-  const PROBE_ANSWER =
-    'I would carry out this step carefully because it is essential to the correct outcome. ' +
-    'The reason this matters is that skipping it could cause problems or safety issues. ' +
-    'The sequence is important because each step depends on the previous one being done correctly.';
+  const responses = AUTO_RUN_RESPONSES[mode] || AUTO_RUN_RESPONSES.ace;
+  const recallText = responses.recall || S.debugExpertAnswer;
+  const probeText  = responses.probe;
 
-  hide('btn-debug-autorun');
+  $('autorun-wrapper').style.display = 'none';
   lock(true);
 
   try {
-    // Phase 1: send the expert answer as the recall response
-    addBubble('user', S.debugExpertAnswer);
+    // Phase 1: send the chosen recall response
+    addBubble('user', recallText);
     showTyping();
     const recallResp = await api('/api/respond', {
       session_id: S.sessionId,
-      user_input: S.debugExpertAnswer,
+      user_input: recallText,
     });
     hideTyping();
     S.turn++;
@@ -2339,14 +2394,14 @@ async function autoRunScenario() {
     updateMeta();
     if (endResp.first_probe) addBubble('examiner', endResp.first_probe);
 
-    // Phase 3: answer every probe with a canned reasoning response
+    // Phase 3: answer every probe with the mode's canned response
     while (S.phase === 'probing') {
       await new Promise(r => setTimeout(r, 400));
-      addBubble('user', PROBE_ANSWER);
+      addBubble('user', probeText);
       showTyping();
       const probeResp = await api('/api/respond', {
         session_id: S.sessionId,
-        user_input: PROBE_ANSWER,
+        user_input: probeText,
       });
       hideTyping();
       S.turn++;
@@ -2369,7 +2424,7 @@ async function autoRunScenario() {
     hideTyping();
     addBubble('examiner', `⚠ Auto-run error: ${err.message}`);
     lock(false);
-    show('btn-debug-autorun');
+    $('autorun-wrapper').style.display = 'inline-block';
   }
 }
 

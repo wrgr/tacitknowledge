@@ -32,6 +32,7 @@ import config
 import database as db
 import engine
 import report_parser
+from llm import LLMError, LLMRateLimitError
 
 # ── Persistent secret key ──────────────────────────────────────────────────────
 _key_file = Path(__file__).parent / ".secret_key"
@@ -63,6 +64,22 @@ def no_cache_html(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"]        = "no-cache"
     return response
+
+
+# ── LLM error handling ─────────────────────────────────────────────────────────
+# llm.py raises LLMError / LLMRateLimitError with a clear, user-facing message.
+# Without these handlers an LLM failure (rate limit, bad/blocked key, provider
+# outage) surfaces as an opaque HTTP 500; here we return JSON the frontend's
+# api() helper turns into a readable message instead of "Server error".
+@app.errorhandler(LLMError)
+def _handle_llm_error(e):
+    status = 429 if isinstance(e, LLMRateLimitError) else 502
+    return jsonify({"error": str(e)}), status
+
+
+@app.errorhandler(ConnectionError)
+def _handle_connection_error(e):
+    return jsonify({"error": str(e)}), 503
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 PROMPTS_DIR   = Path(__file__).parent / "prompts"

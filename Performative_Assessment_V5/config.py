@@ -16,7 +16,7 @@ PROVIDERS = {
     },
     "Gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "model":    "gemini-2.0-flash",
+        "model":    "gemini-2.5-flash",
         "api_key":  "your-google-key-here",
     },
     "Groq": {

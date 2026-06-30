@@ -4,14 +4,96 @@ llm.py — LLM provider dispatch and response parsing.
 
 import json
 import re
+import socket
+import time
+import urllib.error
 import urllib.request
 
 _ANTHROPIC_HOST = "api.anthropic.com"
 
+# Extra attempts after the first HTTP 429 before giving up.
+_RATE_LIMIT_MAX_RETRIES = 2
+
+
+class LLMError(Exception):
+    """An LLM API call failed. The message is concise and safe to surface."""
+
+
+class LLMRateLimitError(LLMError):
+    """The provider returned HTTP 429 — rate limit or quota exhausted."""
+
+
+def _describe_http_status(code):
+    """Map an HTTP status code to a clear, actionable message."""
+    if code == 429:
+        return ("Rate limit exceeded (HTTP 429): the provider is throttling requests. "
+                "Wait for the quota window to reset, or use a key/tier with higher limits.")
+    if code in (401, 403):
+        return (f"Authentication failed (HTTP {code}): the API key was rejected or is not "
+                "authorised for this model.")
+    if code == 404:
+        return "Not found (HTTP 404): check the model name and base URL."
+    if code == 400:
+        return ("Bad request (HTTP 400): the provider rejected the request — often an "
+                "invalid model name or malformed input.")
+    if 500 <= code < 600:
+        return f"Provider server error (HTTP {code}): usually temporary — retry shortly."
+    return f"The provider returned HTTP {code}."
+
+
+def _http_error_detail(http_error):
+    """Extract the provider's own error message from an HTTPError body, if any."""
+    try:
+        raw = http_error.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return raw[:300].strip() or None
+    # Google's OpenAI-compatible endpoint wraps the error object in a JSON
+    # array ([{"error": {...}}]); OpenAI and others return it bare.
+    if isinstance(data, list):
+        data = next((d for d in data if isinstance(d, dict)), {})
+    if isinstance(data, dict):
+        err = data.get("error")
+        if isinstance(err, dict):
+            return err.get("message")
+        if isinstance(err, str):
+            return err
+        if isinstance(data.get("message"), str):
+            return data["message"]
+    return None
+
+
+def _raise_http_error(http_error):
+    """Translate an HTTPError into a clear LLMError / LLMRateLimitError (always raises)."""
+    msg = _describe_http_status(http_error.code)
+    detail = _http_error_detail(http_error)
+    if detail:
+        msg += f" Provider said: {detail}"
+    if http_error.code == 429:
+        raise LLMRateLimitError(msg) from http_error
+    raise LLMError(msg) from http_error
+
+
+def _retry_after_seconds(http_error, attempt):
+    """Honour a Retry-After header when present; otherwise exponential backoff."""
+    try:
+        ra = http_error.headers.get("Retry-After")
+    except Exception:
+        ra = None
+    if ra:
+        try:
+            return min(float(ra), 30.0)
+        except (TypeError, ValueError):
+            pass
+    return min(2 ** attempt, 8)
+
 _PROVIDER_MODELS = {
     "OpenAI":  ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
     "Claude":  ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-    "Gemini":  ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+    "Gemini":  ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
     "Groq":    ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
     "Mistral": ["mistral-large-latest", "mistral-small-latest", "mistral-nemo"],
 }
@@ -198,8 +280,6 @@ def _extract_json(raw):
 
 def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False):
     """Stdlib-only HTTP call. Tries OpenAI-compatible format first; falls back to Ollama's native API on 404."""
-    import urllib.error
-
     msgs = []
     if system:
         msgs.append({"role": "system", "content": system})
@@ -211,20 +291,25 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, js
     if not is_ollama:
         headers["Authorization"] = "Bearer " + api_key
 
-    # ── attempt 1: OpenAI-compatible /chat/completions ──
+    # ── attempt 1: OpenAI-compatible /chat/completions (retry on HTTP 429) ──
     body = {"model": model, "max_tokens": max_tokens, "messages": msgs}
     if think is not None and is_ollama:
         body["think"] = think
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     payload = json.dumps(body).encode()
-    req = urllib.request.Request(base + "/chat/completions", data=payload, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            return json.loads(resp.read())["choices"][0]["message"]["content"] or ""
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            raise
+    for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
+        req = urllib.request.Request(base + "/chat/completions", data=payload, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                return json.loads(resp.read())["choices"][0]["message"]["content"] or ""
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                break   # not an OpenAI-compatible endpoint — try Ollama native below
+            if e.code == 429 and attempt < _RATE_LIMIT_MAX_RETRIES:
+                time.sleep(_retry_after_seconds(e, attempt))
+                continue
+            _raise_http_error(e)
 
     # ── attempt 2: Ollama native /api/chat (older Ollama or base_url without /v1) ──
     host = base[:-3] if base.endswith("/v1") else base
@@ -276,8 +361,29 @@ def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, js
                 return _raw_chat(model, api_key, base_url, max_tokens, system, user, think=think, json_mode=json_mode)
     except KeyboardInterrupt:
         raise
+    except LLMError:
+        raise   # already carries an accurate, user-facing message
+    except urllib.error.HTTPError as e:
+        _raise_http_error(e)
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
+        # URLError covers DNS/connection failures; the timeouts cover read timeouts.
+        # (HTTPError is a URLError subclass but is handled above.)
+        raise ConnectionError(
+            "Cannot reach the LLM API — network error or timeout. "
+            "Check your base URL and connection."
+        ) from e
     except Exception as e:
-        raise ConnectionError("Cannot reach the LLM API. Check your API key, base URL, and network.") from e
+        # SDK clients (openai / anthropic) usually expose the HTTP status code.
+        code = getattr(e, "status_code", None)
+        if not isinstance(code, int):
+            code = getattr(e, "code", None)
+        if isinstance(code, int):
+            if code == 429:
+                raise LLMRateLimitError(_describe_http_status(code)) from e
+            raise LLMError(_describe_http_status(code)) from e
+        raise ConnectionError(
+            "Cannot reach the LLM API. Check your API key, base URL, and network."
+        ) from e
 
 
 def llm_generate(model, prompt, api_key, base_url):

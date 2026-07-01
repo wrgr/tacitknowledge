@@ -440,6 +440,20 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
     </div>
     {% endif %}
 
+    {% if report.ai_assistance %}
+    <div class="card">
+      <div class="card-header"><span class="icon">AI</span> AI Assistance Declaration</div>
+      <div class="card-body">
+        <p style="font-size:.87rem;line-height:1.6;color:var(--text);margin-bottom:10px">
+          <strong>Used AI assistance:</strong> {{ 'Yes' if report.ai_assistance.used == 'yes' else 'No' }}
+        </p>
+        {% if report.ai_assistance.notes %}
+        <p class="submission-text">{{ report.ai_assistance.notes }}</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     {# Evaluation #}
     {% set ev = report.evaluation %}
     <div class="card">

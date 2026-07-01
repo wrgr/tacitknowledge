@@ -1528,10 +1528,18 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   <div id="fr-write-body">
     <div id="fr-write-main">
       <p id="fr-process-disclosure" style="font-size:.78rem;color:var(--muted);margin-bottom:8px">
-        Your writing process (not just the finished text) is part of this assessment.
+        This assessment records your final response, intermediate drafts, and basic writing-process signals such as timing, pauses, revisions, and pasted text. These signals help instructors understand how the response was produced; they are reviewed as supporting context, not as automatic penalties.
       </p>
       <div class="fr-prompt-box" id="fr-prompt-text"></div>
       <p id="fr-general-guidance" style="font-size:.85rem;color:var(--muted);font-style:italic;margin-bottom:12px"></p>
+      <div id="fr-ai-assist-box" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;background:var(--card)">
+        <label for="fr-ai-used" style="display:block;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">AI assistance</label>
+        <select id="fr-ai-used" style="width:100%;margin-bottom:8px">
+          <option value="no">No AI assistance used</option>
+          <option value="yes">I used AI assistance</option>
+        </select>
+        <textarea id="fr-ai-notes" class="hidden" maxlength="2000" style="min-height:70px;margin-top:4px" placeholder="Briefly describe what you used AI for, or paste the relevant AI conversation summary."></textarea>
+      </div>
       <textarea id="fr-textarea" maxlength="8000" placeholder="Write your response here…"></textarea>
     </div>
     <div id="fr-sidebar">
@@ -2895,6 +2903,9 @@ function startFrPrompt(index, promptList) {
   $('fr-prompt-text').textContent = p.prompt_text || p.description;
   $('fr-general-guidance').textContent = p.general_guidance || '';
   $('fr-textarea').value    = '';
+  $('fr-ai-used').value     = 'no';
+  $('fr-ai-notes').value    = '';
+  hide('fr-ai-notes');
   // disabled until the pre-write confidence rating is answered — this gate sits outside
   // the writing window itself, so it does not compromise passive process capture
   $('fr-textarea').disabled = true;
@@ -2938,6 +2949,13 @@ function updateFrWordCount(text, limit) {
 
 $('fr-textarea').addEventListener('keydown', e => WritingTracker.onKey(e));
 $('fr-textarea').addEventListener('paste', e => WritingTracker.onPaste(e, e.target.selectionStart));
+$('fr-ai-used').addEventListener('change', function () {
+  if (this.value === 'yes') show('fr-ai-notes');
+  else {
+    $('fr-ai-notes').value = '';
+    hide('fr-ai-notes');
+  }
+});
 
 $('fr-textarea').addEventListener('input', function () {
   const text = this.value;
@@ -2968,6 +2986,10 @@ $('btn-fr-submit').addEventListener('click', async () => {
       text,
       writing_metrics: writingMetrics,
       pre_rating: FR.preRating || undefined,
+      ai_assistance: {
+        used: $('fr-ai-used').value,
+        notes: $('fr-ai-used').value === 'yes' ? $('fr-ai-notes').value.trim() : '',
+      },
       provider: S.provider,
       model:    S.model,
       api_key:  S.apiKey || undefined,

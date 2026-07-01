@@ -89,6 +89,7 @@ def _handle_connection_error(e):
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 PROMPTS_DIR   = Path(__file__).parent / "prompts"
 REPORTS_BASE  = Path(__file__).parent / config.REPORTS_DIR
+ANNOTATIONS_DIR = REPORTS_BASE / "_annotations"
 
 # Max characters accepted for a free-response submission. Bounds both the stored
 # text and the writing-process trace size (keep in sync with the fr-textarea
@@ -218,16 +219,78 @@ _RESEARCH_EXPORT_FIELDS = [
     "confidence_calibration",
     "thinking_honey_mumford",
     "thinking_solo",
+    "ai_assistance_used",
+    "ai_assistance_notes",
+    "annotation_label",
+    "annotation_notes",
+    "annotation_reviewer",
+    "annotation_updated_at",
 ]
+
+_ANNOTATION_LABELS = {"", "correct", "partial", "missing", "needs_expert_review"}
+
+
+def _annotation_key(username, filename):
+    return re.sub(r'[^A-Za-z0-9_.-]+', "_", f"{username}__{filename}") + ".json"
+
+
+def _annotation_path(username, filename):
+    return ANNOTATIONS_DIR / _annotation_key(username, filename)
+
+
+def _empty_annotation():
+    return {
+        "label": "",
+        "notes": "",
+        "reviewer": "",
+        "updated_at": "",
+    }
+
+
+def _load_annotation(username, filename):
+    path = _annotation_path(username, filename)
+    if not path.exists():
+        return _empty_annotation()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return _empty_annotation()
+    ann = _empty_annotation()
+    ann.update({
+        "label": str(data.get("label", "")),
+        "notes": str(data.get("notes", "")),
+        "reviewer": str(data.get("reviewer", "")),
+        "updated_at": str(data.get("updated_at", "")),
+    })
+    return ann
+
+
+def _save_annotation(username, filename, label, notes, reviewer):
+    ANNOTATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    annotation = {
+        "label": label,
+        "notes": notes,
+        "reviewer": reviewer,
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    _annotation_path(username, filename).write_text(
+        json.dumps(annotation, indent=2), encoding="utf-8"
+    )
+    return annotation
 
 
 def _research_rows_for_report(username, user, filename, report):
+    annotation = _load_annotation(username, filename)
     base = {
         "username": username,
         "display_name": user.get("display_name", username),
         "role": user.get("role", ""),
         "report_file": filename,
         "timestamp": _timestamp_from_report_filename(filename),
+        "annotation_label": annotation.get("label", ""),
+        "annotation_notes": annotation.get("notes", ""),
+        "annotation_reviewer": annotation.get("reviewer", ""),
+        "annotation_updated_at": annotation.get("updated_at", ""),
     }
     profile = report.get("thinking_profile") or {}
     hm = profile.get("honey_mumford") or {}
@@ -238,6 +301,7 @@ def _research_rows_for_report(username, user, filename, report):
     if report.get("type") == "fr":
         ev = report.get("evaluation") or {}
         overlay = report.get("process_overlay") or {}
+        ai = report.get("ai_assistance") or {}
         score = _score_percent(ev.get("score") or (report.get("metadata") or {}).get("score"))
         return [{
             **base,
@@ -259,6 +323,8 @@ def _research_rows_for_report(username, user, filename, report):
             "difficulty_point_count": len(overlay.get("difficulty_points", [])) if overlay else "",
             "authenticity": overlay.get("authenticity_text", "") if overlay else "",
             "confidence_calibration": overlay.get("confidence_calibration_text", "") if overlay else "",
+            "ai_assistance_used": ai.get("used", ""),
+            "ai_assistance_notes": ai.get("notes", ""),
         }]
 
     rows = []
@@ -287,6 +353,8 @@ def _research_rows_for_report(username, user, filename, report):
             "difficulty_point_count": "",
             "authenticity": "",
             "confidence_calibration": "",
+            "ai_assistance_used": "",
+            "ai_assistance_notes": "",
         })
     return rows
 
@@ -432,14 +500,51 @@ def admin_view_report(username, filename):
 
     content = report_path.read_text(encoding="utf-8")
     report = report_parser.parse_report_md(content)
+    annotation = _load_annotation(username, filename)
     return render_template(
         "report_view.html",
         username=username,
         filename=filename,
         report=report,
+        annotation=annotation,
+        annotation_csrf=_new_csrf(),
         admin_name=session.get("display_name", "Admin"),
         user_theme=_user_theme(),
     )
+
+
+@app.route("/admin/report/<username>/<filename>/annotation", methods=["POST"])
+@auth.admin_required
+def admin_save_report_annotation(username, filename):
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
+        abort(400)
+    if not re.match(r'^(?:fr_)?report_[\d_]+\.md$', filename):
+        abort(400)
+
+    report_path = REPORTS_BASE / username / filename
+    if report_path.resolve().parent != (REPORTS_BASE / username).resolve():
+        abort(400)
+    if not report_path.exists():
+        abort(404)
+
+    form_tok = request.form.get("csrf_token", "")
+    sess_tok = session.pop("csrf_token", "")
+    if not form_tok or not sess_tok or not hmac.compare_digest(form_tok, sess_tok):
+        abort(400)
+
+    label = request.form.get("label", "").strip()
+    notes = auth.sanitize_str(request.form.get("notes", ""), max_len=2000)
+    if label not in _ANNOTATION_LABELS:
+        abort(400)
+
+    _save_annotation(
+        username,
+        filename,
+        label,
+        notes,
+        session.get("display_name", session.get("user_id", "Admin")),
+    )
+    return redirect(url_for("admin_view_report", username=username, filename=filename))
 
 
 @app.route("/admin/research-export.csv")
@@ -1279,6 +1384,12 @@ def api_fr_submit():
     else:
         evaluation = engine.score_free_response_with_keywords(prompt_data, text)
 
+    ai_assistance = data.get("ai_assistance") or {}
+    if not isinstance(ai_assistance, dict):
+        ai_assistance = {}
+    ai_used = "yes" if ai_assistance.get("used") == "yes" else "no"
+    ai_notes = auth.sanitize_str(ai_assistance.get("notes", ""), max_len=2000)
+
     # Part C of the construct/exemplar brief: log every accepted novel-equivalent match for
     # admin review. The learner's score above is already final -- this queue is for
     # improving the rubric going forward, not for gating this submission.
@@ -1301,6 +1412,7 @@ def api_fr_submit():
         "writing_metrics":  data.get("writing_metrics"),
         "pre_rating":       _coerce_fr_rating(data.get("pre_rating")),
         "post_rating":      None,
+        "ai_assistance":    {"used": ai_used, "notes": ai_notes},
         "user_id":          session["user_id"],
         "model":            model,
         "api_key":          api_key,
@@ -1428,6 +1540,7 @@ def api_fr_report():
             output_dir=user_reports_dir,
             thinking_profile=thinking_profile,
             process_overlay=process_overlay,
+            ai_assistance=st.get("ai_assistance"),
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500

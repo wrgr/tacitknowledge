@@ -498,7 +498,7 @@ def generate_report(session, model, api_key, base_url, output_dir, thinking_prof
 
 
 def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output_dir,
-                        thinking_profile=None, process_overlay=None):
+                        thinking_profile=None, process_overlay=None, ai_assistance=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -566,6 +566,20 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
     for line in ev["text"].splitlines():
         lines.append("> " + line if line else ">")
     lines.append("")
+
+    ai_assistance = ai_assistance or {}
+    if ai_assistance:
+        used = "Yes" if ai_assistance.get("used") == "yes" else "No"
+        lines.append("## AI Assistance Declaration")
+        lines.append("")
+        lines.append("**Used AI assistance:** " + used)
+        notes = (ai_assistance.get("notes") or "").strip()
+        if notes:
+            lines.append("")
+            lines.append("**Learner description:**")
+            for line in notes.splitlines():
+                lines.append("> " + line if line else ">")
+        lines.append("")
 
     lines.append("## Evaluation")
     lines.append("")

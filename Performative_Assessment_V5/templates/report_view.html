@@ -342,6 +342,35 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
   font-weight: 700;
 }
 
+.annotation-form {
+  display: grid;
+  gap: 12px;
+}
+.annotation-form label {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted);
+}
+.annotation-form select,
+.annotation-form textarea {
+  width: 100%;
+  font: inherit;
+  font-size: .86rem;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 10px;
+}
+.annotation-form textarea { min-height: 74px; resize: vertical; }
+.annotation-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.annotation-actions button {
+  font: inherit; font-size: .82rem; font-weight: 700;
+  padding: 8px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--blue); background: var(--blue); color: #fff;
+  cursor: pointer;
+}
+.annotation-meta { font-size: .78rem; color: var(--muted); }
+
 /* ── Scenario card specifics ── */
 .scenario-number {
   display: inline-flex; align-items: center; justify-content: center;
@@ -448,6 +477,35 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-header"><span class="icon">Review</span> Expert Annotation</div>
+    <div class="card-body">
+      <form class="annotation-form" method="post" action="/admin/report/{{ username }}/{{ filename }}/annotation">
+        <input type="hidden" name="csrf_token" value="{{ annotation_csrf }}">
+        <div>
+          <label for="annotation-label">Review label</label>
+          <select id="annotation-label" name="label">
+            <option value="" {{ 'selected' if not annotation.label else '' }}>Unreviewed</option>
+            <option value="correct" {{ 'selected' if annotation.label == 'correct' else '' }}>Correct</option>
+            <option value="partial" {{ 'selected' if annotation.label == 'partial' else '' }}>Partial</option>
+            <option value="missing" {{ 'selected' if annotation.label == 'missing' else '' }}>Missing</option>
+            <option value="needs_expert_review" {{ 'selected' if annotation.label == 'needs_expert_review' else '' }}>Needs expert review</option>
+          </select>
+        </div>
+        <div>
+          <label for="annotation-notes">Notes</label>
+          <textarea id="annotation-notes" name="notes" maxlength="2000" placeholder="Optional expert-review notes">{{ annotation.notes }}</textarea>
+        </div>
+        <div class="annotation-actions">
+          <button type="submit">Save annotation</button>
+          {% if annotation.updated_at %}
+          <span class="annotation-meta">Last saved {{ annotation.updated_at }} by {{ annotation.reviewer }}</span>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
   {# ═══════════════════════════════════════════
      FREE RESPONSE REPORT
   ═══════════════════════════════════════════ #}
@@ -476,6 +534,18 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
       <div class="card-header"><span class="icon">✍️</span> Learner's Submission</div>
       <div class="card-body">
         <p class="submission-text">{{ report.submission }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if report.ai_assistance %}
+    <div class="card">
+      <div class="card-header"><span class="icon">AI</span> AI Assistance Declaration</div>
+      <div class="card-body">
+        <p class="assessment-text"><strong>Used AI assistance:</strong> {{ 'Yes' if report.ai_assistance.used == 'yes' else 'No' }}</p>
+        {% if report.ai_assistance.notes %}
+        <p class="submission-text">{{ report.ai_assistance.notes }}</p>
+        {% endif %}
       </div>
     </div>
     {% endif %}

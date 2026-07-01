@@ -34,6 +34,9 @@ def parse_report_md(content):
         result['submission'] = _parse_blockquote(
             sections.get("Learner's Submission", [])
         )
+        result['ai_assistance'] = _parse_ai_assistance(
+            sections.get('AI Assistance Declaration', [])
+        )
         result['evaluation'] = _parse_fr_evaluation(
             sections.get('Evaluation', [])
         )
@@ -105,6 +108,27 @@ def _parse_fr_prompt(lines):
         'text': '\n'.join(prompt_text_lines).strip(),
         'constraints': constraints,
     }
+
+
+def _parse_ai_assistance(lines):
+    if not any(line.strip() for line in lines):
+        return None
+
+    result = {"used": "", "notes": ""}
+    notes = []
+    in_notes = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("**Used AI assistance:**"):
+            value = stripped.split("**Used AI assistance:**", 1)[1].strip().lower()
+            result["used"] = "yes" if value.startswith("yes") else "no"
+            in_notes = False
+        elif stripped == "**Learner description:**":
+            in_notes = True
+        elif in_notes and (line.startswith("> ") or line == ">"):
+            notes.append(line[2:] if line.startswith("> ") else "")
+    result["notes"] = "\n".join(notes).strip()
+    return result
 
 
 _FR_KP_BULLET = re.compile(r'^\s+-\s+(.*?)\s+—\s+_(.*)_\s*$')

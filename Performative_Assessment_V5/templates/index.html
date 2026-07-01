@@ -761,6 +761,28 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 /* ── FR Write view ───────────────────────────── */
 #view-fr-write { display: flex; flex-direction: column; min-height: 0; }
 
+.fr-rating-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(15, 23, 42, .55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.fr-rating-box {
+  background: var(--card); border-radius: var(--radius);
+  padding: 28px 24px; max-width: 420px; width: 100%;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  text-align: center;
+}
+#fr-rating-question { font-size: .98rem; font-weight: 600; margin-bottom: 18px; }
+.fr-rating-scale { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.fr-rating-btn {
+  width: 34px; height: 34px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg);
+  font-size: .85rem; font-weight: 600; cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.fr-rating-btn:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+
 #fr-write-header {
   background: var(--card);
   border-bottom: 1px solid var(--border);
@@ -1433,10 +1455,23 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
       </div>
     </div>
 
+    <!-- General guidance (learner-facing criteria disclosure — distinct from key points) -->
+    <div class="form-section" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 16px">
+      <h3>General Guidance</h3>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">
+        General guidance is shown to the learner before writing. Key points (below) are not —
+        they are used only for scoring. Write this at a higher level of abstraction than the
+        key points; do not name or paraphrase any specific key point.
+      </p>
+      <div class="field">
+        <textarea id="fp-general-guidance" style="min-height:60px" placeholder="e.g. A strong answer explains not just what happens, but why each stage matters and how the stages connect — not just a list of steps."></textarea>
+      </div>
+    </div>
+
     <!-- Key points -->
     <div class="form-section">
       <h3>Key Points &amp; Weights</h3>
-      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Short phrases the learner must mention. Weight = how many points each is worth when scoring.</p>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Short phrases the learner must mention. Weight = how many points each is worth when scoring. Not shown to the learner.</p>
       <div class="dynamic-list" id="fp-keypoint-list"></div>
       <button class="btn-add" id="btn-fp-add-keypoint">+ Add key point</button>
     </div>
@@ -1463,6 +1498,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         Your writing process (not just the finished text) is part of this assessment.
       </p>
       <div class="fr-prompt-box" id="fr-prompt-text"></div>
+      <p id="fr-general-guidance" style="font-size:.85rem;color:var(--muted);font-style:italic;margin-bottom:12px"></p>
       <textarea id="fr-textarea" placeholder="Write your response here…"></textarea>
     </div>
     <div id="fr-sidebar">
@@ -1479,6 +1515,14 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <ul id="fr-constraints-list" class="fr-constraints-list"></ul>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Rate → explain → re-rate confidence prompt (pre-write and post-write) -->
+<div id="fr-rating-overlay" class="fr-rating-overlay hidden">
+  <div class="fr-rating-box">
+    <p id="fr-rating-question"></p>
+    <div class="fr-rating-scale" id="fr-rating-scale"></div>
   </div>
 </div>
 
@@ -1586,7 +1630,8 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 // ── State ──────────────────────────────────────
 const S  = { sessionId: null, phase: 'recall', probeCount: 0, probeNumber: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
 const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null,
-             llmCheckTimer: null, llmLastWordCount: 0, llmInFlight: false };
+             llmCheckTimer: null, llmLastWordCount: 0, llmInFlight: false,
+             preRating: null, postRating: null };
 
 // ── Writing Tracker ────────────────────────────
 // Captures per-turn behavioural metrics: typing speed, deletions, pauses, paste events.
@@ -2791,21 +2836,46 @@ async function loadFrPrompts() {
   }
 }
 
+function askFrRating(question) {
+  return new Promise(resolve => {
+    $('fr-rating-question').textContent = question;
+    const scale = $('fr-rating-scale');
+    scale.innerHTML = '';
+    for (let i = 1; i <= 10; i++) {
+      const btn = document.createElement('button');
+      btn.type      = 'button';
+      btn.className = 'fr-rating-btn';
+      btn.textContent = i;
+      btn.addEventListener('click', () => {
+        hide('fr-rating-overlay');
+        resolve(i);
+      });
+      scale.appendChild(btn);
+    }
+    show('fr-rating-overlay');
+  });
+}
+
 function startFrPrompt(index, promptList) {
   const p = promptList[index];
   FR.promptData       = p;
   FR.keyPoints        = [];
   FR.llmLastWordCount = 0;
   FR.llmInFlight      = false;
+  FR.preRating        = null;
+  FR.postRating       = null;
   clearTimeout(FR.llmCheckTimer);
   FR.llmCheckTimer    = null;
   $('fr-kp-ai-badge').style.display = 'none';
 
   $('fr-write-title').textContent = p.title;
   $('fr-prompt-text').textContent = p.prompt_text || p.description;
+  $('fr-general-guidance').textContent = p.general_guidance || '';
   $('fr-textarea').value    = '';
-  $('fr-textarea').disabled = false;
-  $('btn-fr-submit').disabled  = false;
+  // disabled until the pre-write confidence rating is answered — this gate sits outside
+  // the writing window itself, so it does not compromise passive process capture
+  $('fr-textarea').disabled = true;
+  $('btn-fr-submit').disabled  = true;
   $('btn-fr-submit').textContent = 'Submit';
 
   // render empty key-point tracker — will populate via /api/fr/check
@@ -2826,8 +2896,15 @@ function startFrPrompt(index, promptList) {
 
   hide('view-fr-prompts');
   show('view-fr-write');
-  $('fr-textarea').focus();
   WritingTracker.reset();
+
+  askFrRating('Before you begin — how well do you understand this topic well enough to explain it? (1–10)')
+    .then(rating => {
+      FR.preRating = rating;
+      $('fr-textarea').disabled    = false;
+      $('btn-fr-submit').disabled  = false;
+      $('fr-textarea').focus();
+    });
 }
 
 function updateFrWordCount(text, limit) {
@@ -2936,11 +3013,20 @@ $('btn-fr-submit').addEventListener('click', async () => {
       prompt_id: FR.promptData.id,
       text,
       writing_metrics: writingMetrics,
+      pre_rating: FR.preRating || undefined,
       provider: S.provider,
       model:    S.model,
       api_key:  S.apiKey || undefined,
     });
     FR.sessionId = data.session_id;
+
+    // Post-write rating happens immediately after submission but BEFORE any score or
+    // feedback is shown to the learner — the ordering that makes rate → re-rate a valid
+    // illusion-of-explanatory-depth probe, not a self-fulfilling guess at the score.
+    const postRating = await askFrRating("Now that you've explained it — how well do you feel you understood it? (1–10)");
+    FR.postRating = postRating;
+    api('/api/fr/post-rating', { session_id: data.session_id, post_rating: postRating }).catch(() => {});
+
     hide('view-fr-write');
     renderFrResults(data.evaluation);
     show('view-fr-results');
@@ -3329,6 +3415,7 @@ function showFrCreate() {
   $('fp-prompt-text').value       = '';
   $('fp-word-limit').value        = '';
   $('fp-answer').value            = '';
+  $('fp-general-guidance').value  = '';
   $('fp-constraint-list').innerHTML = '';
   $('fp-keypoint-list').innerHTML   = '';
   $('fr-create-note').textContent   = '';
@@ -3408,6 +3495,7 @@ $('btn-fr-fill-ai').addEventListener('click', async () => {
     $('fp-prompt-text').value = p.prompt_text  || '';
     $('fp-word-limit').value  = p.word_limit   || '';
     $('fp-answer').value      = p.expert_answer|| '';
+    $('fp-general-guidance').value = p.general_guidance || '';
 
     $('fp-constraint-list').innerHTML = '';
     (p.constraints || []).forEach(c => addFpConstraintRow(c));
@@ -3459,14 +3547,15 @@ $('btn-save-prompt').addEventListener('click', async () => {
 
   try {
     await api('/api/save-prompt', {
-      title:         title,
-      description:   $('fp-description').value.trim(),
-      prompt_text:   promptText,
-      word_limit:    wordLimit,
-      constraints:   constraints,
-      expert_answer: answer,
-      key_points:    keyPoints,
-      rubric:        rubric,
+      title:             title,
+      description:       $('fp-description').value.trim(),
+      prompt_text:       promptText,
+      word_limit:        wordLimit,
+      constraints:       constraints,
+      expert_answer:     answer,
+      key_points:        keyPoints,
+      rubric:            rubric,
+      general_guidance:  $('fp-general-guidance').value.trim(),
     });
 
     $('fr-create-note').textContent = 'Saved — returning to prompt list…';

@@ -348,7 +348,7 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
 
 <main>
 
-  {# ── Score banner ── #}
+  {# ── Score banner (captured once, placed conditionally below — see Part D note) ── #}
   {% set raw_score = report.metadata.get('score') or report.metadata.get('average_score', '') %}
   {% if raw_score.endswith('%') %}
     {% set pct = raw_score[:-1]|int %}
@@ -361,6 +361,7 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
     {% set score_cls = 'muted' %}
   {% endif %}
 
+  {% set score_banner_html %}
   <div class="score-banner">
     <div class="score-circle score-{{ score_cls }}">{{ raw_score or '—' }}</div>
     <div class="banner-text">
@@ -377,6 +378,17 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
       </div>
     </div>
   </div>
+  {% endset %}
+
+  {# Black & Wiliam: when a grade is shown alongside a comment, learners look at the
+     grade and ignore the comment. For the FR report specifically, the qualitative
+     sections (prompt, submission, evaluation commentary, writing-process
+     interpretation, confidence-calibration finding, thinking profile) are rendered
+     before the score banner below, at full size — never shrunk or collapsed under
+     it. The scenario/probing report is unchanged and keeps the banner at the top. #}
+  {% if report.type != 'fr' %}
+  {{ score_banner_html }}
+  {% endif %}
 
   {# ═══════════════════════════════════════════
      FREE RESPONSE REPORT
@@ -470,6 +482,83 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
 
       </div>
     </div>
+
+    {# Writing Process — interpretive overlay, never adjusts the score above/below #}
+    {% if report.process_overlay %}
+    {% set po = report.process_overlay %}
+    <div class="card profile-card">
+      <div class="card-header"><span class="icon">✍️</span> Writing Process</div>
+      <div class="card-body">
+
+        {% if po.quadrant_label %}
+        <div class="profile-box" style="margin-bottom:14px">
+          <div class="profile-box-label">Process × Product</div>
+          <div class="profile-style-name">{{ po.quadrant_label }}</div>
+          {% if po.quadrant_interpretation %}
+          <div class="reasoning-text">{{ po.quadrant_interpretation }}</div>
+          {% endif %}
+          {% if po.quadrant_alternative %}
+          <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.quadrant_alternative }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if po.effort_profile_text %}
+        <p style="font-size:.87rem;line-height:1.6;color:var(--text);margin-bottom:12px">{{ po.effort_profile_text }}</p>
+        {% endif %}
+
+        {% if po.revision_rating and po.revision_rating != 'not assessed' %}
+        <div class="patterns-section">
+          <div class="summary-section-label">Revision toward quality: {{ po.revision_rating }}</div>
+          {% if po.revision_evidence %}
+          <ul class="evidence-list">
+            {% for e in po.revision_evidence %}<li>{{ e.before }} → {{ e.after }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          {% if po.revision_alternative %}
+          <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.revision_alternative }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if po.difficulty_points %}
+        <div class="patterns-section">
+          <div class="summary-section-label">Difficulty points</div>
+          <ul class="pattern-list">
+            {% for d in po.difficulty_points %}<li>{{ d }}</li>{% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if po.authenticity_text %}
+        <div class="patterns-section">
+          <div class="summary-section-label">Authenticity</div>
+          <p style="font-size:.87rem;line-height:1.6;color:var(--text)">{{ po.authenticity_text }}</p>
+          {% for alt in po.authenticity_alternatives %}
+          <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ alt }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if po.confidence_calibration_text %}
+        <div class="patterns-section">
+          <div class="summary-section-label">Confidence calibration: {{ po.confidence_calibration_text }}</div>
+          {% if po.confidence_calibration_note %}
+          <p style="font-size:.87rem;line-height:1.6;color:var(--text)">{{ po.confidence_calibration_note }}</p>
+          {% endif %}
+          {% if po.confidence_calibration_alternative %}
+          <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.confidence_calibration_alternative }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if po.caution %}
+        <div class="profile-note">ℹ {{ po.caution }}</div>
+        {% endif %}
+
+      </div>
+    </div>
+    {% endif %}
 
   {# ═══════════════════════════════════════════
      SCENARIO REPORT
@@ -615,6 +704,12 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
 
     </div>
   </div>
+  {% endif %}
+
+  {# Score banner, deferred to the end for FR reports — see the feedback-before-score
+     note above. Full-size, unchanged styling; just placed after the qualitative content. #}
+  {% if report.type == 'fr' %}
+  {{ score_banner_html }}
   {% endif %}
 
 </main>

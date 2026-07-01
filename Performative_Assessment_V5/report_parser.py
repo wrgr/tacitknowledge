@@ -167,16 +167,24 @@ def _parse_process_overlay(lines):
     overlay = {
         'quadrant_label': '',
         'quadrant_interpretation': '',
+        'quadrant_alternative': '',
         'effort_profile_text': '',
         'revision_rating': '',
         'revision_evidence': [],
+        'revision_alternative': '',
         'difficulty_points': [],
         'authenticity_text': '',
+        'authenticity_alternatives': [],
+        'confidence_calibration_text': '',
+        'confidence_calibration_note': '',
+        'confidence_calibration_alternative': '',
         'caution': '',
     }
     state = None
     for line in lines:
         stripped = line.strip()
+        alt_match = re.match(r'^\s*>\s*Alternative:\s*(.*)', line)
+
         if stripped.startswith('**Process') and '×' in stripped and ':**' in stripped:
             overlay['quadrant_label'] = stripped.split(':**', 1)[1].strip()
             state = 'quadrant'
@@ -190,13 +198,25 @@ def _parse_process_overlay(lines):
             state = 'difficulty'
         elif stripped.startswith('**Authenticity:**'):
             overlay['authenticity_text'] = stripped.split('**Authenticity:**', 1)[1].strip()
-            state = None
+            state = 'authenticity'
+        elif stripped.startswith('**Confidence calibration:**'):
+            overlay['confidence_calibration_text'] = stripped.split('**Confidence calibration:**', 1)[1].strip()
+            state = 'confidence'
+        elif alt_match and state == 'quadrant':
+            overlay['quadrant_alternative'] = alt_match.group(1)
+        elif alt_match and state == 'revision':
+            overlay['revision_alternative'] = alt_match.group(1)
+        elif alt_match and state == 'authenticity':
+            overlay['authenticity_alternatives'].append(alt_match.group(1))
+        elif alt_match and state == 'confidence':
+            overlay['confidence_calibration_alternative'] = alt_match.group(1)
         elif stripped.startswith('> ') and state is None and stripped[2:] and not overlay['caution']:
             overlay['caution'] = stripped[2:]
         elif state == 'quadrant':
             m = re.match(r'^\s+>\s+(.*)', line)
             if m:
                 overlay['quadrant_interpretation'] = m.group(1)
+            elif stripped == '':
                 state = None
         elif state == 'revision':
             m = re.match(r'^\s+-\s+"(.*)"\s*→\s*"(.*)"', line)
@@ -209,6 +229,15 @@ def _parse_process_overlay(lines):
             if m:
                 overlay['difficulty_points'].append(m.group(1).strip())
             elif stripped.startswith('**'):
+                state = None
+        elif state == 'authenticity':
+            if stripped == '':
+                state = None
+        elif state == 'confidence':
+            m = re.match(r'^\s+>\s+(.*)', line)
+            if m:
+                overlay['confidence_calibration_note'] = m.group(1)
+            elif stripped == '':
                 state = None
 
     return overlay

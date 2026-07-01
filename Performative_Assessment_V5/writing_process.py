@@ -38,6 +38,36 @@ EFFORTFUL_PAUSE_RATIO        = 0.25  # pause time / total active time
 FRICTIONLESS_REVISION_DENSITY = 0.3
 FRICTIONLESS_PAUSE_RATIO      = 0.10
 
+# Alternative interpretations, sourced verbatim from docs/fr_evidence_model.md — the
+# "Does NOT rule out" column for each signal. Static because these alternatives are
+# stable per signal type, not per instance (only revision-toward-quality needs a
+# fresh, per-instance judgment from the LLM — see assess_revision_toward_quality).
+ALT_DIFFICULTY_POINT = (
+    "Does not rule out distraction, an unrelated interruption, or typing/technical friction."
+)
+ALT_AUTHENTICITY = (
+    "Can reflect legitimate reuse of the learner's own prior notes, appropriate quotation, "
+    "or simply confident single-pass writing, not necessarily reduced authorship."
+)
+ALT_REVISION_TOWARD_QUALITY = (
+    "Could be coincidental phrasing improvement, or a later paste of better phrasing from elsewhere."
+)
+ALT_FRICTIONLESS_PROCESS = (
+    "Could be genuine fluent competence, prior preparation, or unflagged reuse — process "
+    "data alone cannot distinguish these."
+)
+ALT_CONFIDENCE_COLLAPSE = (
+    "A learner who is simply a harsh self-rater in general, not specifically because of a "
+    "gap this task exposed."
+)
+ALT_CONFIDENCE_RISE = (
+    "General optimism after completing a task, independent of any specific clarification."
+)
+
+# TUNABLE -- confidence-collapse detection threshold, adjust after testing
+CONFIDENCE_COLLAPSE_THRESHOLD = -2
+CONFIDENCE_RISE_THRESHOLD     = 2
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # B1 — DETERMINISTIC PATTERN COMPUTATION (no LLM)
@@ -127,6 +157,7 @@ def find_difficulty_points(process_log, essay_text):
                         f"a {pause.get('duration_s', 0)}s pause and a heavy rework "
                         f"{_location_label(p_pos, essay_len)}"
                     ),
+                    "alternative_interpretation": ALT_DIFFICULTY_POINT,
                 })
                 break  # one candidate per pause is enough
 
@@ -181,6 +212,64 @@ def compute_authenticity(process_log, essay_text):
         "level":           level,
         "pasted_fraction": pasted_fraction,
         "evidence":        evidence,
+        "alternative_interpretations": [ALT_AUTHENTICITY] if pastes else [],
+    }
+
+
+def compute_confidence_calibration(pre_rating, post_rating):
+    """Rate → explain → re-rate (Rozenblit & Keil): confidence collapse after being forced
+    to produce a detailed explanation is itself evidence of shallow understanding — the
+    most directly validated mechanism in this whole system. Requires no LLM call.
+
+    Independent of process_log — a submission can carry this signal even when no writing
+    process was captured at all (e.g. process_overlay_enabled is off but ratings exist).
+    """
+    if pre_rating is None or post_rating is None:
+        return None
+    try:
+        pre_rating  = int(pre_rating)
+        post_rating = int(post_rating)
+    except (TypeError, ValueError):
+        return None
+
+    delta = post_rating - pre_rating
+
+    if delta <= CONFIDENCE_COLLAPSE_THRESHOLD:
+        finding = "confidence_collapse"
+        confidence = "moderate-high"
+        note = (
+            "Confidence dropped notably after writing the explanation — the classic "
+            "illusion-of-explanatory-depth signature: being forced to produce a detailed "
+            "explanation exposed a gap between perceived and actual understanding."
+        )
+        alternative = ALT_CONFIDENCE_COLLAPSE
+    elif delta >= CONFIDENCE_RISE_THRESHOLD:
+        finding = "confidence_rise"
+        confidence = "low-moderate"
+        note = (
+            "Confidence rose after writing the explanation — the act of writing appears "
+            "to have clarified or reinforced the learner's understanding. This is a "
+            "positive process indicator, distinct from and not a substitute for the "
+            "product score."
+        )
+        alternative = ALT_CONFIDENCE_RISE
+    else:
+        finding = "no_signal"
+        confidence = "n/a"
+        note = (
+            "No notable change between pre- and post-write confidence — not itself "
+            "informative of quality either way."
+        )
+        alternative = ""
+
+    return {
+        "pre_rating":       pre_rating,
+        "post_rating":      post_rating,
+        "confidence_delta": delta,
+        "finding":          finding,
+        "confidence":       confidence,
+        "note":             note,
+        "alternative_interpretation": alternative,
     }
 
 
@@ -231,15 +320,19 @@ def classify_quadrant(product_score, effort_profile, authenticity, trajectory):
                 "Strong product paired with an effortful, iterative writing process — "
                 "high-confidence evidence of genuine engaged reasoning."
             ),
+            "alternative_interpretation": "",
         }
     if product_strong and is_frictionless:
         return {
             "label": "authenticity_review",
             "interpretation": (
                 "Strong product paired with a frictionless or heavily pasted process. "
-                "The polish may not reflect the learner's own reasoning — recommend "
-                "confirming authorship. This does not lower the competence score."
+                "Per the evidence model, this pairing has no single confident claim — "
+                "recommend the instructor confirm authorship with the learner if it "
+                "matters for the assessment's purpose. This does not lower the "
+                "competence score."
             ),
+            "alternative_interpretation": ALT_FRICTIONLESS_PROCESS,
         }
     if (not product_strong) and is_effortful:
         return {
@@ -248,14 +341,17 @@ def classify_quadrant(product_score, effort_profile, authenticity, trajectory):
                 "Weak product paired with an effortful process — a coaching signal. "
                 "The learner appears to be trying and lacking the knowledge, not the effort."
             ),
+            "alternative_interpretation": "",
         }
     if (not product_strong) and is_frictionless:
         return {
             "label": "disengaged_shallow_confident",
             "interpretation": (
-                "Weak product paired with a frictionless, unrevised process — consistent "
-                "with disengagement or shallow confidence in the material."
+                "Weak product paired with a frictionless, unrevised process. Per the "
+                "evidence model, this pairing has no single confident claim on its own — "
+                "consistent with disengagement or shallow confidence, but not proof of it."
             ),
+            "alternative_interpretation": ALT_FRICTIONLESS_PROCESS,
         }
 
     # Neither clearly effortful nor clearly frictionless — not enough process signal to
@@ -267,6 +363,7 @@ def classify_quadrant(product_score, effort_profile, authenticity, trajectory):
             "Process signals were mixed or sparse — this reading leans on the product "
             "score, with process treated as inconclusive supporting context."
         ),
+        "alternative_interpretation": "",
     }
 
 
@@ -287,7 +384,7 @@ def assess_revision_toward_quality(essay_text, process_log, model, api_key, base
         if r.get("removed_text") or r.get("inserted_text")
     ]
     if not revisions:
-        return {"rating": "not_assessed", "evidence": []}
+        return {"rating": "not_assessed", "evidence": [], "alternative_explanation": ""}
 
     pairs_text = "\n".join(
         f"- before: {r.get('removed_text', '') or '(nothing — new text inserted)'}\n"
@@ -315,7 +412,9 @@ def assess_revision_toward_quality(essay_text, process_log, model, api_key, base
         "Return this JSON exactly — no markdown, no extra text:\n"
         "{\n"
         '  "rating": "none | some | clear",\n'
-        '  "evidence": [ {"before": "<short quote>", "after": "<short quote>"} ]  // 1-2 pairs, or [] if rating is "none"\n'
+        '  "evidence": [ {"before": "<short quote>", "after": "<short quote>"} ],  // 1-2 pairs, or [] if rating is "none"\n'
+        '  "alternative_explanation": "<one line: a plausible non-understanding explanation for the same edits, '
+        'e.g. coincidental phrasing improvement or pasted-in phrasing — empty string if rating is \\"none\\">"\n'
         "}"
     )
 
@@ -323,18 +422,22 @@ def assess_revision_toward_quality(essay_text, process_log, model, api_key, base
         raw    = llm_chat_json(model, system, prompt, api_key, base_url)
         result = _extract_json(raw)
     except Exception:
-        return {"rating": "not_assessed", "evidence": []}
+        return {"rating": "not_assessed", "evidence": [], "alternative_explanation": ""}
 
     rating = result.get("rating")
     if rating not in ("none", "some", "clear"):
-        return {"rating": "not_assessed", "evidence": []}
+        return {"rating": "not_assessed", "evidence": [], "alternative_explanation": ""}
 
     evidence = []
     for pair in (result.get("evidence") or [])[:2]:
         if isinstance(pair, dict) and (pair.get("before") or pair.get("after")):
             evidence.append({"before": str(pair.get("before", "")), "after": str(pair.get("after", ""))})
 
-    return {"rating": rating, "evidence": evidence}
+    alt = result.get("alternative_explanation")
+    if not isinstance(alt, str) or not alt.strip():
+        alt = ALT_REVISION_TOWARD_QUALITY if rating in ("some", "clear") else ""
+
+    return {"rating": rating, "evidence": evidence, "alternative_explanation": alt}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -362,7 +465,7 @@ def analyze_writing_process(process_log, writing_metrics, essay_text, product_sc
             essay_text, process_log, model, api_key, base_url
         )
     else:
-        revision_toward_quality = {"rating": "not_assessed", "evidence": []}
+        revision_toward_quality = {"rating": "not_assessed", "evidence": [], "alternative_explanation": ""}
 
     return {
         "effort_profile":          effort_profile,

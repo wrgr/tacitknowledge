@@ -32,6 +32,13 @@ def load_prompt(path):
         data["metadata"] = {}
     if "process_overlay_enabled" not in data:
         data["process_overlay_enabled"] = True
+    if not data.get("general_guidance"):
+        # Shown to the learner before writing (see general_guidance schema field). Authored
+        # separately from key_points — never auto-derived, to avoid leaking scored points.
+        data["general_guidance"] = (
+            "Explain your reasoning clearly, including why each part matters and how it "
+            "connects to the rest."
+        )
 
     # do the same for each expert answer inside the prompt
     for ea in data.get("expert_answers", []):

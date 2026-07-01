@@ -115,6 +115,12 @@ _QUADRANT_LABELS = {
     "disengaged_shallow_confident": "Disengaged or shallow-confident",
 }
 
+_CONFIDENCE_FINDING_LABELS = {
+    "confidence_collapse": "Confidence collapse (illusion-of-explanatory-depth signature)",
+    "confidence_rise":     "Confidence rise",
+    "no_signal":           "No notable change",
+}
+
 _PROCESS_INTERPRETATION_CAUTION = (
     "Process signals are indirect and ambiguous — interpreted as patterns, not verdicts. "
     "Competence is judged from the essay itself; the writing process is supporting context."
@@ -135,6 +141,8 @@ def _append_process_overlay(lines, overlay):
         lines.append("**Process × Product:** " + label)
         if quadrant.get("interpretation"):
             lines.append("  > " + quadrant["interpretation"])
+        if quadrant.get("alternative_interpretation"):
+            lines.append("  > Alternative: " + quadrant["alternative_interpretation"])
         lines.append("")
 
     ep = overlay.get("effort_profile") or {}
@@ -161,6 +169,8 @@ def _append_process_overlay(lines, overlay):
         lines.append("**Revision toward quality:** " + rtq["rating"])
         for pair in rtq.get("evidence", []):
             lines.append(f"  - \"{pair.get('before', '')}\" → \"{pair.get('after', '')}\"")
+        if rtq.get("alternative_explanation"):
+            lines.append("  > Alternative: " + rtq["alternative_explanation"])
         lines.append("")
     elif rtq.get("rating") == "not_assessed":
         lines.append("**Revision toward quality:** not assessed")
@@ -170,15 +180,39 @@ def _append_process_overlay(lines, overlay):
     if difficulty_points:
         lines.append("**Difficulty points:**")
         for dp in difficulty_points:
-            lines.append(f"  - {dp.get('note', '')} (around position {dp.get('char_position', 0)})")
+            note = f"  - {dp.get('note', '')} (around position {dp.get('char_position', 0)})"
+            if dp.get("alternative_interpretation"):
+                note += f" — alternative: {dp['alternative_interpretation']}"
+            lines.append(note)
         lines.append("")
 
     authenticity = overlay.get("authenticity") or {}
-    if authenticity.get("level"):
+    if authenticity.get("level") and authenticity["level"] != "none":
         ev_text = "; ".join(authenticity.get("evidence", []))
         detail = f" — {ev_text}" if ev_text else ""
-        recommend = " — recommend confirming authorship" if authenticity["level"] == "elevated" else ""
-        lines.append(f"**Authenticity:** {authenticity['level']}{detail}{recommend}")
+        lines.append(f"**Authenticity:** {authenticity['level']}{detail}")
+        for alt in authenticity.get("alternative_interpretations", []):
+            lines.append(
+                "  > Alternative: " + alt + " Recommend confirming with the learner "
+                "if this matters for the assessment's purpose."
+            )
+        lines.append("")
+    elif authenticity.get("level") == "none":
+        lines.append("**Authenticity:** none — no pasted content detected.")
+        lines.append("")
+
+    cc = overlay.get("confidence_calibration")
+    if cc:
+        label = _CONFIDENCE_FINDING_LABELS.get(cc.get("finding"), cc.get("finding", ""))
+        lines.append(
+            f"**Confidence calibration:** {label} "
+            f"(pre: {cc['pre_rating']}/10 → post: {cc['post_rating']}/10, "
+            f"Δ={cc['confidence_delta']:+d})"
+        )
+        if cc.get("note"):
+            lines.append("  > " + cc["note"])
+        if cc.get("alternative_interpretation"):
+            lines.append("  > Alternative: " + cc["alternative_interpretation"])
         lines.append("")
 
     lines.append("> " + _PROCESS_INTERPRETATION_CAUTION)

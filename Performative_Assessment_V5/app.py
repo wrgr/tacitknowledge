@@ -108,6 +108,15 @@ def _user_theme():
     return session.get("theme", "light")
 
 
+def _coerce_fr_rating(value):
+    """Validate a rate/re-rate confidence rating (1-10 int); None if missing or out of range."""
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    return value if 1 <= value <= 10 else None
+
+
 def _post_login_redirect():
     if session.get("role") == "admin":
         return redirect(url_for("admin_dashboard"))
@@ -851,6 +860,9 @@ def api_save_prompt():
         ],
         "metadata": {},
     }
+    general_guidance = data.get("general_guidance", "").strip()
+    if general_guidance:
+        prompt_data["general_guidance"] = general_guidance
 
     path = PROMPTS_DIR / (prompt_id + ".json")
     path.write_text(json.dumps(prompt_data, indent=2), encoding="utf-8")
@@ -867,11 +879,14 @@ def api_fr_prompts():
     prompt_list = []
     for i, p in enumerate(prompts):
         entry = {
-            "index":       i,
-            "id":          p["id"],
-            "title":       p["title"],
-            "description": p["description"],
-            "word_limit":  p.get("word_limit"),
+            "index":            i,
+            "id":               p["id"],
+            "title":            p["title"],
+            "description":      p["description"],
+            "word_limit":       p.get("word_limit"),
+            "prompt_text":      p.get("prompt_text", ""),
+            "constraints":      p.get("constraints", []),
+            "general_guidance": p.get("general_guidance", ""),
         }
         if is_admin and p.get("expert_answers"):
             entry["expert_answer"] = p["expert_answers"][0].get("answer", "")
@@ -954,6 +969,8 @@ def api_fr_submit():
         "profile":          None,
         "process_overlay":  None,
         "writing_metrics":  data.get("writing_metrics"),
+        "pre_rating":       _coerce_fr_rating(data.get("pre_rating")),
+        "post_rating":      None,
         "user_id":          session["user_id"],
         "model":            model,
         "api_key":          api_key,
@@ -971,6 +988,29 @@ def api_fr_submit():
             "missed_points":  evaluation["missed_points"],
         },
     })
+
+
+@app.route("/api/fr/post-rating", methods=["POST"])
+@auth.login_required
+def api_fr_post_rating():
+    """Store the post-write confidence rating — asked immediately after submission but
+    before any score or feedback is shown to the learner (Part C of the rate/re-rate
+    mechanic; see also Part D, feedback-before-score)."""
+    data = request.get_json(silent=True) or {}
+    sid  = data.get("session_id")
+    st   = _fr_state.get(sid)
+
+    if not st:
+        return jsonify({"error": "session not found"}), 404
+    if st["user_id"] != session.get("user_id") and session.get("role") != "admin":
+        return jsonify({"error": "forbidden"}), 403
+
+    rating = _coerce_fr_rating(data.get("post_rating"))
+    if rating is None:
+        return jsonify({"error": "post_rating must be an integer 1-10"}), 400
+
+    st["post_rating"] = rating
+    return jsonify({"ok": True})
 
 
 @app.route("/api/fr/thinking-profile", methods=["POST"])
@@ -1039,7 +1079,17 @@ def api_fr_report():
             model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
             use_llm=engine.llm_is_available(st["api_key"]),
         )
-        st["process_overlay"] = process_overlay
+
+    # Confidence calibration (rate → explain → re-rate) is independent of process_log —
+    # it can be present even when no writing process was captured at all, and vice versa.
+    confidence_calibration = engine.compute_confidence_calibration(
+        st.get("pre_rating"), st.get("post_rating")
+    )
+    if confidence_calibration:
+        process_overlay = dict(process_overlay or {})
+        process_overlay["confidence_calibration"] = confidence_calibration
+
+    st["process_overlay"] = process_overlay
 
     try:
         path = engine.generate_fr_report(

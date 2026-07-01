@@ -644,6 +644,9 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
         {% if po.quadrant_interpretation %}
         <div class="reasoning-text">{{ po.quadrant_interpretation }}</div>
         {% endif %}
+        {% if po.quadrant_alternative %}
+        <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.quadrant_alternative }}</div>
+        {% endif %}
       </div>
       {% endif %}
 
@@ -658,6 +661,9 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
         <ul class="summary-list">
           {% for e in po.revision_evidence %}<li>&ldquo;{{ e.before }}&rdquo; → &ldquo;{{ e.after }}&rdquo;</li>{% endfor %}
         </ul>
+        {% endif %}
+        {% if po.revision_alternative %}
+        <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.revision_alternative }}</div>
         {% endif %}
       </div>
       {% endif %}
@@ -675,6 +681,21 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
       <div class="summary-section">
         <div class="summary-section-label">Authenticity</div>
         <p class="assessment-text">{{ po.authenticity_text }}</p>
+        {% for alt in po.authenticity_alternatives %}
+        <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ alt }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if po.confidence_calibration_text %}
+      <div class="summary-section">
+        <div class="summary-section-label">Confidence calibration: {{ po.confidence_calibration_text }}</div>
+        {% if po.confidence_calibration_note %}
+        <p class="assessment-text">{{ po.confidence_calibration_note }}</p>
+        {% endif %}
+        {% if po.confidence_calibration_alternative %}
+        <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.confidence_calibration_alternative }}</div>
+        {% endif %}
       </div>
       {% endif %}
 

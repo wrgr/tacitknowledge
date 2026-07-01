@@ -700,13 +700,19 @@ def generate_prompt_draft(description, model, api_key, base_url):
         '  "constraints": ["<must-satisfy rule 1>", "<rule 2>", "<rule 3>"],\n'
         '  "expert_answer": "<3-5 sentences: the complete ideal response covering all key points>",\n'
         '  "key_points": ["<short phrase 1>", "<phrase 2>", "<6-10 total>"],\n'
-        '  "rubric": {"<key point phrase>": <weight 1-4>, "<next phrase>": <weight>}\n'
+        '  "rubric": {"<key point phrase>": <weight 1-4>, "<next phrase>": <weight>},\n'
+        '  "general_guidance": "<1-3 sentences: the general SHAPE of a complete answer>"\n'
         "}\n\n"
         "Guidelines:\n"
         "- prompt_text: clear, direct instruction ending with what the learner should produce\n"
         "- key_points: 6-10 short phrases the learner must mention to score well\n"
         "- rubric weights: 1=low importance, 2=medium, 3=high, 4=critical\n"
         "- every key_point must have an entry in rubric\n"
+        "- general_guidance: this is shown to the LEARNER before they write, so it must be "
+        "written at a HIGHER level of abstraction than key_points — describe the shape of a "
+        "complete answer (e.g. 'explain not just what happens but why each stage matters and "
+        "how the stages connect'), and do NOT name any of the specific key_points or close "
+        "paraphrases of them. It must be authored independently, not a summary of key_points.\n"
         "Return only the JSON, no other text."
     )
 

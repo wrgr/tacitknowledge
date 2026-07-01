@@ -710,27 +710,41 @@ def generate_prompt_draft(description, model, api_key, base_url):
         '  "word_limit": <suggested word limit as an integer, e.g. 200>,\n'
         '  "constraints": ["<must-satisfy rule 1>", "<rule 2>", "<rule 3>"],\n'
         '  "expert_answer": "<3-5 sentences: the complete ideal response covering all key points>",\n'
-        '  "key_points": ["<short phrase 1>", "<phrase 2>", "<6-10 total>"],\n'
-        '  "rubric": {"<key point phrase>": <weight 1-4>, "<next phrase>": <weight>},\n'
+        '  "key_points": [\n'
+        '    {\n'
+        '      "construct": "<the underlying claim the learner must demonstrate, e.g. '
+        '\'Names a technique for signaling engagement during listening\'>",\n'
+        '      "exemplars": ["<concrete way 1 to satisfy it>", "<way 2>", "<2-4 total>"],\n'
+        '      "importance": "CRITICAL"|"HIGH"|"MEDIUM"|"LOW"\n'
+        '    }\n'
+        '  ],\n'
         '  "general_guidance": "<1-3 sentences: the general SHAPE of a complete answer>"\n'
         "}\n\n"
         "Guidelines:\n"
         "- prompt_text: clear, direct instruction ending with what the learner should produce\n"
-        "- key_points: 6-10 short phrases the learner must mention to score well\n"
-        "- rubric weights: 1=low importance, 2=medium, 3=high, 4=critical\n"
-        "- every key_point must have an entry in rubric\n"
+        "- key_points: 6-10 entries\n"
+        "- construct: the underlying competency being tested -- write it at the level of a claim, "
+        "not a specific phrasing. Two different learners could satisfy the same construct in "
+        "different words or with different examples.\n"
+        "- exemplars: 2-4 concrete, genuinely DIFFERENT ways to satisfy the construct -- not "
+        "synonyms or minor rewordings of each other. These are the pre-authored reference "
+        "answers a grader checks against; anything else a learner writes that also satisfies the "
+        "construct can still be credited separately as a novel equivalent during grading.\n"
+        "- importance: CRITICAL/HIGH/MEDIUM/LOW, replacing a numeric weight\n"
         "- general_guidance: this is shown to the LEARNER before they write, so it must be "
-        "written at a HIGHER level of abstraction than key_points — describe the shape of a "
-        "complete answer (e.g. 'explain not just what happens but why each stage matters and "
-        "how the stages connect'), and do NOT name any of the specific key_points or close "
-        "paraphrases of them. It must be authored independently, not a summary of key_points.\n"
+        "written at a HIGHER level of abstraction than any construct or exemplar — describe the "
+        "shape of a complete answer (e.g. 'explain not just what happens but why each stage "
+        "matters and how the stages connect'), and do NOT name any specific construct, exemplar, "
+        "or close paraphrase of them. It must be authored independently, not a summary of "
+        "key_points.\n"
         "Return only the JSON, no other text."
     )
 
     system = (
-        "You are an expert instructional designer. "
-        "Create clear, rigorous free-response writing prompts for assessment. "
-        "Respond only with valid JSON — no markdown, no extra text."
+        "You are an expert instructional designer. Create clear, rigorous free-response writing "
+        "prompts for assessment, distinguishing the underlying construct each key point tests from "
+        "the concrete exemplars that satisfy it. Respond only with valid JSON — no markdown, no "
+        "extra text."
     )
 
     raw = llm_chat(model, system, prompt, api_key, base_url)

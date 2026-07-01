@@ -107,7 +107,25 @@ def _parse_fr_prompt(lines):
     }
 
 
+_FR_KP_BULLET = re.compile(r'^\s+-\s+(.*?)\s+—\s+_(.*)_\s*$')
+_FR_KP_SPAN   = re.compile(r'^\s+>\s+"(.*)"\s*$')
+_FR_KP_JUST   = re.compile(r'^\s+_Justification:_\s+(.*)$')
+_FR_KP_EXEMPLAR = re.compile(r'^matched: known exemplar "(.*)"$')
+
+
 def _parse_fr_evaluation(lines):
+    """Parse the FR Evaluation section, including the construct/exemplar key-point
+    bullets (Part D of the construct/exemplar brief): one bullet per matched point with
+    a match-type tag, followed by its evidence span(s) and (for novel-equivalent matches)
+    a justification line. 'matched_points'/'missed_points' stay flat construct-string
+    lists for backward compatibility with older code paths (CSV export); the richer
+    per-point breakdown lives in 'matched_points_detail'.
+
+    Also tolerates the pre-brief flat "**Key points covered:** a, b, c" single-line
+    format from reports generated before this change -- those reports have no per-point
+    detail to recover, so matched_points_detail stays empty and callers fall back to the
+    flat chip display.
+    """
     ev = {
         'score': '',
         'feedback': '',
@@ -115,32 +133,53 @@ def _parse_fr_evaluation(lines):
         'gaps': [],
         'matched_points': [],
         'missed_points': [],
+        'matched_points_detail': [],
         'expert_answer': '',
     }
     state = None
     expert_lines = []
+    current_point = None
+
+    def _flush_point():
+        nonlocal current_point
+        if current_point is not None:
+            ev['matched_points_detail'].append(current_point)
+            ev['matched_points'].append(current_point['construct'])
+            current_point = None
+
     for line in lines:
         stripped = line.strip()
         if stripped.startswith('**Score:**'):
+            _flush_point()
             ev['score'] = stripped.split('**Score:**')[1].strip()
             state = None
         elif stripped.startswith('**Feedback for learner:**'):
+            _flush_point()
             fb = re.sub(r'\*\*Feedback for learner:\*\*\s*', '', stripped)
             ev['feedback'] = fb.strip('_')
             state = None
         elif stripped == '**Strengths:**':
+            _flush_point()
             state = 'strengths'
         elif stripped == '**Gaps:**':
+            _flush_point()
             state = 'gaps'
         elif stripped.startswith('**Key points covered:**'):
-            val = stripped.split('**Key points covered:**')[1].strip()
-            ev['matched_points'] = [p.strip() for p in val.split(',') if p.strip()]
-            state = None
+            _flush_point()
+            rest = stripped.split('**Key points covered:**', 1)[1].strip()
+            if rest:
+                # pre-brief flat comma-joined format -- no per-point detail available
+                ev['matched_points'] = [p.strip() for p in rest.split(',') if p.strip()]
+                state = None
+            else:
+                state = 'covered'
         elif stripped.startswith('**Key points missed:**'):
+            _flush_point()
             val = stripped.split('**Key points missed:**')[1].strip()
             ev['missed_points'] = [p.strip() for p in val.split(',') if p.strip()]
             state = None
         elif stripped == '**Expert reference answer:**':
+            _flush_point()
             state = 'expert'
         elif state == 'expert' and (line.startswith('> ') or line == '>'):
             expert_lines.append(line[2:] if line.startswith('> ') else '')
@@ -156,6 +195,35 @@ def _parse_fr_evaluation(lines):
                 ev['gaps'].append(m.group(1).strip())
             elif stripped.startswith('**'):
                 state = None
+        elif state == 'covered':
+            bullet = _FR_KP_BULLET.match(line)
+            span   = _FR_KP_SPAN.match(line)
+            just   = _FR_KP_JUST.match(line)
+            if bullet:
+                _flush_point()
+                construct, tag = bullet.group(1).strip(), bullet.group(2).strip()
+                m_ex = _FR_KP_EXEMPLAR.match(tag)
+                if tag.startswith('novel equivalent'):
+                    match_type, matched_exemplar = 'novel_equivalent', None
+                elif m_ex:
+                    match_type, matched_exemplar = 'exemplar', m_ex.group(1)
+                else:
+                    match_type, matched_exemplar = 'exemplar', None
+                current_point = {
+                    'construct': construct,
+                    'match_type': match_type,
+                    'matched_exemplar': matched_exemplar,
+                    'evidence_spans': [],
+                    'functional_justification': None,
+                }
+            elif span and current_point is not None:
+                current_point['evidence_spans'].append(span.group(1))
+            elif just and current_point is not None:
+                current_point['functional_justification'] = just.group(1).strip()
+            elif stripped.startswith('**'):
+                _flush_point()
+                state = None
+    _flush_point()
     ev['expert_answer'] = '\n'.join(expert_lines).strip()
     return ev
 

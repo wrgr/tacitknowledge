@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Bump whenever the corresponding prompt's wording changes, so old cached
 # results (see llm.cached_evaluative_call) don't silently apply to a changed prompt.
 _PROMPT_VERSION_EXTRACT_EVIDENCE = "extract_evidence_v1"
-_PROMPT_VERSION_FR_GRADE         = "fr_grade_v1"
+_PROMPT_VERSION_FR_GRADE         = "fr_grade_construct_exemplar_v2"
 _PROMPT_VERSION_SCENARIO_GRADE   = "scenario_grade_v1"
 
 
@@ -182,6 +182,54 @@ def _quote_supported(quote, submission_text):
     return False
 
 
+def _spans_supported(spans, submission_text):
+    """Ground a list of evidence spans against the submission text (construct/exemplar
+    brief, Part B -- multi-span extension of the prior single-quote grounding fix).
+    Reuses _quote_supported per span rather than duplicating the matching logic; every
+    span is validated independently. Returns only the spans that are actually grounded.
+    """
+    if not spans:
+        return []
+    return [s for s in spans if _quote_supported(s, submission_text)]
+
+
+_GENERIC_JUSTIFICATIONS = frozenset({
+    "this satisfies the construct",
+    "this addresses the key point",
+    "this is relevant to the construct",
+    "this relates to the topic",
+    "this demonstrates understanding",
+    "this shows the learner understands",
+    "this is related to the construct",
+    "the evidence supports this construct",
+    "the quote is relevant",
+    "this shows understanding of the concept",
+})
+
+
+def _justification_is_substantive(justification, construct):
+    """Part B3 sanity check on a novel-equivalent match's functional_justification.
+
+    Deliberately substance-based, NOT a lexical-overlap check against the evidence
+    spans -- penalizing a justification for not repeating the spans' vocabulary would
+    punish exactly the paraphrastic, integrative reasoning this feature exists to credit.
+    Rejects only justifications that are empty, boilerplate, or a near-verbatim
+    restatement of the construct with no added reasoning connecting it to the evidence.
+    A simple heuristic by design (no second LLM judgment call).
+    """
+    j_norm = _normalize_for_quote_match(justification)
+    if not j_norm:
+        return False
+    if j_norm in _GENERIC_JUSTIFICATIONS:
+        return False
+    c_norm = _normalize_for_quote_match(construct)
+    if c_norm and difflib.SequenceMatcher(None, j_norm, c_norm).ratio() >= 0.85:
+        return False
+    if len(j_norm.split()) < 5:
+        return False
+    return True
+
+
 _NEGATION_PATTERNS = re.compile(
     r"\b(failed to|did not|didn't|does not|doesn't|no discussion of|not addressed|"
     r"not covered|missing|absent|never (?:mention|address|discuss)(?:ed|es)?|lacks?|"
@@ -243,6 +291,41 @@ def _aggregate_grading_samples(samples, key_points):
         {"key_point": p, "supporting_quote": quotes_by_point.get(p, "")} for p in majority_matched
     ]
     aggregated["missed_points"] = [p for p in key_points if p not in majority_matched]
+    note = f"(graded via {n}-sample majority vote)"
+    aggregated["feedback"] = (_coerce_str(aggregated.get("feedback", "")) + " " + note).strip()
+    aggregated["self_consistency_samples"] = n
+    return aggregated
+
+
+def _aggregate_fr_grading_samples(samples, key_points):
+    """FR counterpart to _aggregate_grading_samples for the construct/exemplar schema.
+
+    Kept separate rather than generalizing the scenario-mode aggregator, since the two
+    now operate on structurally different match schemas (key_point_id/match_type/
+    evidence_spans here vs. key_point/supporting_quote there) and scenario-mode coverage
+    scoring must stay unmodified. Same conservative majority-vote tie-breaking: a key
+    point needs >n/2 votes to survive, ties resolve to missed.
+    """
+    n = len(samples)
+    votes = {}
+    best_match = {}
+    for s in samples:
+        for m in (s.get("matches") or []):
+            if not isinstance(m, dict):
+                continue
+            kp_id = m.get("key_point_id")
+            if not kp_id:
+                continue
+            votes[kp_id] = votes.get(kp_id, 0) + 1
+            if kp_id not in best_match:
+                best_match[kp_id] = m
+
+    valid_ids    = {kp["id"] for kp in key_points}
+    majority_ids = {kp_id for kp_id, v in votes.items() if v > n / 2 and kp_id in valid_ids}
+
+    aggregated = dict(samples[0])
+    aggregated["matches"] = [best_match[kp_id] for kp_id in majority_ids]
+    aggregated["missed_points"] = [kp["id"] for kp in key_points if kp["id"] not in majority_ids]
     note = f"(graded via {n}-sample majority vote)"
     aggregated["feedback"] = (_coerce_str(aggregated.get("feedback", "")) + " " + note).strip()
     aggregated["self_consistency_samples"] = n
@@ -339,34 +422,72 @@ def _extract_evidence(model, api_key, base_url, text, key_points, bypass_cache=F
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FREE-RESPONSE SCORING  (unchanged from original)
+# FREE-RESPONSE SCORING
+#
+# Each key point is a construct claim (the underlying competency) plus a
+# pre-authored exemplar list (accepted ways of demonstrating it) -- see the
+# construct-vs-exemplar brief. Grading may also credit a novel_equivalent match:
+# a valid technique the scenario author didn't anticipate, always with grounded
+# evidence_spans and a specific functional_justification, never on topical
+# relevance alone. Scenario-mode coverage scoring below is untouched -- it keeps
+# the flat key_point-string schema.
 # ─────────────────────────────────────────────────────────────────────────────
+
+_FR_IMPORTANCE_WEIGHT = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+_FR_SPAN_CALIBRATION = (
+    "Evidence for a key point may be a single clearly-stated sentence or several "
+    "shorter phrases spread across the response. Do not penalize a response for "
+    "weaving multiple ideas together in continuous prose instead of listing them as "
+    "discrete points — score itemized and integrative responses on equal footing when "
+    "they demonstrate the same understanding. Only the presence and substance of the "
+    "evidence matters, not how the response is organized."
+)
+
+
+def _fr_exemplars_for_match(kp):
+    """Part A3: an empty exemplars list falls back to the construct text itself as the
+    sole reference exemplar -- preserves pre-migration matching behavior for legacy or
+    not-yet-authored key points, while the novel-equivalent path (LLM grading only)
+    remains available regardless.
+    """
+    return kp.get("exemplars") or [kp.get("construct", "")]
+
 
 def score_free_response_with_keywords(prompt_data, text):
     # Pure Python string/regex matching, no LLM call -- already deterministic,
     # so it's exempt from the determinism/caching/self-consistency work above.
-    ea = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
+    # No semantic judgment available here, so only the exemplar path applies --
+    # novel-equivalent recognition requires the LLM grader.
+    ea         = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
     key_points = ea.get("key_points", [])
-    rubric     = ea.get("rubric", {})
     text_lower = text.lower()
 
-    matched = [p for p in key_points if _phrase_in_text(p, text_lower)]
-    missed  = [p for p in key_points if not _phrase_in_text(p, text_lower)]
+    matched, missed = [], []
+    for kp in key_points:
+        hit = next((e for e in _fr_exemplars_for_match(kp) if _phrase_in_text(e, text_lower)), None)
+        if hit is not None:
+            matched.append({
+                "key_point_id":              kp["id"],
+                "construct":                 kp["construct"],
+                "importance":                kp["importance"],
+                "match_type":                "exemplar",
+                "matched_exemplar":          hit if kp.get("exemplars") else None,
+                "evidence_spans":            [],
+                "functional_justification":  None,
+            })
+        else:
+            missed.append({"key_point_id": kp["id"], "construct": kp["construct"], "importance": kp["importance"]})
 
-    if rubric:
-        total  = sum(rubric.values())
-        earned = sum(rubric.get(p, 1.0) for p in matched)
-        score  = earned / total if total > 0 else 0.0
-    elif key_points:
-        score = len(matched) / len(key_points)
-    else:
-        score = 0.0
+    total  = sum(_FR_IMPORTANCE_WEIGHT.get(kp["importance"], 2) for kp in key_points)
+    earned = sum(_FR_IMPORTANCE_WEIGHT.get(m["importance"], 2) for m in matched)
+    score  = earned / total if total > 0 else 0.0
 
     parts = []
     if matched:
-        parts.append("Covered: " + ", ".join(matched))
+        parts.append("Covered: " + ", ".join(m["construct"] for m in matched))
     if missed:
-        parts.append("Missing: " + ", ".join(missed))
+        parts.append("Missing: " + ", ".join(m["construct"] for m in missed))
 
     return {
         "prompt_id":      prompt_data["id"],
@@ -384,49 +505,67 @@ def score_free_response_with_keywords(prompt_data, text):
 def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, bypass_cache=False):
     ea         = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
     key_points = ea.get("key_points", [])
-    rubric     = ea.get("rubric", {})
+    by_id      = {kp["id"]: kp for kp in key_points}
 
-    _weight_label = {4: "CRITICAL", 3: "HIGH", 2: "MEDIUM", 1: "LOW"}
     if key_points:
-        kp_lines = ["- " + p + " [" + _weight_label.get(rubric.get(p, 1), "MEDIUM") + " — " + str(rubric.get(p, 1)) + "pt" + ("s" if rubric.get(p, 1) != 1 else "") + "]"
-                    for p in key_points]
+        kp_lines = []
+        for kp in key_points:
+            exemplars = kp.get("exemplars") or []
+            ex_text = "; ".join(exemplars) if exemplars else "(none authored -- treat the construct itself as the reference)"
+            kp_lines.append(
+                "- id: " + kp["id"] + "\n"
+                "  construct: " + kp["construct"] + "\n"
+                "  known exemplars: " + ex_text + "\n"
+                "  importance: " + kp["importance"]
+            )
         key_points_text = "\n".join(kp_lines)
     else:
-        key_points_text = "- (none specified)"
+        key_points_text = "(none specified)"
 
-    constraints_text = (
-        "\n".join("- " + c for c in prompt_data["constraints"])
-        if prompt_data.get("constraints") else "- (none specified)"
-    )
-
-    # Pre-pass: compress the submission to per-key-point evidence before scoring.
-    evidence = _extract_evidence(model, api_key, base_url, text, key_points, bypass_cache=bypass_cache)
-
+    # Graded directly against the raw submission rather than through the per-key-point
+    # evidence pre-pass used elsewhere in this file: that pre-pass compresses to one quote
+    # per point, which is exactly the single-fragment bias this brief removes (Part B's
+    # multi-span evidence requirement would be defeated by compressing first).
     prompt = (
-        "KEY POINTS WITH IMPORTANCE WEIGHTS:\n" + key_points_text + "\n\n"
-        "LEARNER EVIDENCE (extracted from submission; each line's quote is verbatim from "
-        "the submission):\n" + evidence + "\n\n"
-        "Grade the evidence against the key points. Credit semantic equivalence for the "
-        "SUBSTANCE of a key point, but every match must be evidence-grounded: a key point "
-        "may only be marked matched if the LEARNER EVIDENCE above contains an actual quote "
-        "supporting it. The surface presence of related vocabulary (e.g. the key point's own "
-        "words appearing somewhere) is NOT sufficient grounds for a match. If no supporting "
-        "quote exists for a key point, put it in missed_points instead.\n\n"
+        "KEY POINTS (construct claims with pre-authored exemplars):\n" + key_points_text + "\n\n"
+        "LEARNER'S SUBMISSION:\n" + clip(text, 6000) + "\n\n"
+        "For each key point, decide whether the submission satisfies the underlying construct "
+        "claim.\n\n"
+        "PRIMARY MATCH: the submission satisfies the construct via one of the known exemplars "
+        "(semantic match against exemplar meaning, not exact wording — e.g. \"maintaining visual "
+        "engagement\" matches the exemplar \"eye contact\"). Set match_type to \"exemplar\" and "
+        "matched_exemplar to the specific known exemplar it corresponds to.\n\n"
+        "NOVEL EQUIVALENT: if no known exemplar matches, but the submission demonstrates the "
+        "construct through a genuinely different, unlisted technique or example, set match_type "
+        "to \"novel_equivalent\" and provide a functional_justification explaining the SPECIFIC "
+        "mechanism by which the evidence satisfies the construct — topical relevance or a surface "
+        "mention of the general subject is NOT sufficient.\n\n"
+        + _FR_SPAN_CALIBRATION + "\n\n"
+        "Only mark a key point matched if evidence_spans contains verbatim (or near-verbatim) "
+        "text actually written by the learner — never invent or paraphrase a span. If no genuine "
+        "evidence exists for a key point, put its id in missed_points instead.\n\n"
         "Return this JSON — no markdown, no extra text:\n"
-        '{"matched_points":[{"key_point":"<exact key point string>",'
-        '"supporting_quote":"<the verbatim quote from LEARNER EVIDENCE that supports it>"}],'
-        '"missed_points":[<exact key point strings omitted>],'
+        '{"matches":[{"key_point_id":"<id>","match_type":"exemplar"|"novel_equivalent",'
+        '"matched_exemplar":"<known exemplar string -- exemplar matches only>",'
+        '"evidence_spans":["<verbatim span 1>","<verbatim span 2, optional>"],'
+        '"functional_justification":"<required for novel_equivalent -- the specific mechanism, '
+        'not topical relevance>"}],'
+        '"missed_points":[<key point ids not satisfied>],'
         '"strengths":[<1-3 short phrases>],'
         '"gaps":[<one sentence per gap>],'
         '"feedback":"<2-3 sentences>"}'
     )
 
+    # Model-capability limitation (documented per the construct/exemplar brief, not chased
+    # as a bug): how liberally paraphrase and dispersed multi-span evidence are recognized
+    # depends on the semantic judgment quality of whichever model is configured here. A
+    # smaller/local model will be more conservative than a stronger one.
     system = (
-        "You are an impartial grader. Score the learner's evidence against the key points. "
-        "Credit semantic equivalence for substance, but every matched_points entry MUST include "
-        "a supporting_quote copied verbatim from the LEARNER EVIDENCE -- never invent or "
-        "paraphrase a quote, and never mark a key point matched without one. "
-        "Respond only with valid JSON."
+        "You are an impartial grader distinguishing WHAT a learner must demonstrate (the "
+        "construct) from HOW they might demonstrate it (exemplars). Credit valid techniques not "
+        "in the pre-authored exemplar list, but only with grounded evidence and a specific "
+        "functional justification — never on topical relevance alone. Every match must include "
+        "verbatim evidence_spans copied from the submission. Respond only with valid JSON."
     )
 
     def _grade_once():
@@ -437,51 +576,82 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
     def _grade():
         if config.SELF_CONSISTENCY_SCORING:
             samples = [_grade_once() for _ in range(config.SELF_CONSISTENCY_SAMPLES)]
-            return _aggregate_grading_samples(samples, key_points)
+            return _aggregate_fr_grading_samples(samples, key_points)
         return _grade_once()
 
     result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_FR_GRADE,
                                     system, prompt, _grade, bypass_cache=bypass_cache)
 
-    matched_entries = result.get("matched_points", [])
+    raw_matches = result.get("matches", [])
+    if not isinstance(raw_matches, list):
+        raw_matches = []
 
-    matched_set, quotes_by_point = _resolve_llm_matches_with_quotes(matched_entries, key_points)
+    matched, novel_equivalents, demoted_ids = [], [], []
+    for m in raw_matches:
+        if not isinstance(m, dict):
+            continue
+        kp = by_id.get(m.get("key_point_id"))
+        if not kp:
+            continue  # unknown id -- ignore rather than guess which point it meant
 
-    # Part A2: deterministic grounding check -- demote any match whose quote doesn't
-    # actually appear in the submission. Not skippable; this is the real fix.
-    ungrounded = []
-    for p in list(matched_set):
-        if not _quote_supported(quotes_by_point.get(p, ""), text):
-            matched_set.discard(p)
-            ungrounded.append(p)
-    if ungrounded:
+        match_type = m.get("match_type") if m.get("match_type") in ("exemplar", "novel_equivalent") else "exemplar"
+
+        # Part B3: ground every span, for both match types, exactly as strictly as the
+        # original single-quote design -- this is non-negotiable, not a looser standard.
+        grounded_spans = _spans_supported(_coerce_str_list(m.get("evidence_spans", [])), text)
+        if not grounded_spans:
+            demoted_ids.append(kp["id"])
+            continue
+
+        justification = None
+        if match_type == "novel_equivalent":
+            justification = _coerce_str(m.get("functional_justification", ""))
+            if not _justification_is_substantive(justification, kp["construct"]):
+                demoted_ids.append(kp["id"])
+                continue
+
+        matched_exemplar = _coerce_str(m.get("matched_exemplar", "")).strip() or None if match_type == "exemplar" else None
+
+        entry = {
+            "key_point_id":             kp["id"],
+            "construct":                kp["construct"],
+            "importance":               kp["importance"],
+            "match_type":               match_type,
+            "matched_exemplar":         matched_exemplar,
+            "evidence_spans":           grounded_spans,
+            "functional_justification": justification,
+        }
+        matched.append(entry)
+        if match_type == "novel_equivalent":
+            novel_equivalents.append(entry)
+
+    if demoted_ids:
         logger.warning(
-            "[scoring] FR grading: demoted ungrounded match(es) %s -- no supporting quote "
-            "found in submission (prompt_id=%s)", ungrounded, prompt_data.get("id"),
+            "[scoring] FR grading: demoted ungrounded/unsubstantiated match(es) %s "
+            "(prompt_id=%s)", demoted_ids, prompt_data.get("id"),
         )
 
-    # Part B: cross-check the surviving matched verdicts against the free-text
-    # feedback/gaps narrative from the same grading pass; ties resolve conservatively.
+    # Part B4: cross-check surviving matches against the free-text feedback/gaps narrative
+    # from the same grading pass, exactly as for ordinary matches; ties resolve conservatively.
     narrative_texts = [_coerce_str(result.get("feedback", ""))] + _coerce_str_list(result.get("gaps", []))
-    contradictions = _find_narrative_contradictions(matched_set, narrative_texts)
-    for p in contradictions:
-        matched_set.discard(p)
+    contradictions = _find_narrative_contradictions({m["construct"] for m in matched}, narrative_texts)
+    if contradictions:
+        matched           = [m for m in matched if m["construct"] not in contradictions]
+        novel_equivalents = [m for m in novel_equivalents if m["construct"] not in contradictions]
         logger.warning(
-            "[scoring] FR grading: demoted key point '%s' -- feedback/gaps narrative "
-            "contradicts the matched verdict (prompt_id=%s)", p, prompt_data.get("id"),
+            "[scoring] FR grading: demoted key point(s) %s -- feedback/gaps narrative "
+            "contradicts the matched verdict (prompt_id=%s)", sorted(contradictions), prompt_data.get("id"),
         )
 
-    if rubric and key_points:
-        total  = sum(rubric.get(p, 1) for p in key_points)
-        earned = sum(rubric.get(p, 1) for p in key_points if p in matched_set)
-        score  = earned / total if total > 0 else 0.0
-    elif key_points:
-        score = len([p for p in key_points if p in matched_set]) / len(key_points)
-    else:
-        score = 0.5
+    matched_ids = {m["key_point_id"] for m in matched}
+    missed = [
+        {"key_point_id": kp["id"], "construct": kp["construct"], "importance": kp["importance"]}
+        for kp in key_points if kp["id"] not in matched_ids
+    ]
 
-    matched = [p for p in key_points if p in matched_set]
-    missed  = [p for p in key_points if p not in matched_set]
+    total  = sum(_FR_IMPORTANCE_WEIGHT.get(kp["importance"], 2) for kp in key_points)
+    earned = sum(_FR_IMPORTANCE_WEIGHT.get(m["importance"], 2) for m in matched)
+    score  = earned / total if total > 0 else 0.5
 
     return {
         "prompt_id":      prompt_data["id"],
@@ -489,7 +659,9 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
         "expert_answer":  ea,
         "matched_points": matched,
         "missed_points":  missed,
-        "matched_point_quotes": {p: quotes_by_point.get(p, "") for p in matched},
+        # Part C: the caller logs these to the review queue -- scoring itself doesn't
+        # gate on review, the learner's score is final at grading time either way.
+        "novel_equivalent_matches": novel_equivalents,
         "score":          max(0.0, min(1.0, score)),
         "feedback":       _coerce_str(result.get("feedback", "")),
         "strengths":      _coerce_str_list(result.get("strengths", [])),

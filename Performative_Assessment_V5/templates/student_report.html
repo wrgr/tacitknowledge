@@ -203,6 +203,24 @@ main {
 .chip.covered { background: var(--green-bg); color: var(--green-dk); border: 1px solid #6ee7b7; }
 .chip.missed  { background: var(--red-bg);   color: #991b1b;        border: 1px solid #fca5a5; }
 
+/* ── FR key-point detail (construct/exemplar match breakdown) ── */
+.kp-detail-card {
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 14px; margin-bottom: 8px; background: var(--card);
+}
+.kp-detail-construct { font-weight: 600; font-size: .88rem; margin-bottom: 4px; }
+.kp-detail-tag {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  padding: 2px 8px; border-radius: 99px; margin-left: 6px; vertical-align: middle;
+}
+.kp-detail-tag.exemplar { background: var(--green-bg); color: var(--green-dk); }
+.kp-detail-tag.novel    { background: var(--amber-bg); color: #92400e; }
+.kp-detail-evidence {
+  font-size: .82rem; color: var(--muted); font-style: italic;
+  margin: 2px 0 2px 4px; padding-left: 10px; border-left: 2px solid var(--border);
+}
+.kp-detail-justification { font-size: .82rem; margin-top: 4px; }
+
 /* ── Collapsible expert answer ── */
 details.expert-details { border-radius: var(--radius-sm); overflow: hidden; }
 details.expert-details summary {
@@ -455,7 +473,29 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
           </div>
         </div>
 
-        {% if ev.matched_points %}
+        {% if ev.matched_points_detail %}
+        <div class="chips-label">Key points covered</div>
+        {% for m in ev.matched_points_detail %}
+        <div class="kp-detail-card">
+          <div class="kp-detail-construct">
+            {{ m.construct }}
+            {% if m.match_type == 'novel_equivalent' %}
+            <span class="kp-detail-tag novel">Novel match — pending review</span>
+            {% elif m.matched_exemplar %}
+            <span class="kp-detail-tag exemplar">Exemplar: {{ m.matched_exemplar }}</span>
+            {% else %}
+            <span class="kp-detail-tag exemplar">Matched</span>
+            {% endif %}
+          </div>
+          {% for span in m.evidence_spans %}
+          <div class="kp-detail-evidence">"{{ span }}"</div>
+          {% endfor %}
+          {% if m.functional_justification %}
+          <div class="kp-detail-justification"><strong>Justification:</strong> {{ m.functional_justification }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% elif ev.matched_points %}
         <div class="chips-label">Key points covered</div>
         <div class="chips-row">
           {% for p in ev.matched_points %}<span class="chip covered">{{ p }}</span>{% endfor %}

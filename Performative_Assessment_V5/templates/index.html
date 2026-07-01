@@ -444,6 +444,21 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   text-align: left;
 }
 .btn-add:hover { border-color: var(--blue); color: var(--blue); background: #eff6ff; }
+
+/* Construct/exemplar key-point card (FR prompt authoring, Part E) */
+.fp-kp-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--bg);
+}
+.fp-kp-card-top { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.fp-kp-card-top input { flex: 1; }
+.fp-kp-exemplars-label { font-size: .74rem; color: var(--muted); margin: 6px 0 4px; }
+.fp-kp-exemplar-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.fp-kp-exemplar-row input { flex: 1; }
+
 .create-actions { display: flex; gap: 10px; margin-top: 8px; }
 #create-note { font-size: .82rem; color: var(--muted); margin-top: 10px; }
 
@@ -1381,9 +1396,31 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <span class="back-home-link" onclick="showHome()">← Change mode</span>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="margin-bottom:0">Choose a prompt</h2>
-      {% if is_admin %}<button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>{% endif %}
+      {% if is_admin %}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="showFrReview()">Review Queue</button>
+        <button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>
+      </div>
+      {% endif %}
     </div>
     <div id="fr-prompt-list"></div>
+  </div>
+</div>
+
+<!-- Free Response: Novel-Equivalent Review Queue (Part C, construct/exemplar brief).
+     Admin-only feature, but the container renders unconditionally (like view-fr-create)
+     since hide()/show() assume every view id in the nav lists always exists in the DOM. -->
+<div id="view-fr-review" class="view hidden">
+  <div id="fr-review-inner" style="max-width:760px;margin:0 auto;padding:32px 20px">
+    <span class="back-home-link" onclick="hide('view-fr-review');show('view-fr-prompts')">← Back</span>
+    <h2 style="margin-bottom:6px">Novel-Equivalent Review Queue</h2>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:20px">
+      These key points were credited to a technique or example the prompt author didn't
+      pre-author as an exemplar. Promoting adds the exemplar text to that key point for future
+      scoring; dismissing leaves the rubric unchanged. Either way, the score already given for
+      the submission that triggered this entry is unaffected.
+    </p>
+    <div id="fr-review-list"></div>
   </div>
 </div>
 
@@ -1459,9 +1496,16 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 
     <!-- Key points -->
     <div class="form-section">
-      <h3>Key Points &amp; Weights</h3>
-      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">Short phrases the learner must mention. Weight = how many points each is worth when scoring. Not shown to the learner.</p>
-      <div class="dynamic-list" id="fp-keypoint-list"></div>
+      <h3>Key Points</h3>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">
+        Each key point is a <strong>construct</strong> (the underlying claim a learner must
+        demonstrate — write it at the level of a claim, not a specific phrasing) plus one or
+        more <strong>exemplars</strong> (concrete, genuinely different ways to satisfy it —
+        not synonyms of each other). A learner who satisfies the construct through a valid
+        technique not listed here can still be credited during grading as a reviewable "novel
+        equivalent" — see the Review Queue. Not shown to the learner.
+      </p>
+      <div id="fp-keypoint-list"></div>
       <button class="btn-add" id="btn-fp-add-keypoint">+ Add key point</button>
     </div>
 
@@ -1903,7 +1947,7 @@ async function api(path, body) {
 // ── Mode navigation ────────────────────────────
 function showHome() {
   ['view-dashboard','view-scenarios','view-assess','view-results','view-create',
-   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-fr-review','view-reports',
    'view-profile'].forEach(hide);
   show('view-home');
   syncHomeSelectors();
@@ -1914,7 +1958,7 @@ function showHome() {
 
 async function showDashboard() {
   ['view-home','view-scenarios','view-assess','view-results','view-create',
-   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-reports',
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-fr-review','view-reports',
    'view-profile'].forEach(hide);
   show('view-dashboard');
   await _loadDashboardStats();
@@ -2973,8 +3017,12 @@ function renderFrResults(ev) {
   }
   if (ev.matched_points?.length || ev.missed_points?.length) {
     html += `<div class="result-section"><h3>Key points</h3><div class="tag-list">`;
-    (ev.matched_points || []).forEach(p => { html += `<span class="tag good">✓ ${p}</span>`; });
-    (ev.missed_points  || []).forEach(p => { html += `<span class="tag miss">✗ ${p}</span>`; });
+    (ev.matched_points || []).forEach(p => {
+      const novel = p.match_type === 'novel_equivalent';
+      const label = novel ? ' (novel match — pending review)' : '';
+      html += `<span class="tag good">✓ ${p.construct}${label}</span>`;
+    });
+    (ev.missed_points || []).forEach(p => { html += `<span class="tag miss">✗ ${p.construct}</span>`; });
     html += `</div></div>`;
   }
 
@@ -3314,6 +3362,95 @@ $('btn-save-scenario').addEventListener('click', async () => {
   }
 });
 
+// ── Novel-Equivalent Review Queue (Part C, construct/exemplar brief) ──────────
+
+function _escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+async function showFrReview() {
+  hide('view-fr-prompts');
+  show('view-fr-review');
+  await loadFrReviewQueue();
+}
+
+async function loadFrReviewQueue() {
+  const list = $('fr-review-list');
+  list.innerHTML = '<p style="color:var(--muted);font-size:.88rem">Loading…</p>';
+  try {
+    const data = await api('/api/admin/novel-equivalents', {});
+    const reviews = data.reviews || [];
+    if (!reviews.length) {
+      list.innerHTML = '<p style="color:var(--muted);font-size:.88rem">No pending novel-equivalent matches.</p>';
+      return;
+    }
+    list.innerHTML = '';
+    reviews.forEach(r => list.appendChild(renderFrReviewCard(r)));
+  } catch (err) {
+    list.innerHTML = '<p style="color:var(--red);font-size:.88rem">Failed to load: ' + _escapeHtml(err.message) + '</p>';
+  }
+}
+
+function renderFrReviewCard(r) {
+  const card = document.createElement('div');
+  card.className = 'scenario-card';
+  card.style.cssText = 'cursor:default;text-align:left;margin-bottom:14px';
+
+  const spansHtml = (r.evidence_spans || []).map(s => `<blockquote style="margin:4px 0;padding-left:10px;border-left:2px solid var(--border);font-size:.85rem">"${_escapeHtml(s)}"</blockquote>`).join('');
+  const suggestedExemplar = (r.evidence_spans && r.evidence_spans[0]) || '';
+
+  card.innerHTML = `
+    <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${_escapeHtml(r.prompt_title)}</div>
+    <div style="font-weight:600;margin-bottom:6px">${_escapeHtml(r.construct)}</div>
+    <div style="font-size:.85rem;color:var(--muted);margin-bottom:6px">Evidence:</div>
+    ${spansHtml}
+    <div style="font-size:.85rem;margin:8px 0"><strong>Justification:</strong> ${_escapeHtml(r.justification)}</div>
+    <div class="field" style="margin-top:10px">
+      <label style="font-size:.78rem">Exemplar phrase to add (edit/generalize before promoting)</label>
+      <input type="text" class="fr-review-exemplar-input" value="${_escapeHtml(suggestedExemplar)}">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-primary fr-review-promote">Promote</button>
+      <button class="btn btn-ghost fr-review-dismiss">Dismiss</button>
+    </div>
+    <div class="fr-review-note" style="font-size:.8rem;margin-top:6px"></div>
+  `;
+
+  const note = card.querySelector('.fr-review-note');
+
+  card.querySelector('.fr-review-promote').addEventListener('click', async (e) => {
+    const btn = e.target;
+    const exemplar = card.querySelector('.fr-review-exemplar-input').value.trim();
+    if (!exemplar) { note.textContent = 'Enter an exemplar phrase first.'; note.style.color = 'var(--red)'; return; }
+    btn.disabled = true;
+    try {
+      await api('/api/admin/novel-equivalents/promote', { review_id: r.id, exemplar });
+      card.remove();
+    } catch (err) {
+      note.textContent = 'Promote failed: ' + err.message;
+      note.style.color = 'var(--red)';
+      btn.disabled = false;
+    }
+  });
+
+  card.querySelector('.fr-review-dismiss').addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    try {
+      await api('/api/admin/novel-equivalents/dismiss', { review_id: r.id });
+      card.remove();
+    } catch (err) {
+      note.textContent = 'Dismiss failed: ' + err.message;
+      note.style.color = 'var(--red)';
+      btn.disabled = false;
+    }
+  });
+
+  return card;
+}
+
 // ── Prompt Creator ─────────────────────────────
 
 function showFrCreate() {
@@ -3349,32 +3486,80 @@ function addFpConstraintRow(value) {
   list.appendChild(item);
 }
 
-function addFpKeyPointRow(value, weight) {
-  const list = $('fp-keypoint-list');
-  const item = document.createElement('div');
-  item.className = 'dynamic-item';
+function addFpExemplarRow(exemplarList, value) {
+  const row = document.createElement('div');
+  row.className = 'fp-kp-exemplar-row';
   const input = document.createElement('input');
   input.type        = 'text';
-  input.placeholder = 'e.g. definition of active listening';
+  input.placeholder = 'e.g. eye contact';
   input.value       = value || '';
+  const remove = document.createElement('button');
+  remove.className   = 'btn-remove';
+  remove.title       = 'Remove exemplar';
+  remove.textContent = '×';
+  remove.addEventListener('click', () => row.remove());
+  row.appendChild(input);
+  row.appendChild(remove);
+  exemplarList.appendChild(row);
+}
+
+// kp: {construct, exemplars, importance} -- shape returned by /api/generate-prompt and by
+// loaders.py's migration of legacy flat-string key points (construct/exemplar brief, Part E)
+function addFpKeyPointRow(kp) {
+  kp = kp || {};
+  const list = $('fp-keypoint-list');
+  const card = document.createElement('div');
+  card.className = 'fp-kp-card';
+
+  const top = document.createElement('div');
+  top.className = 'fp-kp-card-top';
+
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.className   = 'fp-kp-construct';
+  input.placeholder = 'e.g. Names a technique for signaling engagement during listening';
+  input.value        = kp.construct || '';
+
   const sel = document.createElement('select');
-  sel.title = 'Point weight';
-  [['1','Low (1pt)'],['2','Medium (2pt)'],['3','High (3pt)'],['4','Critical (4pt)']].forEach(([v, label]) => {
+  sel.className = 'fp-kp-importance';
+  sel.title     = 'Importance';
+  [['LOW','Low'],['MEDIUM','Medium'],['HIGH','High'],['CRITICAL','Critical']].forEach(([v, label]) => {
     const opt = document.createElement('option');
     opt.value       = v;
     opt.textContent = label;
-    if (parseInt(v) === (weight || 2)) opt.selected = true;
+    if ((kp.importance || 'MEDIUM') === v) opt.selected = true;
     sel.appendChild(opt);
   });
-  const remove = document.createElement('button');
-  remove.className   = 'btn-remove';
-  remove.title       = 'Remove';
-  remove.textContent = '×';
-  remove.addEventListener('click', () => item.remove());
-  item.appendChild(input);
-  item.appendChild(sel);
-  item.appendChild(remove);
-  list.appendChild(item);
+
+  const removePoint = document.createElement('button');
+  removePoint.className   = 'btn-remove';
+  removePoint.title       = 'Remove key point';
+  removePoint.textContent = '×';
+  removePoint.addEventListener('click', () => card.remove());
+
+  top.appendChild(input);
+  top.appendChild(sel);
+  top.appendChild(removePoint);
+  card.appendChild(top);
+
+  const exLabel = document.createElement('div');
+  exLabel.className   = 'fp-kp-exemplars-label';
+  exLabel.textContent  = 'Exemplars (concrete, distinct ways to satisfy the construct)';
+  card.appendChild(exLabel);
+
+  const exemplarList = document.createElement('div');
+  exemplarList.className = 'fp-kp-exemplar-list';
+  card.appendChild(exemplarList);
+
+  const addExemplarBtn = document.createElement('button');
+  addExemplarBtn.className   = 'btn-add';
+  addExemplarBtn.textContent = '+ Add exemplar';
+  addExemplarBtn.addEventListener('click', (e) => { e.preventDefault(); addFpExemplarRow(exemplarList); });
+  card.appendChild(addExemplarBtn);
+
+  (kp.exemplars && kp.exemplars.length ? kp.exemplars : ['']).forEach(ex => addFpExemplarRow(exemplarList, ex));
+
+  list.appendChild(card);
 }
 
 $('btn-fp-add-constraint').addEventListener('click', () => addFpConstraintRow());
@@ -3409,7 +3594,7 @@ $('btn-fr-fill-ai').addEventListener('click', async () => {
     (p.constraints || []).forEach(c => addFpConstraintRow(c));
 
     $('fp-keypoint-list').innerHTML = '';
-    (p.key_points || []).forEach(kp => addFpKeyPointRow(kp, p.rubric ? p.rubric[kp] : 2));
+    (p.key_points || []).forEach(kp => addFpKeyPointRow(kp));
 
     $('fr-create-note').textContent = 'AI draft loaded — review and edit each field before saving.';
   } catch (err) {
@@ -3435,11 +3620,15 @@ $('btn-save-prompt').addEventListener('click', async () => {
   }
 
   const keyPoints = [];
-  const rubric    = {};
-  $('fp-keypoint-list').querySelectorAll('.dynamic-item').forEach(item => {
-    const text   = item.querySelector('input').value.trim();
-    const weight = parseInt(item.querySelector('select').value);
-    if (text) { keyPoints.push(text); rubric[text] = weight; }
+  $('fp-keypoint-list').querySelectorAll('.fp-kp-card').forEach(card => {
+    const construct = card.querySelector('.fp-kp-construct').value.trim();
+    if (!construct) return;
+    const importance = card.querySelector('.fp-kp-importance').value;
+    const exemplars = [];
+    card.querySelectorAll('.fp-kp-exemplar-row input').forEach(input => {
+      if (input.value.trim()) exemplars.push(input.value.trim());
+    });
+    keyPoints.push({ construct, exemplars, importance });
   });
 
   const constraints = [];
@@ -3462,7 +3651,6 @@ $('btn-save-prompt').addEventListener('click', async () => {
       constraints:       constraints,
       expert_answer:     answer,
       key_points:        keyPoints,
-      rubric:            rubric,
       general_guidance:  $('fp-general-guidance').value.trim(),
     });
 

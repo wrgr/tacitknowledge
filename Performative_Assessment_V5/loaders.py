@@ -5,7 +5,72 @@ Prompts (free-response tasks) follow the same pattern.
 """
 
 import json
+import re
 from pathlib import Path
+
+# FR key points: importance replaces the old flat rubric-weight mapping (construct/exemplar
+# brief, Part A). Same CRITICAL/HIGH/MEDIUM/LOW scale used elsewhere in this system.
+FR_IMPORTANCE_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+_LEGACY_WEIGHT_TO_IMPORTANCE = {4: "CRITICAL", 3: "HIGH", 2: "MEDIUM", 1: "LOW"}
+
+
+def _slugify(text):
+    slug = re.sub(r"[^a-z0-9]+", "_", (text or "").lower()).strip("_")
+    return slug or "point"
+
+
+def _migrate_fr_key_points(ea):
+    """Part A2: wrap legacy flat-string key_points into the construct/exemplar shape.
+
+    A flat string becomes {id, construct: <original string, unchanged>, exemplars: [],
+    importance: <old rubric weight for that string, or MEDIUM>}. Already-migrated dict
+    entries are normalised (missing fields filled in) so hand-authored prompts and
+    AI-drafted prompts work the same way. IDs are de-duplicated so two key points that
+    slugify to the same id don't collide.
+    """
+    raw_points = ea.get("key_points", [])
+    legacy_rubric = ea.get("rubric", {}) if isinstance(ea.get("rubric"), dict) else {}
+    seen_ids = set()
+    migrated = []
+
+    def _unique_id(base):
+        candidate = base
+        n = 2
+        while candidate in seen_ids:
+            candidate = f"{base}_{n}"
+            n += 1
+        seen_ids.add(candidate)
+        return candidate
+
+    for kp in raw_points:
+        if isinstance(kp, str):
+            construct   = kp
+            weight      = legacy_rubric.get(kp, 2)
+            importance  = _LEGACY_WEIGHT_TO_IMPORTANCE.get(weight, "MEDIUM")
+            migrated.append({
+                "id":         _unique_id(_slugify(construct)),
+                "construct":  construct,
+                "exemplars":  [],
+                "importance": importance,
+            })
+        elif isinstance(kp, dict):
+            construct  = kp.get("construct", "")
+            importance = kp.get("importance")
+            if importance not in FR_IMPORTANCE_LEVELS:
+                importance = "MEDIUM"
+            base_id = kp.get("id") or _slugify(construct)
+            migrated.append({
+                "id":         _unique_id(base_id),
+                "construct":  construct,
+                "exemplars":  [e for e in (kp.get("exemplars") or []) if isinstance(e, str) and e.strip()],
+                "importance": importance,
+            })
+        # silently skip malformed entries (neither str nor dict)
+
+    ea["key_points"] = migrated
+    # rubric is superseded by per-point importance for FR prompts -- drop it so nothing
+    # downstream mistakes it for the still-active scenario-mode rubric format.
+    ea.pop("rubric", None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -40,12 +105,13 @@ def load_prompt(path):
             "connects to the rest."
         )
 
-    # do the same for each expert answer inside the prompt
+    # do the same for each expert answer inside the prompt, then migrate key_points to the
+    # construct/exemplar shape (Part A2 -- handles both legacy flat strings and already-
+    # migrated dicts, so this is safe to call unconditionally)
     for ea in data.get("expert_answers", []):
         if "key_points" not in ea:
             ea["key_points"] = []
-        if "rubric" not in ea:
-            ea["rubric"] = {}
+        _migrate_fr_key_points(ea)
 
     return data
 

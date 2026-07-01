@@ -5,6 +5,7 @@ Students: emma/liam/sofia/james/priya/tyler — all password Learn@2024
 Admin:    admin — password admin123
 """
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -53,6 +54,23 @@ def init_db():
                 key        TEXT PRIMARY KEY,
                 response   TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            )
+        """)
+        # Part C of the construct/exemplar brief: every accepted novel-equivalent FR match
+        # is logged here for admin review -- promotion into a key point's exemplars list is
+        # always an explicit human action, never automatic. Scoring never waits on this.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS novel_equivalent_review (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt_id          TEXT NOT NULL,
+                key_point_id       TEXT NOT NULL,
+                construct          TEXT NOT NULL,
+                submission_excerpt TEXT NOT NULL,
+                evidence_spans     TEXT NOT NULL,
+                justification      TEXT NOT NULL,
+                status             TEXT NOT NULL DEFAULT 'pending'
+                                   CHECK(status IN ('pending','promoted','dismissed')),
+                created_at         TEXT NOT NULL
             )
         """)
         c.commit()
@@ -193,3 +211,59 @@ def eval_cache_set(key: str, response: str):
             (key, response),
         )
         c.commit()
+
+
+# ── Novel-equivalent review queue (FR construct/exemplar matching, Part C) ─────────────
+
+def log_novel_equivalent(prompt_id: str, key_point_id: str, construct: str,
+                         submission_excerpt: str, evidence_spans: list, justification: str):
+    init_db()
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO novel_equivalent_review "
+            "(prompt_id, key_point_id, construct, submission_excerpt, evidence_spans, "
+            "justification, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'))",
+            (prompt_id, key_point_id, construct, submission_excerpt,
+             json.dumps(list(evidence_spans or [])), justification or ""),
+        )
+        c.commit()
+
+
+def _row_to_review(row):
+    d = dict(row)
+    try:
+        d["evidence_spans"] = json.loads(d["evidence_spans"])
+    except (TypeError, ValueError):
+        d["evidence_spans"] = []
+    return d
+
+
+def list_novel_equivalent_reviews(status: str = "pending"):
+    init_db()
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM novel_equivalent_review WHERE status=? ORDER BY created_at DESC",
+            (status,),
+        ).fetchall()
+        return [_row_to_review(r) for r in rows]
+
+
+def get_novel_equivalent_review(review_id: int):
+    init_db()
+    with _conn() as c:
+        row = c.execute(
+            "SELECT * FROM novel_equivalent_review WHERE id=?", (review_id,)
+        ).fetchone()
+        return _row_to_review(row) if row else None
+
+
+def set_novel_equivalent_status(review_id: int, status: str) -> bool:
+    if status not in ("pending", "promoted", "dismissed"):
+        return False
+    init_db()
+    with _conn() as c:
+        cur = c.execute(
+            "UPDATE novel_equivalent_review SET status=? WHERE id=?", (status, review_id)
+        )
+        c.commit()
+        return cur.rowcount > 0

@@ -249,6 +249,42 @@ def _append_key_points_with_attribution(lines, ev):
         lines.append("")
 
 
+def _append_fr_key_points(lines, ev):
+    """Write FR key points (construct/exemplar brief, Part D) -- one bullet per matched
+    point showing HOW it was matched (known exemplar vs. novel equivalent pending admin
+    review) and its full evidence. Multi-span evidence is shown together as one combined
+    block, never implying the response was itemized when it wasn't -- both single- and
+    multi-span matches are full matches, only match_type is a meaningful distinction here.
+    """
+    matched = ev.get("matched_points", [])
+    missed  = ev.get("missed_points", [])
+
+    if matched:
+        lines.append("**Key points covered:**")
+        for m in matched:
+            if not isinstance(m, dict):
+                lines.append(f"  - {m} — _matched_")  # legacy flat-string fallback
+                continue
+            construct = m.get("construct", "")
+            if m.get("match_type") == "novel_equivalent":
+                tag = "novel equivalent (pending admin review)"
+            elif m.get("matched_exemplar"):
+                tag = 'matched: known exemplar "' + m["matched_exemplar"] + '"'
+            else:
+                tag = "matched"
+            lines.append(f"  - {construct} — _{tag}_")
+            for span in m.get("evidence_spans", []):
+                lines.append(f'    > "{span}"')
+            if m.get("functional_justification"):
+                lines.append("    _Justification:_ " + m["functional_justification"])
+        lines.append("")
+
+    if missed:
+        labels = [m.get("construct", "") if isinstance(m, dict) else m for m in missed]
+        lines.append("**Key points missed:** " + ", ".join(labels))
+        lines.append("")
+
+
 def _instructor_summary_fallback(overall_pct, coverage_pct, quality_pct, matched, missed):
     """Deterministic Instructor Summary built from data already computed in Python.
 
@@ -492,9 +528,11 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
     )
 
     def _fallback():
+        matched_labels = [m.get("construct", "") if isinstance(m, dict) else m for m in ev.get("matched_points", [])]
+        missed_labels  = [m.get("construct", "") if isinstance(m, dict) else m for m in ev.get("missed_points", [])]
         return _instructor_summary_fallback(
             score_pct, ev.get("coverage_score"), ev.get("quality_score"),
-            ev.get("matched_points", []), ev.get("missed_points", []),
+            matched_labels, missed_labels,
         )
 
     instructor = _generate_instructor_summary(
@@ -547,22 +585,8 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
         for g in ev["gaps"]:
             lines.append("  - " + g)
         lines.append("")
-    if ev.get("matched_points"):
-        # Single comma-joined line -- report_parser.py's _parse_fr_evaluation() splits
-        # this line on ',' to recover matched_points, so the format must stay stable.
-        lines.append("**Key points covered:** " + ", ".join(ev["matched_points"]))
-        lines.append("")
-        quotes = ev.get("matched_point_quotes", {})  # absent for keyword-scoring / pre-existing reports
-        if any(quotes.get(p) for p in ev["matched_points"]):
-            lines.append("**Supporting evidence:**")
-            for p in ev["matched_points"]:
-                quote = quotes.get(p)
-                if quote:
-                    lines.append(f'  - {p} — _"{quote}"_')
-            lines.append("")
-    if ev.get("missed_points"):
-        lines.append("**Key points missed:** " + ", ".join(ev["missed_points"]))
-        lines.append("")
+    _append_fr_key_points(lines, ev)
+
     if ev.get("expert_answer", {}).get("answer"):
         lines.append("**Expert reference answer:**")
         lines.append("> " + ev["expert_answer"]["answer"])

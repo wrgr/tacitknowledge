@@ -33,6 +33,7 @@ import auth
 import config
 import database as db
 import engine
+import loaders
 import report_parser
 from llm import LLMError, LLMRateLimitError
 
@@ -1007,6 +1008,22 @@ def api_save_prompt():
     if not title:
         return jsonify({"error": "title is required"}), 400
 
+    # key_points arrive as {construct, exemplars, importance} objects from the admin UI
+    # (construct/exemplar brief, Part E) -- ids are assigned by loaders.py's migration on
+    # the next load, same as for a hand-edited or legacy prompt file.
+    key_points = []
+    for kp in (data.get("key_points") or []):
+        if not isinstance(kp, dict):
+            continue
+        construct = (kp.get("construct") or "").strip()
+        if not construct:
+            continue
+        importance = kp.get("importance")
+        if importance not in loaders.FR_IMPORTANCE_LEVELS:
+            importance = "MEDIUM"
+        exemplars = [e.strip() for e in (kp.get("exemplars") or []) if isinstance(e, str) and e.strip()]
+        key_points.append({"construct": construct, "exemplars": exemplars, "importance": importance})
+
     prompt_id   = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
     prompt_data = {
         "id":          prompt_id,
@@ -1019,8 +1036,7 @@ def api_save_prompt():
             {
                 "id":         "expert_001",
                 "answer":     data.get("expert_answer", ""),
-                "key_points": data.get("key_points", []),
-                "rubric":     data.get("rubric", {}),
+                "key_points": key_points,
             }
         ],
         "metadata": {},
@@ -1059,6 +1075,68 @@ def api_fr_prompts():
     return jsonify({"prompts": prompt_list})
 
 
+# ── Novel-equivalent review queue (Part C, construct/exemplar brief) ────────────
+
+@app.route("/api/admin/novel-equivalents", methods=["POST"])
+@auth.admin_required
+def api_admin_novel_equivalents():
+    title_by_id = {p["id"]: p["title"] for p in prompts}
+    reviews = db.list_novel_equivalent_reviews("pending")
+    for r in reviews:
+        r["prompt_title"] = title_by_id.get(r["prompt_id"], r["prompt_id"])
+    return jsonify({"reviews": reviews})
+
+
+@app.route("/api/admin/novel-equivalents/promote", methods=["POST"])
+@auth.admin_required
+def api_admin_novel_equivalent_promote():
+    global prompts
+    data      = request.get_json(silent=True) or {}
+    review_id = data.get("review_id")
+    exemplar  = (data.get("exemplar") or "").strip()
+    if not exemplar:
+        return jsonify({"error": "exemplar text is required"}), 400
+
+    review = db.get_novel_equivalent_review(review_id)
+    if not review or review["status"] != "pending":
+        return jsonify({"error": "review not found"}), 404
+
+    prompt_data = next((p for p in prompts if p["id"] == review["prompt_id"]), None)
+    if not prompt_data:
+        return jsonify({"error": "prompt not found"}), 404
+
+    updated = False
+    for ea in prompt_data.get("expert_answers", []):
+        for kp in ea.get("key_points", []):
+            if kp["id"] == review["key_point_id"]:
+                if exemplar not in kp["exemplars"]:
+                    kp["exemplars"].append(exemplar)
+                updated = True
+
+    if not updated:
+        return jsonify({"error": "key point no longer exists on this prompt"}), 404
+
+    path = PROMPTS_DIR / (prompt_data["id"] + ".json")
+    path.write_text(json.dumps(prompt_data, indent=2), encoding="utf-8")
+    prompts = engine.load_prompts(PROMPTS_DIR)
+
+    db.set_novel_equivalent_status(review_id, "promoted")
+    return jsonify({"status": "promoted"})
+
+
+@app.route("/api/admin/novel-equivalents/dismiss", methods=["POST"])
+@auth.admin_required
+def api_admin_novel_equivalent_dismiss():
+    data      = request.get_json(silent=True) or {}
+    review_id = data.get("review_id")
+    review    = db.get_novel_equivalent_review(review_id)
+    if not review or review["status"] != "pending":
+        return jsonify({"error": "review not found"}), 404
+
+    db.set_novel_equivalent_status(review_id, "dismissed")
+    return jsonify({"status": "dismissed"})
+
+
 @app.route("/api/fr/submit", methods=["POST"])
 @auth.login_required
 def api_fr_submit():
@@ -1086,6 +1164,19 @@ def api_fr_submit():
         evaluation = engine.score_free_response_with_llm(model, api_key, base_url, prompt_data, text)
     else:
         evaluation = engine.score_free_response_with_keywords(prompt_data, text)
+
+    # Part C of the construct/exemplar brief: log every accepted novel-equivalent match for
+    # admin review. The learner's score above is already final -- this queue is for
+    # improving the rubric going forward, not for gating this submission.
+    for m in evaluation.get("novel_equivalent_matches", []):
+        db.log_novel_equivalent(
+            prompt_id=prompt_id,
+            key_point_id=m["key_point_id"],
+            construct=m["construct"],
+            submission_excerpt=text[:2000],
+            evidence_spans=m["evidence_spans"],
+            justification=m.get("functional_justification") or "",
+        )
 
     sid = str(uuid.uuid4())
     _fr_state[sid] = {

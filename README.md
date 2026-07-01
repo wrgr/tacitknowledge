@@ -21,12 +21,7 @@ DEFAULT LOGIN CREDENTIALS
   Accounts are seeded automatically from the database on first run.
   Passwords are stored as secure hashes in the SQLite database (never in plain text).
 
-  To change a password, run this one-liner from inside Performative_Assessment_V5/:
-
-      python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('yournewpassword'))"
-
-  Then update the password_hash column in the assessments.db database using any
-  SQLite browser, or by editing database.py and re-running the app.
+  For details on password changing, see the admin panel
 
 
 ROLES

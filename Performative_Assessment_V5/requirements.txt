@@ -1,0 +1,20 @@
+# Performative Assessment — Python dependencies
+# Python 3.9+ required.  Install with:  pip install -r requirements.txt
+
+# ── Core (required) ──────────────────────────────────────────────────────────
+Flask>=3.0,<4.0
+Werkzeug>=3.0,<4.0          # used directly for password hashing (werkzeug.security)
+
+# ── Optional LLM provider SDKs ───────────────────────────────────────────────
+# The app talks to OpenAI-compatible providers (OpenAI, Groq, Mistral, and
+# Gemini via its OpenAI-compatible endpoint) over a stdlib HTTP client and
+# automatically falls back to it when these packages are absent — so they are
+# only needed if you want the official SDK code paths. Uncomment as required.
+#
+#   openai     — OpenAI, Groq, Mistral, and Gemini (OpenAI-compatible endpoint)
+#   anthropic  — Claude (no urllib fallback; required to use the Claude provider)
+#
+# openai>=1.0
+# anthropic>=0.39
+#
+# Ollama needs no SDK — it is reached over HTTP at its local endpoint.

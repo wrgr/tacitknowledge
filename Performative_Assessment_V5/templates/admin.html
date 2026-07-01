@@ -325,6 +325,8 @@ main {
 
 /* text button */
 .txt-btn {
+  display: inline-flex;
+  align-items: center;
   font: inherit;
   font-size: .8rem; font-weight: 600;
   color: var(--blue-dk);
@@ -333,6 +335,7 @@ main {
   border-radius: 8px;
   padding: 7px 12px;
   cursor: pointer;
+  text-decoration: none;
   transition: background .12s, border-color .12s;
   white-space: nowrap;
 }
@@ -699,6 +702,7 @@ main {
           <button data-role="admin">Admins</button>
           <button data-role="student">Students</button>
         </div>
+        <a class="txt-btn" href="/admin/research-export.csv">Export research CSV</a>
         <button class="txt-btn" id="toggle-all" data-state="expanded">Collapse all</button>
       </div>
 

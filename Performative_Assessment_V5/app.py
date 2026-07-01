@@ -18,6 +18,8 @@ Security notes:
 """
 
 import hmac
+import csv
+import io
 import json
 import re
 import secrets
@@ -25,7 +27,7 @@ import uuid
 from pathlib import Path
 
 from flask import (Flask, abort, jsonify, redirect, render_template,
-                   request, session, url_for)
+                   request, Response, session, url_for)
 
 import auth
 import config
@@ -130,6 +132,135 @@ def _get_state(data):
     if st["user_id"] != session.get("user_id") and session.get("role") != "admin":
         return None, (jsonify({"error": "forbidden"}), 403)
     return st, None
+
+
+def _timestamp_from_report_filename(filename):
+    m = re.search(r'(\d{8})_(\d{6})', filename)
+    if not m:
+        return ""
+    d, t = m.group(1), m.group(2)
+    return f"{d[:4]}-{d[4:6]}-{d[6:]} {t[:2]}:{t[2:4]}:{t[4:]}"
+
+
+def _score_percent(score_text):
+    if score_text is None:
+        return ""
+    text = str(score_text).strip()
+    if not text:
+        return ""
+    if text.endswith("%"):
+        text = text[:-1]
+    try:
+        return str(round(float(text)))
+    except ValueError:
+        return ""
+
+
+def _join_export_list(items):
+    return "; ".join(str(item) for item in (items or []) if item)
+
+
+def _word_count(text):
+    return len(text.split()) if text and text.strip() else 0
+
+
+_RESEARCH_EXPORT_FIELDS = [
+    "username",
+    "display_name",
+    "role",
+    "report_file",
+    "report_type",
+    "task_title",
+    "timestamp",
+    "product_score_percent",
+    "text_only_baseline_percent",
+    "coverage_score_percent",
+    "quality_score_percent",
+    "matched_points",
+    "missed_points",
+    "strengths",
+    "gaps",
+    "word_count",
+    "has_process_overlay",
+    "process_quadrant",
+    "effort_profile",
+    "revision_toward_quality",
+    "difficulty_point_count",
+    "authenticity",
+    "confidence_calibration",
+    "thinking_honey_mumford",
+    "thinking_solo",
+]
+
+
+def _research_rows_for_report(username, user, filename, report):
+    base = {
+        "username": username,
+        "display_name": user.get("display_name", username),
+        "role": user.get("role", ""),
+        "report_file": filename,
+        "timestamp": _timestamp_from_report_filename(filename),
+    }
+    profile = report.get("thinking_profile") or {}
+    hm = profile.get("honey_mumford") or {}
+    solo = profile.get("solo") or {}
+    base["thinking_honey_mumford"] = hm.get("style", "")
+    base["thinking_solo"] = solo.get("level", "")
+
+    if report.get("type") == "fr":
+        ev = report.get("evaluation") or {}
+        overlay = report.get("process_overlay") or {}
+        score = _score_percent(ev.get("score") or (report.get("metadata") or {}).get("score"))
+        return [{
+            **base,
+            "report_type": "free_response",
+            "task_title": (report.get("metadata") or {}).get("prompt", ""),
+            "product_score_percent": score,
+            "text_only_baseline_percent": score,
+            "coverage_score_percent": "",
+            "quality_score_percent": "",
+            "matched_points": _join_export_list(ev.get("matched_points")),
+            "missed_points": _join_export_list(ev.get("missed_points")),
+            "strengths": _join_export_list(ev.get("strengths")),
+            "gaps": _join_export_list(ev.get("gaps")),
+            "word_count": _word_count(report.get("submission", "")),
+            "has_process_overlay": "yes" if overlay else "no",
+            "process_quadrant": overlay.get("quadrant_label", "") if overlay else "",
+            "effort_profile": overlay.get("effort_profile_text", "") if overlay else "",
+            "revision_toward_quality": overlay.get("revision_rating", "") if overlay else "",
+            "difficulty_point_count": len(overlay.get("difficulty_points", [])) if overlay else "",
+            "authenticity": overlay.get("authenticity_text", "") if overlay else "",
+            "confidence_calibration": overlay.get("confidence_calibration_text", "") if overlay else "",
+        }]
+
+    rows = []
+    for scenario in report.get("scenarios", []):
+        score = _score_percent(scenario.get("score"))
+        transcript = scenario.get("transcript") or " ".join(
+            p for p in [scenario.get("recall_transcript"), scenario.get("probe_transcript")] if p
+        )
+        rows.append({
+            **base,
+            "report_type": "scenario",
+            "task_title": scenario.get("title", ""),
+            "product_score_percent": score,
+            "text_only_baseline_percent": score,
+            "coverage_score_percent": _score_percent(scenario.get("coverage_score")),
+            "quality_score_percent": _score_percent(scenario.get("quality_score")),
+            "matched_points": _join_export_list(scenario.get("matched_points")),
+            "missed_points": _join_export_list(scenario.get("missed_points")),
+            "strengths": _join_export_list(scenario.get("strengths")),
+            "gaps": _join_export_list(scenario.get("gaps")),
+            "word_count": _word_count(transcript),
+            "has_process_overlay": "no",
+            "process_quadrant": "",
+            "effort_profile": "",
+            "revision_toward_quality": "",
+            "difficulty_point_count": "",
+            "authenticity": "",
+            "confidence_calibration": "",
+        })
+    return rows
 
 
 # ── Auth routes ────────────────────────────────────────────────────────────────
@@ -280,6 +411,40 @@ def admin_view_report(username, filename):
         report=report,
         admin_name=session.get("display_name", "Admin"),
         user_theme=_user_theme(),
+    )
+
+
+@app.route("/admin/research-export.csv")
+@auth.admin_required
+def admin_research_export():
+    all_users = auth.load_users()
+    rows = []
+
+    for username, user in all_users.items():
+        user_dir = REPORTS_BASE / username
+        if not user_dir.is_dir():
+            continue
+
+        for report_file in sorted(user_dir.glob("*.md")):
+            try:
+                content = report_file.read_text(encoding="utf-8")
+                report = report_parser.parse_report_md(content)
+            except Exception:
+                continue
+            rows.extend(_research_rows_for_report(username, user, report_file.name, report))
+
+    out = io.StringIO(newline="")
+    writer = csv.DictWriter(out, fieldnames=_RESEARCH_EXPORT_FIELDS)
+    writer.writeheader()
+    writer.writerows(rows)
+
+    return Response(
+        out.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=research_export.csv",
+            "Cache-Control": "no-store",
+        },
     )
 
 

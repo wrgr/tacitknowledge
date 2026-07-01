@@ -1,0 +1,51 @@
+{
+  "id": "circuit_truth_table_prediction",
+  "title": "Circuit Reasoning: Truth Table Prediction",
+  "description": "Predict and explain the output of a simple combinational logic circuit.",
+  "prompt_text": "A digital circuit has two inputs, A and B. A first gate computes A AND B. A second gate computes NOT B. The final output Y is the OR of those two intermediate signals: Y = (A AND B) OR (NOT B). Write a short explanation predicting Y for all four input combinations: A=0,B=0; A=0,B=1; A=1,B=0; A=1,B=1. Explain how each gate contributes to the final output, not just the final truth table.",
+  "word_limit": 300,
+  "general_guidance": "Show your reasoning step by step. A strong answer explains the intermediate signals before giving the final output.",
+  "constraints": [
+    "Evaluate all four input combinations",
+    "Name the intermediate AND result and NOT B result",
+    "Explain why the final OR gate produces each output"
+  ],
+  "process_overlay_enabled": true,
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "For A=0,B=0, A AND B is 0 and NOT B is 1, so Y is 1 because the OR gate receives a 1. For A=0,B=1, A AND B is 0 and NOT B is 0, so Y is 0. For A=1,B=0, A AND B is 0 and NOT B is 1, so Y is 1. For A=1,B=1, A AND B is 1 and NOT B is 0, so Y is 1. The final truth table is 00 -> 1, 01 -> 0, 10 -> 1, 11 -> 1. The key reasoning is that NOT B alone makes the output high whenever B is 0, while A AND B makes the output high when both inputs are 1.",
+      "key_points": [
+        "evaluates all four input combinations",
+        "computes A AND B",
+        "computes NOT B",
+        "uses OR gate logic",
+        "correct truth table",
+        "explains why B equals 0 makes output high",
+        "explains why A and B both high makes output high"
+      ],
+      "rubric": {
+        "evaluates all four input combinations": 3,
+        "computes A AND B": 3,
+        "computes NOT B": 3,
+        "uses OR gate logic": 3,
+        "correct truth table": 4,
+        "explains why B equals 0 makes output high": 2,
+        "explains why A and B both high makes output high": 2
+      }
+    }
+  ],
+  "metadata": {
+    "phase": "1b",
+    "domain": "digital_logic",
+    "type": "descriptive_circuit_analysis",
+    "difficulty": "beginner",
+    "knowledge_components": [
+      "AND gate behavior",
+      "NOT gate behavior",
+      "OR gate behavior",
+      "truth table construction",
+      "intermediate signal reasoning"
+    ]
+  }
+}

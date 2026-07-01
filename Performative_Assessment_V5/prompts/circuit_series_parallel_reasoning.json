@@ -1,0 +1,54 @@
+{
+  "id": "circuit_series_parallel_reasoning",
+  "title": "Circuit Reasoning: Series and Parallel Paths",
+  "description": "Explain current paths and component effects in a simple DC circuit.",
+  "prompt_text": "A 9 V battery powers two identical lamps. Lamp L1 is in series with a branch that contains lamps L2 and L3 in parallel with each other. Explain what happens to the circuit if L2 burns out and becomes an open circuit. Discuss whether L1 and L3 stay lit, how the available current paths change, and what happens qualitatively to the brightness of L1 and L3 compared with before the failure.",
+  "word_limit": 350,
+  "general_guidance": "Reason from current paths and equivalent resistance. A strong answer distinguishes the series part of the circuit from the parallel branch.",
+  "constraints": [
+    "Identify which components are in series and which are in parallel",
+    "Explain that an open L2 removes only one branch path",
+    "State whether L1 and L3 remain lit",
+    "Discuss qualitative brightness changes using resistance or current reasoning"
+  ],
+  "process_overlay_enabled": true,
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "L1 is in series with the entire parallel branch, while L2 and L3 provide two separate paths inside that branch. If L2 burns out open, the L2 path is removed, but the L3 branch is still complete. Therefore the circuit still has a closed path through the battery, L1, and L3, so L1 and L3 remain lit. Before the failure, the parallel branch had lower equivalent resistance because L2 and L3 shared current. After L2 opens, the parallel branch becomes just L3, so total circuit resistance increases and total current through the series part decreases. L1 therefore becomes dimmer. L3 no longer shares the branch current with L2, but the total circuit current is also lower; for identical lamps in this configuration, L3 receives more voltage than it did as one of two parallel lamps in the branch, so L3 becomes brighter than before.",
+      "key_points": [
+        "identifies L1 as series component",
+        "identifies L2 and L3 as parallel paths",
+        "explains L2 open removes one branch only",
+        "states L1 remains lit",
+        "states L3 remains lit",
+        "explains total resistance increases",
+        "explains L1 becomes dimmer",
+        "explains L3 brightness change"
+      ],
+      "rubric": {
+        "identifies L1 as series component": 2,
+        "identifies L2 and L3 as parallel paths": 3,
+        "explains L2 open removes one branch only": 3,
+        "states L1 remains lit": 2,
+        "states L3 remains lit": 2,
+        "explains total resistance increases": 3,
+        "explains L1 becomes dimmer": 3,
+        "explains L3 brightness change": 4
+      }
+    }
+  ],
+  "metadata": {
+    "phase": "1b",
+    "domain": "dc_circuits",
+    "type": "descriptive_circuit_analysis",
+    "difficulty": "intermediate",
+    "knowledge_components": [
+      "series circuit behavior",
+      "parallel branch behavior",
+      "open circuit fault",
+      "equivalent resistance",
+      "qualitative brightness reasoning"
+    ]
+  }
+}

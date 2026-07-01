@@ -1,0 +1,50 @@
+{
+  "id": "circuit_stuck_at_fault_diagnosis",
+  "title": "Circuit Reasoning: Stuck-at Fault Diagnosis",
+  "description": "Diagnose a likely stuck-at fault from expected and observed logic behavior.",
+  "prompt_text": "A simple circuit is supposed to compute Y = A AND B. During testing, the observed outputs are: A=0,B=0 gives Y=0; A=0,B=1 gives Y=1; A=1,B=0 gives Y=0; A=1,B=1 gives Y=1. Compare the expected behavior to the observed behavior and identify the most likely single stuck-at fault. Explain your reasoning.",
+  "word_limit": 300,
+  "general_guidance": "Compare expected and observed outputs before naming the fault. A strong answer explains which test cases are normal and which one reveals the fault.",
+  "constraints": [
+    "State the expected output for each input combination",
+    "Identify which observed row is inconsistent with an AND gate",
+    "Name the most likely stuck-at fault",
+    "Explain why other rows still appear correct"
+  ],
+  "process_overlay_enabled": true,
+  "expert_answers": [
+    {
+      "id": "expert_001",
+      "answer": "For a correct AND gate, the output should be 0 for 00, 0 for 01, 0 for 10, and 1 for 11. The observed table only disagrees at A=0,B=1, where the circuit outputs 1 even though an AND gate should output 0. A likely single fault is that input A is stuck at 1 before the AND gate. If A is stuck high, the circuit effectively outputs B: when B=0 the output is 0, and when B=1 the output is 1. That matches all four observed rows. This is more precise than saying the whole output is stuck high, because the output is still 0 when B=0.",
+      "key_points": [
+        "states expected AND truth table",
+        "identifies A=0 B=1 as inconsistent",
+        "diagnoses A stuck at 1",
+        "explains circuit behaves like B",
+        "rules out output stuck high",
+        "uses observed rows as evidence"
+      ],
+      "rubric": {
+        "states expected AND truth table": 4,
+        "identifies A=0 B=1 as inconsistent": 3,
+        "diagnoses A stuck at 1": 5,
+        "explains circuit behaves like B": 3,
+        "rules out output stuck high": 2,
+        "uses observed rows as evidence": 3
+      }
+    }
+  ],
+  "metadata": {
+    "phase": "1b",
+    "domain": "digital_logic",
+    "type": "descriptive_circuit_analysis",
+    "difficulty": "intermediate",
+    "knowledge_components": [
+      "AND gate truth table",
+      "fault isolation",
+      "stuck-at fault reasoning",
+      "expected versus observed comparison",
+      "ruling out alternative faults"
+    ]
+  }
+}

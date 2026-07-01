@@ -32,4 +32,5 @@ from runner import (
 )
 from session import Session
 from thinking import analyse_thinking_profile
+from writing_process import analyze_writing_process
 from reports import generate_report, generate_fr_report

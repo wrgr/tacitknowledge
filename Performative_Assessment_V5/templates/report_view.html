@@ -630,6 +630,62 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
   </div>
   {% endif %}
 
+  {# ── Writing Process (interpretive overlay — never adjusts the score above) ── #}
+  {% if report.process_overlay %}
+  {% set po = report.process_overlay %}
+  <div class="card profile-card">
+    <div class="card-header"><span class="icon">✍️</span> Writing Process</div>
+    <div class="card-body">
+
+      {% if po.quadrant_label %}
+      <div class="profile-box" style="margin-bottom:14px">
+        <div class="profile-box-label">Process × Product</div>
+        <div class="profile-style-name">{{ po.quadrant_label }}</div>
+        {% if po.quadrant_interpretation %}
+        <div class="reasoning-text">{{ po.quadrant_interpretation }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if po.effort_profile_text %}
+      <p class="assessment-text">{{ po.effort_profile_text }}</p>
+      {% endif %}
+
+      {% if po.revision_rating and po.revision_rating != 'not assessed' %}
+      <div class="summary-section">
+        <div class="summary-section-label">Revision toward quality: {{ po.revision_rating }}</div>
+        {% if po.revision_evidence %}
+        <ul class="summary-list">
+          {% for e in po.revision_evidence %}<li>&ldquo;{{ e.before }}&rdquo; → &ldquo;{{ e.after }}&rdquo;</li>{% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if po.difficulty_points %}
+      <div class="summary-section">
+        <div class="summary-section-label">Difficulty points</div>
+        <ul class="summary-list">
+          {% for d in po.difficulty_points %}<li>{{ d }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if po.authenticity_text %}
+      <div class="summary-section">
+        <div class="summary-section-label">Authenticity</div>
+        <p class="assessment-text">{{ po.authenticity_text }}</p>
+      </div>
+      {% endif %}
+
+      {% if po.caution %}
+      <div class="profile-note">ℹ {{ po.caution }}</div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Learner Thinking Profile ── #}
   {% if report.thinking_profile %}
   {% set tp = report.thinking_profile %}

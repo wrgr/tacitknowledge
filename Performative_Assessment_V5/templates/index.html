@@ -1459,6 +1459,9 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   </div>
   <div id="fr-write-body">
     <div id="fr-write-main">
+      <p id="fr-process-disclosure" style="font-size:.78rem;color:var(--muted);margin-bottom:8px">
+        Your writing process (not just the finished text) is part of this assessment.
+      </p>
       <div class="fr-prompt-box" id="fr-prompt-text"></div>
       <textarea id="fr-textarea" placeholder="Write your response here…"></textarea>
     </div>
@@ -1588,15 +1591,90 @@ const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null,
 // ── Writing Tracker ────────────────────────────
 // Captures per-turn behavioural metrics: typing speed, deletions, pauses, paste events.
 // Call reset() when a new turn begins, collect(text) just before submitting.
+//
+// Content-aware capture (FR only): revision events, periodic full-text snapshots, and
+// located pauses/pastes are additionally recorded into `process_log`, appended to the
+// existing aggregate metrics payload. This capture is enabled for testing — review
+// data-handling and disclosure requirements (see fields marked SENSITIVE_TESTING_ONLY)
+// before any non-testing deployment.
+//
+// TUNABLE -- revision sensitivity, adjust after testing
+const REVISION_MIN_CHARS = 8;
+const REVISION_MIN_LOOKBACK = 15;
+
+// TUNABLE -- snapshot cadence
+const SNAPSHOT_INTERVAL_S = 30;
+const SNAPSHOT_INTERVAL_CHARS = 250;
+
+// TUNABLE -- what counts as a significant pause
+const PAUSE_THRESHOLD_S = 4;
+
+// TUNABLE -- payload caps
+const MAX_REVISION_EVENTS = 40;
+const MAX_SNAPSHOTS = 12;
+const MAX_PAUSE_EVENTS = 30;
+const MAX_PASTE_EVENTS = 20;
+const MAX_REMOVED_TEXT_CHARS = 300;   // truncate long removed/inserted text
+
+// Keep the `max` most informative entries (by scoreFn) but preserve chronological order.
+function _capByScore(arr, max, scoreFn) {
+  if (arr.length <= max) return arr;
+  const indexed = arr.map((item, i) => ({ item, i, score: scoreFn(item) }));
+  indexed.sort((a, b) => b.score - a.score);
+  const kept = indexed.slice(0, max);
+  kept.sort((a, b) => a.i - b.i);
+  return kept.map(k => k.item);
+}
+
+// Keep first, last, and an evenly-spaced sample of the middle.
+function _capSnapshots(snaps, max) {
+  if (snaps.length <= max) return snaps;
+  const first = snaps[0], last = snaps[snaps.length - 1];
+  const middle = snaps.slice(1, -1);
+  const slots = max - 2;
+  if (slots <= 0) return [first, last];
+  const step = middle.length / slots;
+  const sampled = [];
+  for (let i = 0; i < slots; i++) {
+    sampled.push(middle[Math.min(middle.length - 1, Math.floor(i * step))]);
+  }
+  return [first, ...sampled, last];
+}
+
 const WritingTracker = {
   _events:       [],   // [{type:'key'|'delete'|'paste', t:<ms>}, ...]
   _startTime:    null, // Date.now() when this turn began (set by reset)
   _firstKeyTime: null, // Date.now() of the first keystroke this turn
 
+  // content-aware process log (FR only — populated via onInput/onPaste)
+  _revisionEvents: [],
+  _snapshots:      [],
+  _pauseEvents:    [],
+  _pasteEvents:    [],
+  _pendingPaste:   null,
+  _lastText:       '',
+  _lastPos:        0,
+  _lastEventTime:  null,
+  _charsSinceSnapshot: 0,
+  _lastSnapshotTime:   0,
+  _captureActive:  false,  // true once onInput() has run this turn — gates process_log (FR only)
+
   reset() {
     this._events       = [];
     this._startTime    = Date.now();
     this._firstKeyTime = null;
+
+    this._revisionEvents = [];
+    this._snapshots      = [];
+    this._pauseEvents    = [];
+    this._pasteEvents    = [];
+    this._pendingPaste   = null;
+    this._lastText       = '';
+    this._lastPos        = 0;
+    this._lastEventTime  = null;
+    this._charsSinceSnapshot = 0;
+    this._lastSnapshotTime   = 0;
+    this._captureActive  = false;
   },
 
   onKey(e) {
@@ -1606,10 +1684,97 @@ const WritingTracker = {
     this._events.push({ type, t: now });
   },
 
-  onPaste() {
+  // e: the ClipboardEvent; caretPos: selectionStart of the field *before* the paste lands
+  onPaste(e, caretPos) {
     const now = Date.now();
     if (this._firstKeyTime === null) this._firstKeyTime = now;
     this._events.push({ type: 'paste', t: now });
+    let length = 0;
+    try { length = (e.clipboardData || window.clipboardData).getData('text').length; } catch (_) {}
+    this._pendingPaste = { t: now, pos: caretPos, length };
+  },
+
+  // Called on every 'input' event of the FR textarea with the current value + caret index.
+  // Drives located-pause detection, revision-event diffing, paste-span logging, and snapshots.
+  onInput(text, caretPos) {
+    const now  = Date.now();
+    if (this._firstKeyTime === null) this._firstKeyTime = now;
+    const nowS = +((now - this._startTime) / 1000).toFixed(1);
+    this._captureActive = true;
+
+    this._recordPause(now);
+
+    if (this._pendingPaste) {
+      const p = this._pendingPaste;
+      this._pasteEvents.push({
+        timestamp_s:   +((p.t - this._startTime) / 1000).toFixed(1),
+        char_position: p.pos,
+        paste_length:  p.length,
+      });
+      this._pendingPaste = null;
+    } else {
+      this._recordRevision(this._lastText, text, nowS);
+    }
+
+    this._maybeSnapshot(text, now, nowS);
+
+    this._lastText      = text;
+    this._lastPos       = caretPos;
+    this._lastEventTime = now;
+  },
+
+  _recordPause(now) {
+    if (this._lastEventTime === null) return;
+    const gapMs = now - this._lastEventTime;
+    if (gapMs <= PAUSE_THRESHOLD_S * 1000) return;
+    const pos = this._lastPos;
+    this._pauseEvents.push({
+      timestamp_s:        +((this._lastEventTime - this._startTime) / 1000).toFixed(1),
+      duration_s:         +(gapMs / 1000).toFixed(1),
+      char_position:      pos,
+      preceding_context:  this._lastText.slice(Math.max(0, pos - 80), pos),
+    });
+  },
+
+  // An edit to already-committed text — not simple forward typing, and not backspacing
+  // only the last few characters of the current word (see REVISION_MIN_* thresholds).
+  _recordRevision(oldText, newText, nowS) {
+    let prefixLen = 0;
+    const maxPrefix = Math.min(oldText.length, newText.length);
+    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
+
+    let suffixLen = 0;
+    const maxSuffix = Math.min(oldText.length, newText.length) - prefixLen;
+    while (suffixLen < maxSuffix &&
+           oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]) suffixLen++;
+
+    const removed  = oldText.slice(prefixLen, oldText.length - suffixLen);
+    const inserted = newText.slice(prefixLen, newText.length - suffixLen);
+    if (!removed && !inserted) return;
+
+    const lookback = oldText.length - prefixLen; // how far back from the previous end this edit reaches
+    if (removed.length < REVISION_MIN_CHARS && lookback < REVISION_MIN_LOOKBACK) return;
+
+    this._revisionEvents.push({
+      timestamp_s:     nowS,
+      char_position:   prefixLen,
+      removed_text:    removed.slice(0, MAX_REMOVED_TEXT_CHARS),   // SENSITIVE_TESTING_ONLY
+      inserted_text:   inserted.slice(0, MAX_REMOVED_TEXT_CHARS),
+      context_before:  oldText.slice(Math.max(0, prefixLen - 80), prefixLen),
+    });
+  },
+
+  _maybeSnapshot(text, now, nowS) {
+    const charsDelta = text.length - this._lastText.length;
+    if (charsDelta > 0) this._charsSinceSnapshot += charsDelta;
+    const elapsed = now - this._lastSnapshotTime;
+    if (this._snapshots.length === 0 ||
+        elapsed >= SNAPSHOT_INTERVAL_S * 1000 ||
+        this._charsSinceSnapshot >= SNAPSHOT_INTERVAL_CHARS) {
+      this._snapshots.push({ timestamp_s: nowS, text });   // SENSITIVE_TESTING_ONLY
+      this._lastSnapshotTime   = now;
+      this._charsSinceSnapshot = 0;
+    }
   },
 
   collect(finalText) {
@@ -1636,7 +1801,7 @@ const WritingTracker = {
     const totalTimeS = this._firstKeyTime !== null
       ? +((now - this._firstKeyTime) / 1000).toFixed(1) : null;
 
-    return {
+    const result = {
       wpm,
       latency_s:      latencyS,
       deletion_count: dels,
@@ -1646,6 +1811,27 @@ const WritingTracker = {
       max_pause_s:    maxPauseMs > 0 ? +(maxPauseMs / 1000).toFixed(1) : 0,
       total_time_s:   totalTimeS,
     };
+
+    // process_log is FR-only content-aware capture — only populated when onInput() was
+    // wired up (the FR textarea does this; the scenario textarea does not), so scenario
+    // mode's payload is byte-for-byte unchanged.
+    if (this._captureActive) {
+      // Final snapshot near submission time, so trajectory reconstruction has an endpoint.
+      const finalNowS = +((now - this._startTime) / 1000).toFixed(1);
+      if (!this._snapshots.length || this._snapshots[this._snapshots.length - 1].text !== finalText) {
+        this._snapshots.push({ timestamp_s: finalNowS, text: finalText });   // SENSITIVE_TESTING_ONLY
+      }
+
+      result.process_log = {
+        revision_events: _capByScore(this._revisionEvents, MAX_REVISION_EVENTS,
+                                      r => Math.max(r.removed_text.length, r.inserted_text.length)),
+        snapshots:       _capSnapshots(this._snapshots, MAX_SNAPSHOTS),
+        pause_events:    _capByScore(this._pauseEvents, MAX_PAUSE_EVENTS, p => p.duration_s),
+        paste_events:    _capByScore(this._pasteEvents, MAX_PASTE_EVENTS, p => p.paste_length),
+      };
+    }
+
+    return result;
   },
 };
 
@@ -2450,7 +2636,7 @@ $('user-input').addEventListener('keydown', e => {
   WritingTracker.onKey(e);
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
-$('user-input').addEventListener('paste', () => WritingTracker.onPaste());
+$('user-input').addEventListener('paste', e => WritingTracker.onPaste(e, e.target.selectionStart));
 
 $('user-input').addEventListener('input', function () {
   this.style.height = 'auto';
@@ -2707,12 +2893,13 @@ async function checkFrLlm() {
 }
 
 $('fr-textarea').addEventListener('keydown', e => WritingTracker.onKey(e));
-$('fr-textarea').addEventListener('paste', () => WritingTracker.onPaste());
+$('fr-textarea').addEventListener('paste', e => WritingTracker.onPaste(e, e.target.selectionStart));
 
 $('fr-textarea').addEventListener('input', function () {
   const text  = this.value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 
+  WritingTracker.onInput(text, this.selectionStart);
   updateFrWordCount(text);
 
   // fast keyword check (600 ms debounce)

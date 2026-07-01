@@ -32,6 +32,7 @@ import config
 import database as db
 import engine
 import report_parser
+from llm import LLMError, LLMRateLimitError
 
 # ── Persistent secret key ──────────────────────────────────────────────────────
 _key_file = Path(__file__).parent / ".secret_key"
@@ -63,6 +64,22 @@ def no_cache_html(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"]        = "no-cache"
     return response
+
+
+# ── LLM error handling ─────────────────────────────────────────────────────────
+# llm.py raises LLMError / LLMRateLimitError with a clear, user-facing message.
+# Without these handlers an LLM failure (rate limit, bad/blocked key, provider
+# outage) surfaces as an opaque HTTP 500; here we return JSON the frontend's
+# api() helper turns into a readable message instead of "Server error".
+@app.errorhandler(LLMError)
+def _handle_llm_error(e):
+    status = 429 if isinstance(e, LLMRateLimitError) else 502
+    return jsonify({"error": str(e)}), status
+
+
+@app.errorhandler(ConnectionError)
+def _handle_connection_error(e):
+    return jsonify({"error": str(e)}), 503
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 PROMPTS_DIR   = Path(__file__).parent / "prompts"
@@ -317,7 +334,7 @@ def student_view_report(filename):
 @app.route("/api/save-theme", methods=["POST"])
 @auth.login_required
 def api_save_theme():
-    data  = request.get_json()
+    data  = request.get_json(silent=True) or {}
     theme = (data or {}).get("theme", "light")
     db.set_theme(session["user_id"], theme)
     session["theme"] = theme
@@ -327,7 +344,7 @@ def api_save_theme():
 @app.route("/api/save-model-pref", methods=["POST"])
 @auth.login_required
 def api_save_model_pref():
-    data     = request.get_json() or {}
+    data     = request.get_json(silent=True) or {}
     provider = data.get("provider", "")
     model    = data.get("model", "")
     db.set_model_pref(session["user_id"], provider, model)
@@ -472,7 +489,7 @@ def api_scenarios():
 @auth.login_required
 def api_validate_key():
     import llm as llm_module
-    data          = request.get_json() or {}
+    data          = request.get_json(silent=True) or {}
     provider_name = data.get("provider") or config.DEFAULT_PROVIDER
     provider_cfg  = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
     api_key       = (data.get("api_key") or "").strip()
@@ -489,7 +506,7 @@ def api_validate_key():
 @app.route("/api/models", methods=["POST"])
 @auth.login_required
 def api_models():
-    data          = request.get_json()
+    data          = request.get_json(silent=True) or {}
     provider_name = data.get("provider") or config.DEFAULT_PROVIDER
     provider_cfg  = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
     models        = engine.get_available_models(provider_name, provider_cfg)
@@ -500,9 +517,14 @@ def api_models():
 @app.route("/api/start", methods=["POST"])
 @auth.login_required
 def api_start():
-    data     = request.get_json()
-    scenario = scenarios[int(data["index"])]
-    sid      = str(uuid.uuid4())
+    data = request.get_json(silent=True) or {}
+    try:
+        scenario_index = int(data.get("index"))
+        scenario = scenarios[scenario_index]
+    except (TypeError, ValueError, IndexError):
+        return jsonify({"error": "invalid scenario index"}), 400
+
+    sid = str(uuid.uuid4())
 
     provider_name    = data.get("provider") or config.DEFAULT_PROVIDER
     provider_cfg     = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
@@ -539,7 +561,7 @@ def api_end_recall():
     """Called when the learner clicks 'I'm Done' in the recall phase.
     Triggers gap analysis, builds the probe queue, transitions to probing phase,
     and returns the first probe question."""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     st, err = _get_state(data)
     if err:
         return err
@@ -567,7 +589,7 @@ def api_end_recall():
 @app.route("/api/respond", methods=["POST"])
 @auth.login_required
 def api_respond():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     st, err = _get_state(data)
     if err:
         return err
@@ -585,7 +607,7 @@ def api_respond():
 @app.route("/api/evaluate", methods=["POST"])
 @auth.login_required
 def api_evaluate():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     st, err = _get_state(data)
     if err:
         return err
@@ -641,7 +663,7 @@ def api_evaluate():
 @app.route("/api/thinking-profile", methods=["POST"])
 @auth.login_required
 def api_thinking_profile():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     st, err = _get_state(data)
     if err:
         return err
@@ -671,7 +693,7 @@ def api_thinking_profile():
 @app.route("/api/report", methods=["POST"])
 @auth.login_required
 def api_report():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     st, err = _get_state(data)
     if err:
         return err
@@ -709,7 +731,7 @@ def api_report():
 @app.route("/api/generate-scenario", methods=["POST"])
 @auth.login_required
 def api_generate_scenario():
-    data        = request.get_json()
+    data        = request.get_json(silent=True) or {}
     description = data.get("description", "").strip()
     if not description:
         return jsonify({"error": "description is required"}), 400
@@ -731,10 +753,10 @@ def api_generate_scenario():
 
 
 @app.route("/api/save-scenario", methods=["POST"])
-@auth.login_required
+@auth.admin_required
 def api_save_scenario():
     global scenarios
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     title = data.get("title", "").strip()
     if not title:
@@ -780,7 +802,7 @@ def api_save_scenario():
 @app.route("/api/generate-prompt", methods=["POST"])
 @auth.login_required
 def api_generate_prompt():
-    data        = request.get_json()
+    data        = request.get_json(silent=True) or {}
     description = data.get("description", "").strip()
     if not description:
         return jsonify({"error": "description is required"}), 400
@@ -802,10 +824,10 @@ def api_generate_prompt():
 
 
 @app.route("/api/save-prompt", methods=["POST"])
-@auth.login_required
+@auth.admin_required
 def api_save_prompt():
     global prompts
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     title = data.get("title", "").strip()
     if not title:
@@ -860,7 +882,7 @@ def api_fr_prompts():
 @app.route("/api/fr/check", methods=["POST"])
 @auth.login_required
 def api_fr_check():
-    data      = request.get_json()
+    data      = request.get_json(silent=True) or {}
     prompt_id = data.get("prompt_id", "")
     text      = data.get("text", "")
 
@@ -875,7 +897,7 @@ def api_fr_check():
 @app.route("/api/fr/check-llm", methods=["POST"])
 @auth.login_required
 def api_fr_check_llm():
-    data      = request.get_json()
+    data      = request.get_json(silent=True) or {}
     prompt_id = data.get("prompt_id", "")
     text      = data.get("text", "")
 
@@ -901,7 +923,7 @@ def api_fr_check_llm():
 @auth.login_required
 def api_fr_submit():
     global _fr_state
-    data      = request.get_json()
+    data      = request.get_json(silent=True) or {}
     prompt_id = data.get("prompt_id", "")
     text      = (data.get("text") or "").strip()
 
@@ -930,6 +952,7 @@ def api_fr_submit():
         "prompt":           prompt_data,
         "evaluation":       evaluation,
         "profile":          None,
+        "process_overlay":  None,
         "writing_metrics":  data.get("writing_metrics"),
         "user_id":          session["user_id"],
         "model":            model,
@@ -953,7 +976,7 @@ def api_fr_submit():
 @app.route("/api/fr/thinking-profile", methods=["POST"])
 @auth.login_required
 def api_fr_thinking_profile():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     sid  = data.get("session_id")
     st   = _fr_state.get(sid)
 
@@ -981,7 +1004,7 @@ def api_fr_thinking_profile():
 @app.route("/api/fr/report", methods=["POST"])
 @auth.login_required
 def api_fr_report():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     sid  = data.get("session_id")
     st   = _fr_state.get(sid)
 
@@ -1003,12 +1026,28 @@ def api_fr_report():
         )
         st["profile"] = thinking_profile
 
+    # Writing-process overlay: interpretive only, never blended into the product score.
+    # Skipped entirely when the prompt disables it or no process_log was captured
+    # (e.g. CLI submissions have no WritingTracker) — FR then scores product-only.
+    process_overlay = st.get("process_overlay")
+    process_log = (st.get("writing_metrics") or {}).get("process_log")
+    if (process_overlay is None and st["prompt"].get("process_overlay_enabled", True)
+            and process_log):
+        process_overlay = engine.analyze_writing_process(
+            process_log, st.get("writing_metrics"), st["evaluation"]["text"],
+            product_score=st["evaluation"]["score"],
+            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
+            use_llm=engine.llm_is_available(st["api_key"]),
+        )
+        st["process_overlay"] = process_overlay
+
     try:
         path = engine.generate_fr_report(
             st["prompt"], st["evaluation"],
             model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
             output_dir=user_reports_dir,
             thinking_profile=thinking_profile,
+            process_overlay=process_overlay,
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1034,7 +1073,7 @@ def api_users():
 @auth.login_required
 def api_learning_profile():
     """Return parsed report history for a user's learning profile dashboard."""
-    data     = request.get_json() or {}
+    data     = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
 
     if username and username != session["user_id"]:
@@ -1182,7 +1221,7 @@ def api_learning_profile_analysis():
     """Generate an LLM-synthesised learning profile from all of a user's reports."""
     import llm as llm_module
 
-    data     = request.get_json() or {}
+    data     = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
 
     if username and username != session["user_id"]:

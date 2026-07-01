@@ -30,6 +30,8 @@ def load_prompt(path):
         data["constraints"] = []
     if "metadata" not in data:
         data["metadata"] = {}
+    if "process_overlay_enabled" not in data:
+        data["process_overlay_enabled"] = True
 
     # do the same for each expert answer inside the prompt
     for ea in data.get("expert_answers", []):

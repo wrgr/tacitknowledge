@@ -37,6 +37,9 @@ def parse_report_md(content):
         result['evaluation'] = _parse_fr_evaluation(
             sections.get('Evaluation', [])
         )
+        result['process_overlay'] = _parse_process_overlay(
+            sections.get('Writing Process', [])
+        )
     else:
         scenario_list = []
         for key, sec_lines in sections.items():
@@ -155,6 +158,60 @@ def _parse_fr_evaluation(lines):
                 state = None
     ev['expert_answer'] = '\n'.join(expert_lines).strip()
     return ev
+
+
+def _parse_process_overlay(lines):
+    if not any(line.strip() for line in lines):
+        return None
+
+    overlay = {
+        'quadrant_label': '',
+        'quadrant_interpretation': '',
+        'effort_profile_text': '',
+        'revision_rating': '',
+        'revision_evidence': [],
+        'difficulty_points': [],
+        'authenticity_text': '',
+        'caution': '',
+    }
+    state = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('**Process') and '×' in stripped and ':**' in stripped:
+            overlay['quadrant_label'] = stripped.split(':**', 1)[1].strip()
+            state = 'quadrant'
+        elif stripped.startswith('**Effort profile:**'):
+            overlay['effort_profile_text'] = stripped.split('**Effort profile:**', 1)[1].strip()
+            state = None
+        elif stripped.startswith('**Revision toward quality:**'):
+            overlay['revision_rating'] = stripped.split('**Revision toward quality:**', 1)[1].strip()
+            state = 'revision'
+        elif stripped == '**Difficulty points:**':
+            state = 'difficulty'
+        elif stripped.startswith('**Authenticity:**'):
+            overlay['authenticity_text'] = stripped.split('**Authenticity:**', 1)[1].strip()
+            state = None
+        elif stripped.startswith('> ') and state is None and stripped[2:] and not overlay['caution']:
+            overlay['caution'] = stripped[2:]
+        elif state == 'quadrant':
+            m = re.match(r'^\s+>\s+(.*)', line)
+            if m:
+                overlay['quadrant_interpretation'] = m.group(1)
+                state = None
+        elif state == 'revision':
+            m = re.match(r'^\s+-\s+"(.*)"\s*→\s*"(.*)"', line)
+            if m:
+                overlay['revision_evidence'].append({'before': m.group(1), 'after': m.group(2)})
+            elif stripped.startswith('**'):
+                state = None
+        elif state == 'difficulty':
+            m = re.match(r'^\s+-\s+(.*)', line)
+            if m:
+                overlay['difficulty_points'].append(m.group(1).strip())
+            elif stripped.startswith('**'):
+                state = None
+
+    return overlay
 
 
 def _parse_instructor_summary(lines):

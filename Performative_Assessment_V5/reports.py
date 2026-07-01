@@ -108,6 +108,83 @@ def _append_scores(lines, ev):
     lines.append("")
 
 
+_QUADRANT_LABELS = {
+    "genuine_engaged_reasoning":    "Genuine engaged reasoning",
+    "authenticity_review":         "Authenticity review",
+    "engaged_under_knowledgeable": "Engaged but under-knowledgeable",
+    "disengaged_shallow_confident": "Disengaged or shallow-confident",
+}
+
+_PROCESS_INTERPRETATION_CAUTION = (
+    "Process signals are indirect and ambiguous — interpreted as patterns, not verdicts. "
+    "Competence is judged from the essay itself; the writing process is supporting context."
+)
+
+
+def _append_process_overlay(lines, overlay):
+    """Write the Writing-Process interpretive overlay (Part D). Never touches the product score."""
+    if not overlay:
+        return
+
+    lines.append("## Writing Process")
+    lines.append("")
+
+    quadrant = overlay.get("quadrant") or {}
+    label = _QUADRANT_LABELS.get(quadrant.get("label"), quadrant.get("label", ""))
+    if label:
+        lines.append("**Process × Product:** " + label)
+        if quadrant.get("interpretation"):
+            lines.append("  > " + quadrant["interpretation"])
+        lines.append("")
+
+    ep = overlay.get("effort_profile") or {}
+    if ep:
+        minutes = round((ep.get("total_active_time_s") or 0) / 60, 1)
+        density = ep.get("revision_density") or 0
+        if density > 0:
+            per_words = round(100 / density)
+            revision_phrase = f"roughly one substantial revision per {per_words} words"
+        else:
+            revision_phrase = "no substantial revisions"
+        longest = ep.get("longest_pause")
+        pause_phrase = (
+            f"longest pause {longest['duration_s']}s ({longest['location']})"
+            if longest else "no significant pauses"
+        )
+        lines.append(
+            f"**Effort profile:** wrote for {minutes} min active time; {revision_phrase}; {pause_phrase}."
+        )
+        lines.append("")
+
+    rtq = overlay.get("revision_toward_quality") or {}
+    if rtq.get("rating") and rtq["rating"] != "not_assessed":
+        lines.append("**Revision toward quality:** " + rtq["rating"])
+        for pair in rtq.get("evidence", []):
+            lines.append(f"  - \"{pair.get('before', '')}\" → \"{pair.get('after', '')}\"")
+        lines.append("")
+    elif rtq.get("rating") == "not_assessed":
+        lines.append("**Revision toward quality:** not assessed")
+        lines.append("")
+
+    difficulty_points = overlay.get("difficulty_points") or []
+    if difficulty_points:
+        lines.append("**Difficulty points:**")
+        for dp in difficulty_points:
+            lines.append(f"  - {dp.get('note', '')} (around position {dp.get('char_position', 0)})")
+        lines.append("")
+
+    authenticity = overlay.get("authenticity") or {}
+    if authenticity.get("level"):
+        ev_text = "; ".join(authenticity.get("evidence", []))
+        detail = f" — {ev_text}" if ev_text else ""
+        recommend = " — recommend confirming authorship" if authenticity["level"] == "elevated" else ""
+        lines.append(f"**Authenticity:** {authenticity['level']}{detail}{recommend}")
+        lines.append("")
+
+    lines.append("> " + _PROCESS_INTERPRETATION_CAUTION)
+    lines.append("")
+
+
 def _append_key_points_with_attribution(lines, ev):
     """Write key points with (volunteered) / (surfaced via probe) attribution."""
     matched = ev.get("matched_points", [])
@@ -285,7 +362,8 @@ def generate_report(session, model, api_key, base_url, output_dir, thinking_prof
     return path
 
 
-def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output_dir, thinking_profile=None):
+def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output_dir,
+                        thinking_profile=None, process_overlay=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -402,6 +480,9 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
         for rec in instructor["recommendations"]:
             lines.append("  - " + rec)
         lines.append("")
+
+    if process_overlay:
+        _append_process_overlay(lines, process_overlay)
 
     if thinking_profile:
         _append_thinking_profile(lines, thinking_profile)

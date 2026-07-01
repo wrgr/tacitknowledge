@@ -23,6 +23,7 @@ import io
 import json
 import re
 import secrets
+import time
 import uuid
 from pathlib import Path
 
@@ -53,6 +54,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE    = "Strict",
     SESSION_COOKIE_SECURE      = False,   # set True when serving over HTTPS
     PERMANENT_SESSION_LIFETIME = 3600,
+    MAX_CONTENT_LENGTH         = 16 * 1024 * 1024,   # reject oversized bodies (FR process_log)
 )
 
 auth.seed_default_users()
@@ -103,6 +105,25 @@ _state: dict = {}
 # Active free-response sessions  { uuid: { prompt, evaluation, profile, user_id, model, ... } }
 _fr_state: dict = {}
 
+# These in-memory stores are never persisted, so they must be bounded or they
+# grow for the life of the process (an FR entry can hold a multi-MB process_log).
+_SESSION_TTL_SECS    = 6 * 3600   # drop assessment state this long after creation
+_MAX_ACTIVE_SESSIONS = 200        # hard per-store cap; evict oldest beyond this
+
+
+def _register_session(store, sid, entry):
+    """Insert an assessment-session entry, then evict stale/excess ones so the
+    in-memory stores can't grow without bound."""
+    now = time.monotonic()
+    entry["_ts"] = now
+    store[sid] = entry
+    for k in [k for k, v in store.items() if now - v.get("_ts", now) > _SESSION_TTL_SECS]:
+        store.pop(k, None)
+    if len(store) > _MAX_ACTIVE_SESSIONS:
+        oldest = sorted(store, key=lambda k: store[k].get("_ts", 0))
+        for k in oldest[:len(store) - _MAX_ACTIVE_SESSIONS]:
+            store.pop(k, None)
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +158,7 @@ def _get_state(data):
         return None, (jsonify({"error": "session not found"}), 404)
     if st["user_id"] != session.get("user_id") and session.get("role") != "admin":
         return None, (jsonify({"error": "forbidden"}), 403)
+    st["_ts"] = time.monotonic()   # keep an in-progress session from being evicted
     return st, None
 
 
@@ -804,13 +826,13 @@ def api_start():
     runner  = engine.ScenarioRunner(scenario, model=model, api_key=api_key, base_url=base_url)
     opening = runner.start()
 
-    _state[sid] = {
+    _register_session(_state, sid, {
         "runner":   runner,
         "session":  engine.Session(use_llm, model=model, api_key=api_key, base_url=base_url),
         "scenario": scenario,
         "profile":  None,
         "user_id":  session["user_id"],
-    }
+    })
 
     result = {
         "session_id": sid,
@@ -1271,7 +1293,7 @@ def api_fr_submit():
         )
 
     sid = str(uuid.uuid4())
-    _fr_state[sid] = {
+    _register_session(_fr_state, sid, {
         "prompt":           prompt_data,
         "evaluation":       evaluation,
         "profile":          None,
@@ -1283,7 +1305,7 @@ def api_fr_submit():
         "model":            model,
         "api_key":          api_key,
         "base_url":         base_url,
-    }
+    })
 
     return jsonify({
         "session_id": sid,

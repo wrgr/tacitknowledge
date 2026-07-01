@@ -2,17 +2,61 @@
 llm.py — LLM provider dispatch and response parsing.
 """
 
+import hashlib
 import json
+import logging
+import os
 import re
 import socket
 import time
 import urllib.error
 import urllib.request
 
+logger = logging.getLogger(__name__)
+
 _ANTHROPIC_HOST = "api.anthropic.com"
 
 # Extra attempts after the first HTTP 429 before giving up.
 _RATE_LIMIT_MAX_RETRIES = 2
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETERMINISM SETTINGS FOR EVALUATIVE / SCORING LLM CALLS
+#
+# NOTE: temperature=0 substantially reduces but does not guarantee bit-identical
+# output across all providers -- floating-point non-associativity in parallel
+# batch execution and provider infrastructure differences can still produce
+# rare small variance even at temperature=0. Seed support is provider-dependent
+# and applied best-effort -- see _supports_seed(). Narrative/generative calls
+# (examiner turns, report prose, scenario/prompt AI-drafting) intentionally do
+# NOT use these -- their variability is harmless or desirable.
+# ─────────────────────────────────────────────────────────────────────────────
+EVALUATIVE_TEMPERATURE = 0.0
+EVALUATIVE_SEED = 42  # arbitrary fixed seed; only applied where the provider supports it
+
+# Providers/endpoints known to accept an OpenAI-style top-level "seed" field in
+# the chat-completions request body, based on each provider's public docs at
+# the time of writing. This is a snapshot, not a permanent truth -- providers
+# add, rename, or drop parameters over time (e.g. Mistral uses "random_seed"
+# instead of "seed"), so re-verify against current docs before trusting this
+# list, and update it if a provider's behaviour changes.
+_SEED_SUPPORTED_HOSTS = (
+    "api.openai.com",
+    "api.groq.com",
+    "localhost",     # Ollama's OpenAI-compatible endpoint
+    "127.0.0.1",
+)
+
+
+def _supports_seed(base_url):
+    """Best-effort check: does this provider's endpoint accept a `seed` field?
+
+    Unknown/undocumented providers default to False (the parameter is simply
+    omitted from the request) rather than sent-and-possibly-ignored, since a
+    silently-ignored parameter is worse than an omitted one -- the caller
+    can't tell the two apart from the response alone.
+    """
+    base = (base_url or "").lower()
+    return any(host in base for host in _SEED_SUPPORTED_HOSTS)
 
 
 class LLMError(Exception):
@@ -278,7 +322,8 @@ def _extract_json(raw):
     return {}
 
 
-def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False):
+def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False,
+             temperature=None, seed=None):
     """Stdlib-only HTTP call. Tries OpenAI-compatible format first; falls back to Ollama's native API on 404."""
     msgs = []
     if system:
@@ -291,18 +336,30 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, js
     if not is_ollama:
         headers["Authorization"] = "Bearer " + api_key
 
+    seed_applied = seed is not None and _supports_seed(base)
+    if seed is not None and not seed_applied:
+        logger.debug("[llm] seed=%s requested but not applied -- provider at %s has no known seed support", seed, base)
+
     # ── attempt 1: OpenAI-compatible /chat/completions (retry on HTTP 429) ──
     body = {"model": model, "max_tokens": max_tokens, "messages": msgs}
     if think is not None and is_ollama:
         body["think"] = think
     if json_mode:
         body["response_format"] = {"type": "json_object"}
+    if temperature is not None:
+        body["temperature"] = temperature
+    if seed_applied:
+        body["seed"] = seed
     payload = json.dumps(body).encode()
     for attempt in range(_RATE_LIMIT_MAX_RETRIES + 1):
         req = urllib.request.Request(base + "/chat/completions", data=payload, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
-                return json.loads(resp.read())["choices"][0]["message"]["content"] or ""
+                data = json.loads(resp.read())
+                if temperature is not None or seed is not None:
+                    logger.debug("[llm] evaluative call: temperature=%s seed=%s (applied=%s) system_fingerprint=%s",
+                                temperature, seed, seed_applied, data.get("system_fingerprint"))
+                return data["choices"][0]["message"]["content"] or ""
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 break   # not an OpenAI-compatible endpoint — try Ollama native below
@@ -318,6 +375,11 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, js
         body["think"] = think
     if json_mode:
         body["format"] = "json"
+    if temperature is not None:
+        body["options"]["temperature"] = temperature
+    if seed is not None:
+        # Ollama's native API accepts seed unconditionally via options.
+        body["options"]["seed"] = seed
     payload = json.dumps(body).encode()
     req = urllib.request.Request(host + "/api/chat", data=payload,
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -325,7 +387,8 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, js
         return json.loads(resp.read())["message"]["content"] or ""
 
 
-def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False):
+def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False,
+              temperature=None, seed=None):
     """Dispatch to the right backend. No package is required at import time."""
     try:
         if _ANTHROPIC_HOST in base_url:
@@ -341,7 +404,14 @@ def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, js
                       "messages": [{"role": "user", "content": user}]}
             if system:
                 kwargs["system"] = system
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            if seed is not None:
+                # Anthropic's Messages API has no seed parameter -- there is nothing to send.
+                logger.debug("[llm] seed=%s requested but not applied -- Claude/Anthropic has no seed parameter", seed)
             response = client.messages.create(**kwargs)
+            if temperature is not None or seed is not None:
+                logger.debug("[llm] evaluative call: temperature=%s seed=%s (applied=False)", temperature, seed)
             return next((b.text for b in response.content if b.type == "text"), "")
         else:
             try:
@@ -355,10 +425,22 @@ def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, js
                 extra = {"extra_body": {"think": think}} if think is not None and is_ollama else {}
                 if json_mode:
                     extra["response_format"] = {"type": "json_object"}
+                if temperature is not None:
+                    extra["temperature"] = temperature
+                seed_applied = seed is not None and _supports_seed(base_url)
+                if seed_applied:
+                    extra["seed"] = seed
+                elif seed is not None:
+                    logger.debug("[llm] seed=%s requested but not applied -- provider at %s has no known seed support",
+                                seed, base_url)
                 response = client.chat.completions.create(model=model, max_tokens=max_tokens, messages=msgs, **extra)
+                if temperature is not None or seed is not None:
+                    logger.debug("[llm] evaluative call: temperature=%s seed=%s (applied=%s) system_fingerprint=%s",
+                                temperature, seed, seed_applied, getattr(response, "system_fingerprint", None))
                 return response.choices[0].message.content or ""
             except ImportError:
-                return _raw_chat(model, api_key, base_url, max_tokens, system, user, think=think, json_mode=json_mode)
+                return _raw_chat(model, api_key, base_url, max_tokens, system, user, think=think, json_mode=json_mode,
+                                 temperature=temperature, seed=seed)
     except KeyboardInterrupt:
         raise
     except LLMError:
@@ -411,18 +493,22 @@ def llm_generate(model, prompt, api_key, base_url):
     return _call_llm(model, api_key, base_url, 512, "", prompt, think=False)
 
 
-def llm_chat(model, system, message, api_key, base_url):
+def llm_chat(model, system, message, api_key, base_url, temperature=None, seed=None):
     # Full structured response — used for evaluation and report generation.
     # think=False prevents thinking models from spending their token budget on
     # reasoning and truncating the JSON response.
-    return _with_retry(_call_llm, model, api_key, base_url, 8192, system, message, think=False)
+    # temperature/seed default to None (unchanged provider-default sampling) so
+    # every existing call site that doesn't pass them keeps its current behaviour.
+    return _with_retry(_call_llm, model, api_key, base_url, 8192, system, message, think=False,
+                       temperature=temperature, seed=seed)
 
 
-def llm_chat_json(model, system, message, api_key, base_url):
+def llm_chat_json(model, system, message, api_key, base_url, temperature=None, seed=None):
     # Like llm_chat but enables JSON mode (Ollama: format=json, OpenAI: response_format).
     # Uses a higher token budget (8192) because structured JSON responses with evidence
     # quotes and multi-field schemas are larger than typical prose completions.
-    return _with_retry(_call_llm, model, api_key, base_url, 8192, system, message, think=False, json_mode=True)
+    return _with_retry(_call_llm, model, api_key, base_url, 8192, system, message, think=False, json_mode=True,
+                       temperature=temperature, seed=seed)
 
 
 def clip(text, max_chars=8000):
@@ -430,3 +516,66 @@ def clip(text, max_chars=8000):
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "\n... [truncated for length]"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DETERMINISTIC RESPONSE CACHING (Part B)
+#
+# This cache is a determinism/testing aid, not a performance optimization --
+# its purpose is reproducibility (identical inputs -> identical cached output
+# without even re-invoking the model), and it should not be relied on as a
+# cost-saving layer in a way that could mask a real prompt or scoring change.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_cache_unavailable_warned = False
+
+
+def _warn_cache_unavailable(exc):
+    global _cache_unavailable_warned
+    if not _cache_unavailable_warned:
+        logger.warning("[llm] eval cache unavailable (%s) -- falling back to uncached calls", exc)
+        _cache_unavailable_warned = True
+
+
+def _eval_cache_key(model, base_url, prompt_version, system, prompt):
+    """Stable hash over the exact text sent to the model, not a loosely-normalized version --
+    so any prompt change (reflected via prompt_version, or the text itself) invalidates old entries."""
+    payload = "\x1f".join([model, base_url, prompt_version, system or "", prompt])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def cached_evaluative_call(model, base_url, prompt_version, system, prompt, call_fn, bypass_cache=False):
+    """Run call_fn() (a zero-arg callable that performs the actual evaluative LLM call and
+    returns a JSON-serializable result) through the on-disk determinism cache.
+
+    Cache key covers model, base_url, prompt_version, and the exact system/user prompt text.
+    Bypass with bypass_cache=True or the DISABLE_EVAL_CACHE=1 environment variable (e.g. for
+    a legitimate re-grade after fixing a scoring bug, without clearing the whole cache table).
+    Fails open (skips caching, calls the LLM directly) if the cache table is unavailable.
+    """
+    if bypass_cache or os.environ.get("DISABLE_EVAL_CACHE") == "1":
+        return call_fn()
+
+    try:
+        import database  # local import: avoids a hard dependency for callers that never cache
+    except Exception as e:
+        _warn_cache_unavailable(e)
+        return call_fn()
+
+    key = _eval_cache_key(model, base_url, prompt_version, system, prompt)
+    try:
+        cached = database.eval_cache_get(key)
+    except Exception as e:
+        _warn_cache_unavailable(e)
+        return call_fn()
+
+    if cached is not None:
+        logger.debug("[llm] eval cache hit key=%s...", key[:12])
+        return json.loads(cached)
+
+    result = call_fn()
+    try:
+        database.eval_cache_set(key, json.dumps(result))
+    except Exception as e:
+        _warn_cache_unavailable(e)
+    return result

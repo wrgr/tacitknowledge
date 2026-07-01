@@ -9,7 +9,14 @@ exists but wasn't spontaneously surfaced.
 
 import re
 
-from llm import llm_chat_json, _extract_json, clip
+from llm import (
+    llm_chat_json, _extract_json, clip,
+    EVALUATIVE_TEMPERATURE, EVALUATIVE_SEED, cached_evaluative_call,
+)
+
+# Bump whenever the classification prompt's wording changes, so old cached
+# results (see llm.cached_evaluative_call) don't silently apply to a changed prompt.
+_PROMPT_VERSION_THINKING_PROFILE = "thinking_profile_v1"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WORD-CHOICE ANALYSIS
@@ -112,7 +119,7 @@ def _strip_md(val):
 
 def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
                              prior_profiles=None, writing_metrics=None, user_inputs=None,
-                             recall_transcript="", probe_transcript=""):
+                             recall_transcript="", probe_transcript="", bypass_cache=False):
     system = (
         "You are an educational psychologist. "
         "Classify a learner's response using two established frameworks. "
@@ -222,8 +229,12 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
         "}"
     )
 
-    raw    = llm_chat_json(model, system, prompt, api_key, base_url)
-    result = _extract_json(raw)
+    def _call():
+        raw = llm_chat_json(model, system, prompt, api_key, base_url,
+                            temperature=EVALUATIVE_TEMPERATURE, seed=EVALUATIVE_SEED)
+        return _extract_json(raw)
+    result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_THINKING_PROFILE,
+                                    system, prompt, _call, bypass_cache=bypass_cache)
 
     _prose_fields = (
         "honey_mumford_evidence", "honey_mumford_reasoning",

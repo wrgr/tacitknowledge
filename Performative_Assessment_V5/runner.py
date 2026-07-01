@@ -13,7 +13,14 @@ Phase transitions:
 
 import re
 
-from llm import llm_generate, llm_chat, llm_chat_json, _extract_json
+from llm import (
+    llm_generate, llm_chat, llm_chat_json, _extract_json,
+    EVALUATIVE_TEMPERATURE, EVALUATIVE_SEED, cached_evaluative_call,
+)
+
+# Bump whenever the coverage-analysis prompt's wording changes, so old cached
+# results (see llm.cached_evaluative_call) don't silently apply to a changed prompt.
+_PROMPT_VERSION_COVERAGE_ANALYSIS = "coverage_analysis_v1"
 
 
 FALLBACK_RECALL_ACK = ["Go on.", "Continue.", "What next?", "Anything else?"]
@@ -364,8 +371,12 @@ class ScenarioRunner:
             "Respond only with valid JSON."
         )
         try:
-            raw    = llm_chat_json(self.model, system, prompt, self.api_key, self.base_url)
-            result = _extract_json(raw)
+            def _call():
+                raw = llm_chat_json(self.model, system, prompt, self.api_key, self.base_url,
+                                    temperature=EVALUATIVE_TEMPERATURE, seed=EVALUATIVE_SEED)
+                return _extract_json(raw)
+            result = cached_evaluative_call(self.model, self.base_url, _PROMPT_VERSION_COVERAGE_ANALYSIS,
+                                            system, prompt, _call)
             cov    = result.get("coverage", {})
             out    = {}
             for i, p in enumerate(probe_bank):

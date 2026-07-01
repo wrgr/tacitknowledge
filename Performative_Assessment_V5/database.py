@@ -48,6 +48,13 @@ def init_db():
                 preferred_model    TEXT NOT NULL DEFAULT ''
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS llm_eval_cache (
+                key        TEXT PRIMARY KEY,
+                response   TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
         c.commit()
 
 
@@ -162,5 +169,27 @@ def set_model_pref(username: str, provider: str, model: str):
         c.execute(
             "UPDATE users SET preferred_provider=?, preferred_model=? WHERE username=?",
             (provider or "", model or "", username),
+        )
+        c.commit()
+
+
+# ── LLM evaluative-call cache ──────────────────────────────────────────────────
+# Determinism/testing aid only (see llm.cached_evaluative_call) -- not a
+# cost-saving cache. Identical (model, base_url, prompt_version, prompt) input
+# always returns the same stored response, so repeated test runs stay reproducible.
+
+def eval_cache_get(key: str):
+    init_db()  # no-op if already migrated; lets a fresh DB pick up the table
+    with _conn() as c:
+        row = c.execute("SELECT response FROM llm_eval_cache WHERE key=?", (key,)).fetchone()
+        return row["response"] if row else None
+
+
+def eval_cache_set(key: str, response: str):
+    init_db()
+    with _conn() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO llm_eval_cache (key, response, created_at) VALUES (?, ?, datetime('now'))",
+            (key, response),
         )
         c.commit()

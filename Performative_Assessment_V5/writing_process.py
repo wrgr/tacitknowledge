@@ -14,7 +14,14 @@ score (see Part C of the design). Every signal here is a pattern with competing
 hypotheses, not a verdict — see the "Interpretation caution" note in reports.py.
 """
 
-from llm import llm_chat_json, _extract_json
+from llm import (
+    llm_chat_json, _extract_json,
+    EVALUATIVE_TEMPERATURE, EVALUATIVE_SEED, cached_evaluative_call,
+)
+
+# Bump whenever the revision-judgment prompt's wording changes, so old cached
+# results (see llm.cached_evaluative_call) don't silently apply to a changed prompt.
+_PROMPT_VERSION_REVISION_TOWARD_QUALITY = "revision_toward_quality_v1"
 
 # TUNABLE -- difficulty-point detection: how close a revision must be to a pause
 # (in characters and in seconds) to count as "at" that pause, and how large a
@@ -371,7 +378,7 @@ def classify_quadrant(product_score, effort_profile, authenticity, trajectory):
 # B2 — SEMANTIC JUDGMENT (LLM, bounded)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def assess_revision_toward_quality(essay_text, process_log, model, api_key, base_url):
+def assess_revision_toward_quality(essay_text, process_log, model, api_key, base_url, bypass_cache=False):
     """Did substantive revisions move the text toward Chi's self-explanation markers?
 
     Fluency, length, and polish do NOT count — only movement toward conditional
@@ -419,8 +426,12 @@ def assess_revision_toward_quality(essay_text, process_log, model, api_key, base
     )
 
     try:
-        raw    = llm_chat_json(model, system, prompt, api_key, base_url)
-        result = _extract_json(raw)
+        def _call():
+            raw = llm_chat_json(model, system, prompt, api_key, base_url,
+                                temperature=EVALUATIVE_TEMPERATURE, seed=EVALUATIVE_SEED)
+            return _extract_json(raw)
+        result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_REVISION_TOWARD_QUALITY,
+                                        system, prompt, _call, bypass_cache=bypass_cache)
     except Exception:
         return {"rating": "not_assessed", "evidence": [], "alternative_explanation": ""}
 

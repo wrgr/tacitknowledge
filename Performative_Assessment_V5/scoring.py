@@ -11,7 +11,17 @@ Combined score = coverage_weight × Coverage + quality_weight × Quality
 
 import re
 
-from llm import llm_chat, llm_chat_json, _extract_json, clip
+import config
+from llm import (
+    llm_chat, llm_chat_json, _extract_json, clip,
+    EVALUATIVE_TEMPERATURE, EVALUATIVE_SEED, cached_evaluative_call,
+)
+
+# Bump whenever the corresponding prompt's wording changes, so old cached
+# results (see llm.cached_evaluative_call) don't silently apply to a changed prompt.
+_PROMPT_VERSION_EXTRACT_EVIDENCE = "extract_evidence_v1"
+_PROMPT_VERSION_FR_GRADE         = "fr_grade_v1"
+_PROMPT_VERSION_SCENARIO_GRADE   = "scenario_grade_v1"
 
 
 _STOP = frozenset({
@@ -98,6 +108,35 @@ def _resolve_llm_matches(matched_from_llm, key_points):
     return resolved
 
 
+def _aggregate_grading_samples(samples, key_points):
+    """Majority-vote matched_points across N self-consistency samples of a grading call.
+
+    Ties default to "not matched" (the more conservative outcome). The aggregated
+    matched-point set then flows through the SAME scoring arithmetic as a single
+    sample -- we never average the raw numeric scores from each sample, since that
+    could produce a valid-looking number built from inconsistent underlying judgments.
+    Prose fields (feedback/strengths/gaps) are taken from the first sample and
+    annotated to disclose that self-consistency was used.
+    """
+    n = len(samples)
+    votes = {}
+    for s in samples:
+        matched = s.get("matched_points", [])
+        resolved = _resolve_llm_matches(matched, key_points) if key_points else set(matched)
+        for p in resolved:
+            votes[p] = votes.get(p, 0) + 1
+
+    majority_matched = [p for p in key_points if votes.get(p, 0) > n / 2]  # tie -> not matched
+
+    aggregated = dict(samples[0])
+    aggregated["matched_points"] = majority_matched
+    aggregated["missed_points"] = [p for p in key_points if p not in majority_matched]
+    note = f"(graded via {n}-sample majority vote)"
+    aggregated["feedback"] = (_coerce_str(aggregated.get("feedback", "")) + " " + note).strip()
+    aggregated["self_consistency_samples"] = n
+    return aggregated
+
+
 def _compute_coverage_score(matched, key_points, rubric):
     """Weighted coverage score from matched key points."""
     if rubric and key_points:
@@ -142,7 +181,7 @@ def _determine_point_sources(recall_text, probe_text, matched_set):
 # EVIDENCE EXTRACTION  (pre-pass compression before scoring)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _extract_evidence(model, api_key, base_url, text, key_points):
+def _extract_evidence(model, api_key, base_url, text, key_points, bypass_cache=False):
     """Compress a transcript or submission to one evidence sentence per key point.
 
     Produces a compact block like:
@@ -176,7 +215,12 @@ def _extract_evidence(model, api_key, base_url, text, key_points):
         "One sentence per topic. No extra commentary."
     )
     try:
-        return llm_chat(model, system, prompt, api_key, base_url).strip() or clip(text, 3000)
+        def _call():
+            return llm_chat(model, system, prompt, api_key, base_url,
+                            temperature=EVALUATIVE_TEMPERATURE, seed=EVALUATIVE_SEED).strip()
+        result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_EXTRACT_EVIDENCE,
+                                        system, prompt, _call, bypass_cache=bypass_cache)
+        return result or clip(text, 3000)
     except Exception:
         return clip(text, 3000)
 
@@ -235,6 +279,8 @@ def check_fr_with_llm(model, api_key, base_url, prompt_data, text):
 
 
 def score_free_response_with_keywords(prompt_data, text):
+    # Pure Python string/regex matching, no LLM call -- already deterministic,
+    # so it's exempt from the determinism/caching/self-consistency work above.
     ea = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
     key_points = ea.get("key_points", [])
     rubric     = ea.get("rubric", {})
@@ -271,7 +317,7 @@ def score_free_response_with_keywords(prompt_data, text):
     }
 
 
-def score_free_response_with_llm(model, api_key, base_url, prompt_data, text):
+def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, bypass_cache=False):
     ea         = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
     key_points = ea.get("key_points", [])
     rubric     = ea.get("rubric", {})
@@ -290,7 +336,7 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text):
     )
 
     # Pre-pass: compress the submission to per-key-point evidence before scoring.
-    evidence = _extract_evidence(model, api_key, base_url, text, key_points)
+    evidence = _extract_evidence(model, api_key, base_url, text, key_points, bypass_cache=bypass_cache)
 
     prompt = (
         "KEY POINTS WITH IMPORTANCE WEIGHTS:\n" + key_points_text + "\n\n"
@@ -309,8 +355,19 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text):
         "Credit semantic equivalence. Respond only with valid JSON."
     )
 
-    raw    = llm_chat_json(model, system, prompt, api_key, base_url)
-    result = _extract_json(raw)
+    def _grade_once():
+        raw = llm_chat_json(model, system, prompt, api_key, base_url,
+                            temperature=EVALUATIVE_TEMPERATURE, seed=EVALUATIVE_SEED)
+        return _extract_json(raw)
+
+    def _grade():
+        if config.SELF_CONSISTENCY_SCORING:
+            samples = [_grade_once() for _ in range(config.SELF_CONSISTENCY_SAMPLES)]
+            return _aggregate_grading_samples(samples, key_points)
+        return _grade_once()
+
+    result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_FR_GRADE,
+                                    system, prompt, _grade, bypass_cache=bypass_cache)
 
     matched = result.get("matched_points", [])
     missed  = result.get("missed_points",  [])
@@ -339,6 +396,7 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text):
         "feedback":       _coerce_str(result.get("feedback", "")),
         "strengths":      _coerce_str_list(result.get("strengths", [])),
         "gaps":           _coerce_str_list(result.get("gaps", [])),
+        "self_consistency_samples": result.get("self_consistency_samples", 0),
     }
 
 
@@ -392,7 +450,7 @@ def score_with_keywords(scenario, transcript, expert_answer,
 
 
 def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer,
-                   recall_transcript="", probe_transcript=""):
+                   recall_transcript="", probe_transcript="", bypass_cache=False):
     """LLM scoring with two-dimensional output: coverage + explanation quality."""
     key_points = expert_answer.get("key_points", [])
     rubric     = expert_answer.get("rubric", {})
@@ -416,15 +474,17 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
     # The scoring prompt then works from this compact summary rather than the raw text,
     # keeping input size predictable regardless of how long the transcript was.
     if recall_transcript and probe_transcript:
-        recall_evidence = _extract_evidence(model, api_key, base_url, recall_transcript, key_points)
-        probe_evidence  = _extract_evidence(model, api_key, base_url, probe_transcript,  key_points)
+        recall_evidence = _extract_evidence(model, api_key, base_url, recall_transcript, key_points,
+                                            bypass_cache=bypass_cache)
+        probe_evidence  = _extract_evidence(model, api_key, base_url, probe_transcript,  key_points,
+                                            bypass_cache=bypass_cache)
         evidence_section = (
             "RECALL EVIDENCE (what the learner volunteered unprompted):\n" + recall_evidence + "\n\n"
             "PROBE EVIDENCE (what the learner said when questioned on their reasoning):\n" + probe_evidence
         )
     else:
         evidence_section = "LEARNER EVIDENCE:\n" + _extract_evidence(
-            model, api_key, base_url, transcript, key_points
+            model, api_key, base_url, transcript, key_points, bypass_cache=bypass_cache
         )
 
     prompt = (
@@ -451,8 +511,19 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "reasoning — not fluency. Respond only with valid JSON."
     )
 
-    raw    = llm_chat_json(model, system, prompt, api_key, base_url)
-    result = _extract_json(raw)
+    def _grade_once():
+        raw = llm_chat_json(model, system, prompt, api_key, base_url,
+                            temperature=EVALUATIVE_TEMPERATURE, seed=EVALUATIVE_SEED)
+        return _extract_json(raw)
+
+    def _grade():
+        if config.SELF_CONSISTENCY_SCORING:
+            samples = [_grade_once() for _ in range(config.SELF_CONSISTENCY_SAMPLES)]
+            return _aggregate_grading_samples(samples, key_points)
+        return _grade_once()
+
+    result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_SCENARIO_GRADE,
+                                    system, prompt, _grade, bypass_cache=bypass_cache)
 
     matched = result.get("matched_points", [])
     missed  = result.get("missed_points",  [])
@@ -507,6 +578,7 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "feedback":         _coerce_str(result.get("feedback", "")),
         "strengths":        _coerce_str_list(result.get("strengths", [])),
         "gaps":             _coerce_str_list(result.get("gaps", [])),
+        "self_consistency_samples": result.get("self_consistency_samples", 0),
     }
 
 

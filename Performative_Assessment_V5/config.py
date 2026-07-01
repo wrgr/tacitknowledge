@@ -39,3 +39,15 @@ PROVIDERS = {
 DEFAULT_PROVIDER = "OpenAI"          # used by the CLI and as the pre-selected option in the web UI
 
 REPORTS_DIR = "reports"              # folder (relative to this file) where generated Markdown reports are saved
+
+# Self-consistency scoring: run the FINAL grading call (FR and scenario) N times
+# and take a majority vote per key point, instead of trusting a single sample.
+# Off by default -- costs SELF_CONSISTENCY_SAMPLES x the LLM calls and latency.
+# Does not apply to evidence extraction, gap analysis, or thinking-profile
+# classification -- those don't need this level of reliability investment.
+SELF_CONSISTENCY_SCORING = False
+
+# TUNABLE -- number of samples for self-consistency scoring, only used
+# when SELF_CONSISTENCY_SCORING is enabled. Higher = more reliable,
+# more cost/latency.
+SELF_CONSISTENCY_SAMPLES = 3

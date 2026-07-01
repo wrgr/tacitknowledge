@@ -88,6 +88,11 @@ SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 PROMPTS_DIR   = Path(__file__).parent / "prompts"
 REPORTS_BASE  = Path(__file__).parent / config.REPORTS_DIR
 
+# Max characters accepted for a free-response submission. Bounds both the stored
+# text and the writing-process trace size (keep in sync with the fr-textarea
+# maxlength in index.html).
+MAX_SUBMISSION_CHARS = 8000
+
 scenarios            = engine.load_scenarios(SCENARIOS_DIR)
 prompts              = engine.load_prompts(PROMPTS_DIR)
 configured_providers = engine.get_configured_providers(config.PROVIDERS)
@@ -502,6 +507,93 @@ def student_view_report(filename):
         current_user=session.get("display_name", session.get("user_id", "")),
         user_theme=_user_theme(),
     )
+
+
+# ── Writing-process replay trace ────────────────────────────────────────────────
+
+def _encode_process_log(process_log, cap_chars):
+    """Delta-encode snapshots for compact on-disk storage.
+
+    Snapshots are near-append-only full-text keyframes, so storing each in full
+    is hugely redundant. We keep the first snapshot whole and store each later
+    one as (common-prefix length `p`, changed suffix `s`) — reconstructed on
+    read. Each snapshot's text is also capped at cap_chars as a safety bound.
+    """
+    pl = dict(process_log or {})
+    snaps = pl.get("snapshots") or []
+    deltas, prev = [], ""
+    for i, s in enumerate(snaps):
+        text = (s.get("text") or "")[:cap_chars]
+        ts = s.get("timestamp_s", 0)
+        if i == 0:
+            deltas.append({"timestamp_s": ts, "text": text})
+        else:
+            p, m = 0, min(len(prev), len(text))
+            while p < m and prev[p] == text[p]:
+                p += 1
+            deltas.append({"timestamp_s": ts, "p": p, "s": text[p:]})
+        prev = text
+    pl.pop("snapshots", None)
+    pl["snapshots_delta"] = deltas
+    return pl
+
+
+def _decode_process_log(process_log):
+    """Reconstruct full snapshots from a delta-encoded process_log.
+
+    Passes through unchanged when there is no `snapshots_delta` key, so traces
+    written before delta encoding (full-text snapshots) still serve correctly.
+    """
+    pl = dict(process_log or {})
+    deltas = pl.pop("snapshots_delta", None)
+    if deltas is None:
+        return pl
+    snaps, prev = [], ""
+    for d in deltas:
+        text = d["text"] if "text" in d else prev[:d.get("p", 0)] + d.get("s", "")
+        snaps.append({"timestamp_s": d.get("timestamp_s", 0), "text": text})
+        prev = text
+    pl["snapshots"] = snaps
+    return pl
+
+
+def _serve_trace(username, filename):
+    """Return the persisted writing-process trace JSON for a report, or 404.
+
+    Same strict filename/path validation as the report routes; the trace lives
+    beside its report as <report_stem>.trace.json.
+    """
+    if not re.match(r'^(?:fr_)?report_[\d_]+\.md$', filename):
+        abort(400)
+    user_dir   = (REPORTS_BASE / username).resolve()
+    trace_path = REPORTS_BASE / username / (Path(filename).stem + ".trace.json")
+    if trace_path.resolve().parent != user_dir:
+        abort(400)
+    if not trace_path.exists():
+        return jsonify({"error": "no trace for this report"}), 404
+    try:
+        raw = json.loads(trace_path.read_text(encoding="utf-8"))
+        raw["process_log"] = _decode_process_log(raw.get("process_log"))
+        raw.pop("encoded", None)
+        body = json.dumps(raw)
+    except Exception:
+        body = trace_path.read_text(encoding="utf-8")   # serve verbatim if anything is off
+    return Response(body, mimetype="application/json",
+                    headers={"Cache-Control": "no-store"})
+
+
+@app.route("/my-report/<filename>/trace")
+@auth.login_required
+def student_report_trace(filename):
+    return _serve_trace(session["user_id"], filename)
+
+
+@app.route("/admin/report/<username>/<filename>/trace")
+@auth.admin_required
+def admin_report_trace(username, filename):
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', username):
+        abort(400)
+    return _serve_trace(username, filename)
 
 
 # ── Preference API endpoints ───────────────────────────────────────────────────
@@ -1143,7 +1235,7 @@ def api_fr_submit():
     global _fr_state
     data      = request.get_json(silent=True) or {}
     prompt_id = data.get("prompt_id", "")
-    text      = (data.get("text") or "").strip()
+    text      = (data.get("text") or "").strip()[:MAX_SUBMISSION_CHARS]
 
     if not text:
         return jsonify({"error": "submission text is required"}), 400
@@ -1317,6 +1409,20 @@ def api_fr_report():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+    # Persist the raw writing-process trace next to the report so it can be
+    # replayed later. Best-effort — never fail report generation over it.
+    if process_log:
+        try:
+            trace_path = Path(path).parent / (Path(path).stem + ".trace.json")
+            trace_path.write_text(json.dumps({
+                "final_text":  (st["evaluation"].get("text", "") or "")[:MAX_SUBMISSION_CHARS],
+                "process_log": _encode_process_log(process_log, MAX_SUBMISSION_CHARS),
+                "encoded":     "delta-v1",
+            }), encoding="utf-8")
+        except Exception:
+            pass
+
     return jsonify({"path": str(path)})
 
 

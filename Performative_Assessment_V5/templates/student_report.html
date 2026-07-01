@@ -752,6 +752,12 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
   {{ score_banner_html }}
   {% endif %}
 
+  {# Writing-process replay — self-hides if no trace was persisted for this report #}
+  {% if report.type == 'fr' %}
+    {% set trace_url = '/my-report/' ~ filename ~ '/trace' %}
+    {% include '_process_replay.html' %}
+  {% endif %}
+
 </main>
 
 <script>

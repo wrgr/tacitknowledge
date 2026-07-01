@@ -1532,7 +1532,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
       </p>
       <div class="fr-prompt-box" id="fr-prompt-text"></div>
       <p id="fr-general-guidance" style="font-size:.85rem;color:var(--muted);font-style:italic;margin-bottom:12px"></p>
-      <textarea id="fr-textarea" placeholder="Write your response here…"></textarea>
+      <textarea id="fr-textarea" maxlength="8000" placeholder="Write your response here…"></textarea>
     </div>
     <div id="fr-sidebar">
       <div>
@@ -1674,16 +1674,18 @@ const FR = { sessionId: null, promptData: null, preRating: null, postRating: nul
 const REVISION_MIN_CHARS = 8;
 const REVISION_MIN_LOOKBACK = 15;
 
-// TUNABLE -- snapshot cadence
-const SNAPSHOT_INTERVAL_S = 30;
-const SNAPSHOT_INTERVAL_CHARS = 250;
+// TUNABLE -- snapshot cadence. Fine cadence keeps the writing-process replay
+// accurate (each snapshot is a real keyframe of the text over time); the replay
+// interpolates between them, so finer = closer to actual typing.
+const SNAPSHOT_INTERVAL_S = 1.5;
+const SNAPSHOT_INTERVAL_CHARS = 40;
 
 // TUNABLE -- what counts as a significant pause
 const PAUSE_THRESHOLD_S = 4;
 
 // TUNABLE -- payload caps
 const MAX_REVISION_EVENTS = 40;
-const MAX_SNAPSHOTS = 12;
+const MAX_SNAPSHOTS = 500;
 const MAX_PAUSE_EVENTS = 30;
 const MAX_PASTE_EVENTS = 20;
 const MAX_REMOVED_TEXT_CHARS = 300;   // truncate long removed/inserted text

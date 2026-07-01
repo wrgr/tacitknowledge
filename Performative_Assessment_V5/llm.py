@@ -318,7 +318,7 @@ def _extract_json(raw):
         except json.JSONDecodeError:
             continue
 
-    print("[llm] _extract_json: no valid JSON found in response. Raw output:\n" + raw[:500])
+    logger.warning("[llm] _extract_json: no valid JSON found in response. Raw output:\n%s", raw[:500])
     return {}
 
 

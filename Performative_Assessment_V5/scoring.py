@@ -9,6 +9,8 @@ Combined score = coverage_weight × Coverage + quality_weight × Quality
 (weights come from scenario["scoring_weights"], default 0.6/0.4)
 """
 
+import difflib
+import logging
 import re
 
 import config
@@ -16,6 +18,8 @@ from llm import (
     llm_chat, llm_chat_json, _extract_json, clip,
     EVALUATIVE_TEMPERATURE, EVALUATIVE_SEED, cached_evaluative_call,
 )
+
+logger = logging.getLogger(__name__)
 
 # Bump whenever the corresponding prompt's wording changes, so old cached
 # results (see llm.cached_evaluative_call) don't silently apply to a changed prompt.
@@ -85,27 +89,128 @@ def _coerce_str_list(val):
     return [_coerce_str(item) for item in val]
 
 
+def _match_point_for_string(m_lower, key_points):
+    """Find the canonical key_point a raw LLM-returned string most likely refers to."""
+    for p in key_points:
+        p_lower = p.lower()
+        if p_lower == m_lower:
+            return p
+        if p_lower in m_lower or m_lower in p_lower:
+            return p
+        p_words = set(p_lower.split())
+        m_words = set(m_lower.split())
+        if p_words and p_words.issubset(m_words):
+            return p
+    return None
+
+
 def _resolve_llm_matches(matched_from_llm, key_points):
     """Map LLM-returned matched_points back to the canonical key_points list."""
     resolved = set()
     for m in matched_from_llm:
         if not isinstance(m, str):
             continue
-        m_lower = m.lower().strip()
-        for p in key_points:
-            p_lower = p.lower()
-            if p_lower == m_lower:
-                resolved.add(p)
-                break
-            if p_lower in m_lower or m_lower in p_lower:
-                resolved.add(p)
-                break
-            p_words = set(p_lower.split())
-            m_words = set(m_lower.split())
-            if p_words and p_words.issubset(m_words):
-                resolved.add(p)
-                break
+        p = _match_point_for_string(m.lower().strip(), key_points)
+        if p:
+            resolved.add(p)
     return resolved
+
+
+def _resolve_llm_matches_with_quotes(matched_entries, key_points):
+    """Like _resolve_llm_matches, but for the evidence-grounded schema where each
+    matched entry is {"key_point": ..., "supporting_quote": ...} (Part A of the
+    ungrounded-matches fix). Bare strings are also accepted (supporting_quote=""),
+    for backward compatibility with older cached results or a model that ignores
+    the schema instruction.
+
+    Returns (resolved_set, quotes_by_point).
+    """
+    resolved = set()
+    quotes_by_point = {}
+    for entry in matched_entries:
+        if isinstance(entry, dict):
+            m, quote = entry.get("key_point", ""), entry.get("supporting_quote", "")
+        elif isinstance(entry, str):
+            m, quote = entry, ""
+        else:
+            continue
+        if not isinstance(m, str) or not m.strip():
+            continue
+        p = _match_point_for_string(m.lower().strip(), key_points)
+        if p:
+            resolved.add(p)
+            if quote and isinstance(quote, str) and not quotes_by_point.get(p):
+                quotes_by_point[p] = quote
+    return resolved, quotes_by_point
+
+
+def _normalize_for_quote_match(s):
+    """Lowercase, strip punctuation, collapse whitespace -- for grounding a
+    supporting_quote against the submission while tolerating minor
+    whitespace/punctuation noise (not paraphrase-level looseness)."""
+    s = (s or "").lower()
+    s = re.sub(r"[^a-z0-9\s]", "", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _quote_supported(quote, submission_text):
+    """Part A2: verify a supporting_quote actually appears in the submission text.
+
+    Deterministic Python check, not another LLM call -- this is the actual fix
+    for the ungrounded-match defect (a well-formed but factually false claim).
+    Exact substring match after normalization handles verbatim/near-verbatim
+    quotes; a high-threshold fuzzy fallback tolerates a stray word/typo but does
+    NOT accept genuine paraphrases (ratio threshold is deliberately strict).
+    """
+    if not quote or not isinstance(quote, str):
+        return False
+    q = _normalize_for_quote_match(quote)
+    t = _normalize_for_quote_match(submission_text)
+    if not q or not t:
+        return False
+    if q in t:
+        return True
+    window = len(q)
+    if window < 8:
+        return False  # too short for fuzzy matching to be meaningful -- require exact
+    step = max(1, window // 4)
+    for i in range(0, max(1, len(t) - window + 1), step):
+        segment = t[i:i + window]
+        if difflib.SequenceMatcher(None, q, segment).ratio() >= 0.9:
+            return True
+    return False
+
+
+_NEGATION_PATTERNS = re.compile(
+    r"\b(failed to|did not|didn't|does not|doesn't|no discussion of|not addressed|"
+    r"not covered|missing|absent|never (?:mention|address|discuss)(?:ed|es)?|lacks?|"
+    r"without (?:mentioning|addressing|discussing)|nowhere (?:mention|address)(?:ed|es)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _find_narrative_contradictions(matched_set, narrative_texts):
+    """Part B1: heuristic scan for direct contradictions between the structured
+    matched_points verdict and the free-text feedback/gap narrative from the same
+    grading pass -- e.g. a key point marked matched while the narrative states
+    "failed to address <key point>". Sentence-scoped so a negation elsewhere in a
+    long narrative doesn't falsely flag an unrelated key point. Not exhaustive --
+    only needs to catch clear, direct contradictions.
+    """
+    contradictions = set()
+    combined = " ".join(t for t in narrative_texts if t)
+    if not combined or not matched_set:
+        return contradictions
+    sentences = re.split(r"(?<=[.!?])\s+", combined)
+    for p in matched_set:
+        p_lower = p.lower()
+        for sent in sentences:
+            sent_lower = sent.lower()
+            if p_lower in sent_lower and _NEGATION_PATTERNS.search(sent_lower):
+                contradictions.add(p)
+                break
+    return contradictions
 
 
 def _aggregate_grading_samples(samples, key_points):
@@ -120,16 +225,23 @@ def _aggregate_grading_samples(samples, key_points):
     """
     n = len(samples)
     votes = {}
+    quotes_by_point = {}
     for s in samples:
-        matched = s.get("matched_points", [])
-        resolved = _resolve_llm_matches(matched, key_points) if key_points else set(matched)
+        matched_entries = s.get("matched_points", [])
+        resolved, quotes = _resolve_llm_matches_with_quotes(matched_entries, key_points)
         for p in resolved:
             votes[p] = votes.get(p, 0) + 1
+            if quotes.get(p) and not quotes_by_point.get(p):
+                quotes_by_point[p] = quotes[p]
 
     majority_matched = [p for p in key_points if votes.get(p, 0) > n / 2]  # tie -> not matched
 
     aggregated = dict(samples[0])
-    aggregated["matched_points"] = majority_matched
+    # Keep the evidence-grounded schema regardless of self-consistency mode, so
+    # downstream A2 quote validation runs the same way either way.
+    aggregated["matched_points"] = [
+        {"key_point": p, "supporting_quote": quotes_by_point.get(p, "")} for p in majority_matched
+    ]
     aggregated["missed_points"] = [p for p in key_points if p not in majority_matched]
     note = f"(graded via {n}-sample majority vote)"
     aggregated["feedback"] = (_coerce_str(aggregated.get("feedback", "")) + " " + note).strip()
@@ -203,10 +315,11 @@ def _extract_evidence(model, api_key, base_url, text, key_points, bypass_cache=F
         "IMPORTANT: Only credit what the LEARNER said in their own turns. "
         "Do not attribute anything the Examiner says to the learner — even if the Examiner's "
         "question names or references a key point, credit only comes from the learner's response.\n\n"
-        "For each key point, write ONE concise sentence quoting or paraphrasing what the LEARNER "
-        "said that relates to it. If the learner did not address the key point in their own words, "
-        "write 'not addressed'.\n"
-        "Format each line exactly as: '• <key point>: <sentence>'\n"
+        "For each key point, quote the LEARNER'S OWN WORDS verbatim (a short phrase or "
+        "sentence copied exactly from their text, in quotation marks) that addresses it -- "
+        "do not paraphrase or summarise. If the learner did not address the key point in "
+        "their own words, write 'not addressed'.\n"
+        "Format each line exactly as: '• <key point>: \"<verbatim quote>\"'\n"
         "No extra text. One line per key point."
     )
     system = (
@@ -340,10 +453,17 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
 
     prompt = (
         "KEY POINTS WITH IMPORTANCE WEIGHTS:\n" + key_points_text + "\n\n"
-        "LEARNER EVIDENCE (extracted from submission):\n" + evidence + "\n\n"
-        "Grade the evidence against the key points. Credit semantic equivalence.\n\n"
+        "LEARNER EVIDENCE (extracted from submission; each line's quote is verbatim from "
+        "the submission):\n" + evidence + "\n\n"
+        "Grade the evidence against the key points. Credit semantic equivalence for the "
+        "SUBSTANCE of a key point, but every match must be evidence-grounded: a key point "
+        "may only be marked matched if the LEARNER EVIDENCE above contains an actual quote "
+        "supporting it. The surface presence of related vocabulary (e.g. the key point's own "
+        "words appearing somewhere) is NOT sufficient grounds for a match. If no supporting "
+        "quote exists for a key point, put it in missed_points instead.\n\n"
         "Return this JSON — no markdown, no extra text:\n"
-        '{"matched_points":[<exact key point strings addressed>],'
+        '{"matched_points":[{"key_point":"<exact key point string>",'
+        '"supporting_quote":"<the verbatim quote from LEARNER EVIDENCE that supports it>"}],'
         '"missed_points":[<exact key point strings omitted>],'
         '"strengths":[<1-3 short phrases>],'
         '"gaps":[<one sentence per gap>],'
@@ -352,7 +472,10 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
 
     system = (
         "You are an impartial grader. Score the learner's evidence against the key points. "
-        "Credit semantic equivalence. Respond only with valid JSON."
+        "Credit semantic equivalence for substance, but every matched_points entry MUST include "
+        "a supporting_quote copied verbatim from the LEARNER EVIDENCE -- never invent or "
+        "paraphrase a quote, and never mark a key point matched without one. "
+        "Respond only with valid JSON."
     )
 
     def _grade_once():
@@ -369,10 +492,33 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
     result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_FR_GRADE,
                                     system, prompt, _grade, bypass_cache=bypass_cache)
 
-    matched = result.get("matched_points", [])
-    missed  = result.get("missed_points",  [])
+    matched_entries = result.get("matched_points", [])
 
-    matched_set = _resolve_llm_matches(matched, key_points)
+    matched_set, quotes_by_point = _resolve_llm_matches_with_quotes(matched_entries, key_points)
+
+    # Part A2: deterministic grounding check -- demote any match whose quote doesn't
+    # actually appear in the submission. Not skippable; this is the real fix.
+    ungrounded = []
+    for p in list(matched_set):
+        if not _quote_supported(quotes_by_point.get(p, ""), text):
+            matched_set.discard(p)
+            ungrounded.append(p)
+    if ungrounded:
+        logger.warning(
+            "[scoring] FR grading: demoted ungrounded match(es) %s -- no supporting quote "
+            "found in submission (prompt_id=%s)", ungrounded, prompt_data.get("id"),
+        )
+
+    # Part B: cross-check the surviving matched verdicts against the free-text
+    # feedback/gaps narrative from the same grading pass; ties resolve conservatively.
+    narrative_texts = [_coerce_str(result.get("feedback", ""))] + _coerce_str_list(result.get("gaps", []))
+    contradictions = _find_narrative_contradictions(matched_set, narrative_texts)
+    for p in contradictions:
+        matched_set.discard(p)
+        logger.warning(
+            "[scoring] FR grading: demoted key point '%s' -- feedback/gaps narrative "
+            "contradicts the matched verdict (prompt_id=%s)", p, prompt_data.get("id"),
+        )
 
     if rubric and key_points:
         total  = sum(rubric.get(p, 1) for p in key_points)
@@ -392,6 +538,7 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
         "expert_answer":  ea,
         "matched_points": matched,
         "missed_points":  missed,
+        "matched_point_quotes": {p: quotes_by_point.get(p, "") for p in matched},
         "score":          max(0.0, min(1.0, score)),
         "feedback":       _coerce_str(result.get("feedback", "")),
         "strengths":      _coerce_str_list(result.get("strengths", [])),
@@ -495,9 +642,14 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "  0 = stated only, no reasoning\n"
         "  1 = partial — ONE of: conditional, goal-linked, or consequence-aware\n"
         "  2 = full — TWO OR MORE of the above\n"
-        "Fluency and length are NOT quality. Credit semantic equivalence for coverage.\n\n"
+        "Fluency and length are NOT quality. Credit semantic equivalence for coverage, but "
+        "every match must be evidence-grounded: a key point may only be marked matched if the "
+        "evidence above contains an actual quote supporting it. The surface presence of related "
+        "vocabulary is NOT sufficient grounds for a match. If no supporting quote exists for a "
+        "key point, put it in missed_points instead.\n\n"
         "Return this JSON — no markdown, no extra text:\n"
-        '{"matched_points":[<exact key point strings demonstrated>],'
+        '{"matched_points":[{"key_point":"<exact key point string>",'
+        '"supporting_quote":"<the verbatim quote from the evidence above that supports it>"}],'
         '"missed_points":[<exact key point strings omitted>],'
         '"quality_ratings":{"<key point>":0|1|2},'
         '"strengths":[<1-3 short phrases>],'
@@ -508,7 +660,9 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
     system = (
         "You are an impartial grader. Score the learner's evidence against the key points. "
         "Credit semantic equivalence. Quality scores must reflect conditional/goal/consequence "
-        "reasoning — not fluency. Respond only with valid JSON."
+        "reasoning — not fluency. Every matched_points entry MUST include a supporting_quote "
+        "copied verbatim from the evidence -- never invent or paraphrase a quote, and never "
+        "mark a key point matched without one. Respond only with valid JSON."
     )
 
     def _grade_once():
@@ -525,10 +679,37 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
     result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_SCENARIO_GRADE,
                                     system, prompt, _grade, bypass_cache=bypass_cache)
 
-    matched = result.get("matched_points", [])
-    missed  = result.get("missed_points",  [])
+    matched_entries = result.get("matched_points", [])
 
-    matched_set = _resolve_llm_matches(matched, key_points)
+    matched_set, quotes_by_point = _resolve_llm_matches_with_quotes(matched_entries, key_points)
+
+    # Part A2: deterministic grounding check against the actual transcript(s) --
+    # demote any match whose quote doesn't appear in what the learner actually said.
+    validation_text = (
+        (recall_transcript + "\n" + probe_transcript) if (recall_transcript and probe_transcript)
+        else (transcript or recall_transcript or probe_transcript)
+    )
+    ungrounded = []
+    for p in list(matched_set):
+        if not _quote_supported(quotes_by_point.get(p, ""), validation_text):
+            matched_set.discard(p)
+            ungrounded.append(p)
+    if ungrounded:
+        logger.warning(
+            "[scoring] scenario grading: demoted ungrounded match(es) %s -- no supporting "
+            "quote found in transcript (scenario_id=%s)", ungrounded, scenario.get("id"),
+        )
+
+    # Part B: cross-check the surviving matched verdicts against the free-text
+    # feedback/gaps narrative from the same grading pass; ties resolve conservatively.
+    narrative_texts = [_coerce_str(result.get("feedback", ""))] + _coerce_str_list(result.get("gaps", []))
+    contradictions = _find_narrative_contradictions(matched_set, narrative_texts)
+    for p in contradictions:
+        matched_set.discard(p)
+        logger.warning(
+            "[scoring] scenario grading: demoted key point '%s' -- feedback/gaps narrative "
+            "contradicts the matched verdict (scenario_id=%s)", p, scenario.get("id"),
+        )
 
     # arithmetic stays in Python — LLM only does semantic matching
     weights  = scenario.get("scoring_weights", {"coverage": 0.6, "quality": 0.4})
@@ -569,6 +750,7 @@ def score_with_llm(model, api_key, base_url, scenario, transcript, expert_answer
         "expert_answer":    expert_answer,
         "matched_points":   matched,
         "missed_points":    missed,
+        "matched_point_quotes": {p: quotes_by_point.get(p, "") for p in matched},
         "quality_ratings":  quality_ratings,
         "quality_evidence": {},
         "point_sources":    sources,
@@ -623,6 +805,9 @@ def merge_phase_scores(recall_ev, probe_ev, scenario, expert_answer, full_transc
         # Combined
         "matched_points":    matched,
         "missed_points":     missed,
+        "matched_point_quotes": {
+            **recall_ev.get("matched_point_quotes", {}), **probe_ev.get("matched_point_quotes", {})
+        },
         "quality_ratings":   combined_quality,
         "quality_evidence":  {**recall_ev.get("quality_evidence", {}), **probe_ev.get("quality_evidence", {})},
         "point_sources":     point_sources,

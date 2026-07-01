@@ -2,10 +2,13 @@
 reports.py — Markdown report generation for scenario sessions and free-response prompts.
 """
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
 from llm import llm_chat, _extract_json
+
+logger = logging.getLogger(__name__)
 
 _INFERENCE_BOUNDARY = (
     "**Assessment scope:** This assessment evaluates procedural reasoning and declarative "
@@ -225,6 +228,7 @@ def _append_key_points_with_attribution(lines, ev):
     missed  = ev.get("missed_points",  [])
     sources = ev.get("point_sources",  {})
     quality = ev.get("quality_ratings",{})
+    quotes  = ev.get("matched_point_quotes", {})  # absent for keyword-scoring / pre-existing reports
 
     _quality_label = {0: "stated only", 1: "partial explanation", 2: "full explanation"}
 
@@ -235,11 +239,71 @@ def _append_key_points_with_attribution(lines, ev):
             attr   = "(volunteered)" if source == "recall" else "(surfaced via probe)"
             qlabel = _quality_label.get(quality.get(p, 0), "stated only")
             lines.append(f"  - {p} — {attr} — _{qlabel}_")
+            quote = quotes.get(p)
+            if quote:
+                lines.append(f"    > \"{quote}\"")
         lines.append("")
 
     if missed:
         lines.append("**Key points missed:** " + ", ".join(missed))
         lines.append("")
+
+
+def _instructor_summary_fallback(overall_pct, coverage_pct, quality_pct, matched, missed):
+    """Deterministic Instructor Summary built from data already computed in Python.
+
+    Used when the LLM-generated summary fails to parse (or the call itself fails) --
+    a report should never render a blank Instructor Summary section. Not a substitute
+    for the LLM's analysis, just a graceful-degradation path, mirroring the fallback
+    philosophy already used elsewhere (keyword scoring, "not_assessed" for
+    revision-toward-quality).
+    """
+    parts = [f"Overall score: {overall_pct}."]
+    if coverage_pct is not None:
+        parts.append(f"Coverage: {coverage_pct}.")
+    if quality_pct is not None:
+        parts.append(f"Quality: {quality_pct}.")
+    if matched:
+        parts.append("Key points addressed: " + ", ".join(matched) + ".")
+    if missed:
+        parts.append("Key points missed: " + ", ".join(missed) + ".")
+    parts.append("See detailed feedback above.")
+    return {
+        "overall_assessment": " ".join(parts),
+        "learning_gaps": list(missed),
+        "recommendations": [],
+    }
+
+
+def _generate_instructor_summary(model, api_key, base_url, summary_system, summary_prompt,
+                                 fallback_builder, context_label):
+    """Run the instructor-summary LLM call and normalise its output.
+
+    On any failure -- the call itself raising, or _extract_json() failing to parse a
+    malformed/truncated response -- falls back to fallback_builder() (a deterministic,
+    templated summary) rather than letting a blank/garbled section reach the report.
+    The failure is always logged (see _extract_json's own logging too), so silent
+    failures stay visible even though the user-facing report degrades gracefully.
+    """
+    try:
+        raw = llm_chat(model, summary_system, summary_prompt, api_key, base_url)
+    except Exception as e:
+        logger.warning("[reports] instructor summary LLM call failed (%s): %s", context_label, e)
+        return fallback_builder()
+
+    instructor = _extract_json(raw)
+    if not instructor or not instructor.get("overall_assessment"):
+        logger.warning(
+            "[reports] instructor summary parsing failed or incomplete (%s) -- raw response: %.200s",
+            context_label, raw,
+        )
+        return fallback_builder()
+
+    if isinstance(instructor.get("overall_assessment"), list):
+        instructor["overall_assessment"] = " ".join(instructor["overall_assessment"])
+    instructor["learning_gaps"]   = [str(g) for g in instructor.get("learning_gaps", []) if g]
+    instructor["recommendations"] = [str(r) for r in instructor.get("recommendations", []) if r]
+    return instructor
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -284,20 +348,21 @@ def generate_report(session, model, api_key, base_url, output_dir, thinking_prof
         "Respond only with valid JSON — no markdown, no extra text."
     )
 
-    try:
-        raw        = llm_chat(model, summary_system, summary_prompt, api_key, base_url)
-        instructor = _extract_json(raw)
-        if not instructor:
-            instructor = {"overall_assessment": raw, "learning_gaps": [], "recommendations": []}
-    except Exception:
-        instructor = {"overall_assessment": "Summary unavailable — no LLM API key configured.",
-                      "learning_gaps": [], "recommendations": []}
+    def _fallback():
+        all_evals = [ev for _, evals in session.results for ev in evals]
+        n = len(all_evals)
+        avg_coverage = sum(ev.get("coverage_score", ev.get("score", 0)) for ev in all_evals) / n if n else 0.0
+        avg_quality  = sum(ev.get("quality_score", 0) for ev in all_evals) / n if n else 0.0
+        matched_pool = sorted({p for ev in all_evals for p in ev.get("matched_points", [])})
+        missed_pool  = sorted({p for ev in all_evals for p in ev.get("missed_points", [])})
+        return _instructor_summary_fallback(
+            f"{session.average_score():.0%}", f"{avg_coverage:.0%}", f"{avg_quality:.0%}",
+            matched_pool, missed_pool,
+        )
 
-    # Normalise: LLM sometimes returns string fields as lists
-    if isinstance(instructor.get("overall_assessment"), list):
-        instructor["overall_assessment"] = " ".join(instructor["overall_assessment"])
-    instructor["learning_gaps"]    = [str(g) for g in instructor.get("learning_gaps", []) if g]
-    instructor["recommendations"]  = [str(r) for r in instructor.get("recommendations", []) if r]
+    instructor = _generate_instructor_summary(
+        model, api_key, base_url, summary_system, summary_prompt, _fallback, "scenario session summary"
+    )
 
     lines = []
     lines.append("# Performative Assessment — Instructor Report")
@@ -426,19 +491,15 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
         "Respond only with valid JSON — no markdown, no extra text."
     )
 
-    try:
-        raw        = llm_chat(model, summary_system, summary_prompt, api_key, base_url)
-        instructor = _extract_json(raw)
-        if not instructor:
-            instructor = {"overall_assessment": raw, "learning_gaps": [], "recommendations": []}
-    except Exception:
-        instructor = {"overall_assessment": "Summary unavailable — no LLM API key configured.",
-                      "learning_gaps": [], "recommendations": []}
+    def _fallback():
+        return _instructor_summary_fallback(
+            score_pct, ev.get("coverage_score"), ev.get("quality_score"),
+            ev.get("matched_points", []), ev.get("missed_points", []),
+        )
 
-    if isinstance(instructor.get("overall_assessment"), list):
-        instructor["overall_assessment"] = " ".join(instructor["overall_assessment"])
-    instructor["learning_gaps"]   = [str(g) for g in instructor.get("learning_gaps", []) if g]
-    instructor["recommendations"] = [str(r) for r in instructor.get("recommendations", []) if r]
+    instructor = _generate_instructor_summary(
+        model, api_key, base_url, summary_system, summary_prompt, _fallback, "FR summary"
+    )
 
     lines = []
     lines.append("# Free Response Assessment — Instructor Report")
@@ -487,8 +548,18 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
             lines.append("  - " + g)
         lines.append("")
     if ev.get("matched_points"):
+        # Single comma-joined line -- report_parser.py's _parse_fr_evaluation() splits
+        # this line on ',' to recover matched_points, so the format must stay stable.
         lines.append("**Key points covered:** " + ", ".join(ev["matched_points"]))
         lines.append("")
+        quotes = ev.get("matched_point_quotes", {})  # absent for keyword-scoring / pre-existing reports
+        if any(quotes.get(p) for p in ev["matched_points"]):
+            lines.append("**Supporting evidence:**")
+            for p in ev["matched_points"]:
+                quote = quotes.get(p)
+                if quote:
+                    lines.append(f'  - {p} — _"{quote}"_')
+            lines.append("")
     if ev.get("missed_points"):
         lines.append("**Key points missed:** " + ", ".join(ev["missed_points"]))
         lines.append("")

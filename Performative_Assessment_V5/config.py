@@ -29,6 +29,14 @@ PROVIDERS = {
         "model":    "mistral-small-latest",
         "api_key":  "your-mistral-key-here",
     },
+    "GitHub Models": {
+        # Free OpenAI-compatible endpoint for prototyping. Auth with a GitHub
+        # personal access token that has the `models: read` permission.
+        # Rate limited (free tier ~15 req/min, ~150 req/day) — light testing only.
+        "base_url": "https://models.github.ai/inference",
+        "model":    "openai/gpt-4o-mini",
+        "api_key":  "your-github-pat-here",
+    },
     "Ollama": {
         "base_url": "http://localhost:11434/v1",
         "model":    "llama3.2",

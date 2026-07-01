@@ -140,6 +140,8 @@ _PROVIDER_MODELS = {
     "Gemini":  ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
     "Groq":    ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
     "Mistral": ["mistral-large-latest", "mistral-small-latest", "mistral-nemo"],
+    # GitHub Models — publisher/model IDs. gpt-4o-mini first: JSON mode + best free-tier limits.
+    "GitHub Models": ["openai/gpt-4o-mini", "openai/gpt-4o", "meta/Llama-3.3-70B-Instruct", "mistral-ai/Mistral-Nemo"],
 }
 
 

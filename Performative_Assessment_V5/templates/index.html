@@ -869,17 +869,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   font-size: .82rem;
   line-height: 1.45;
 }
-.kp-dot {
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-top: 2px;
-  border: 2px solid var(--border);
-  transition: background .25s, border-color .25s;
-}
-.kp-dot.hit  { background: var(--green); border-color: var(--green); }
-.kp-dot.miss { background: transparent; }
-
 .fr-constraints-list { list-style: none; }
 .fr-constraints-list li {
   font-size: .81rem;
@@ -1506,10 +1495,6 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <div class="fr-sidebar-label">Word Count</div>
         <div id="fr-word-count">0 <span class="fr-word-limit">words</span></div>
       </div>
-      <div id="fr-kp-section">
-        <div class="fr-sidebar-label">Key Points&nbsp;<span id="fr-kp-ai-badge" style="font-size:.65rem;color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none;display:none">AI checking…</span></div>
-        <div id="fr-kp-list"></div>
-      </div>
       <div id="fr-constraints-section" class="hidden">
         <div class="fr-sidebar-label">Constraints</div>
         <ul id="fr-constraints-list" class="fr-constraints-list"></ul>
@@ -1629,9 +1614,7 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 
 // ── State ──────────────────────────────────────
 const S  = { sessionId: null, phase: 'recall', probeCount: 0, probeNumber: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
-const FR = { sessionId: null, promptData: null, keyPoints: [], checkTimer: null,
-             llmCheckTimer: null, llmLastWordCount: 0, llmInFlight: false,
-             preRating: null, postRating: null };
+const FR = { sessionId: null, promptData: null, preRating: null, postRating: null };
 
 // ── Writing Tracker ────────────────────────────
 // Captures per-turn behavioural metrics: typing speed, deletions, pauses, paste events.
@@ -2859,14 +2842,8 @@ function askFrRating(question) {
 function startFrPrompt(index, promptList) {
   const p = promptList[index];
   FR.promptData       = p;
-  FR.keyPoints        = [];
-  FR.llmLastWordCount = 0;
-  FR.llmInFlight      = false;
   FR.preRating        = null;
   FR.postRating       = null;
-  clearTimeout(FR.llmCheckTimer);
-  FR.llmCheckTimer    = null;
-  $('fr-kp-ai-badge').style.display = 'none';
 
   $('fr-write-title').textContent = p.title;
   $('fr-prompt-text').textContent = p.prompt_text || p.description;
@@ -2877,12 +2854,6 @@ function startFrPrompt(index, promptList) {
   $('fr-textarea').disabled = true;
   $('btn-fr-submit').disabled  = true;
   $('btn-fr-submit').textContent = 'Submit';
-
-  // render empty key-point tracker — will populate via /api/fr/check
-  api('/api/fr/check', { prompt_id: p.id, text: '' }).then(data => {
-    FR.keyPoints = [...(data.matched_points || []), ...(data.missed_points || [])];
-    renderFrKeyPoints(data);
-  }).catch(() => {});
 
   updateFrWordCount('', p.word_limit);
 
@@ -2919,77 +2890,14 @@ function updateFrWordCount(text, limit) {
       : ` <span class="fr-word-limit">words</span>`);
 }
 
-function renderFrKeyPoints(data) {
-  const matched = new Set(data.matched_points || []);
-  const all     = FR.keyPoints.length
-    ? FR.keyPoints
-    : [...(data.matched_points || []), ...(data.missed_points || [])];
-
-  $('fr-kp-list').innerHTML = all.map(kp => {
-    const hit = matched.has(kp);
-    return `<div class="kp-item">
-      <div class="kp-dot ${hit ? 'hit' : 'miss'}"></div>
-      <span style="color:${hit ? 'var(--text)' : 'var(--muted)'}">${kp}</span>
-    </div>`;
-  }).join('');
-}
-
-async function checkFrKeywords() {
-  if (!FR.promptData) return;
-  const text = $('fr-textarea').value;
-  try {
-    const data = await api('/api/fr/check', { prompt_id: FR.promptData.id, text });
-    renderFrKeyPoints(data);
-  } catch (_) {}
-}
-
-async function checkFrLlm() {
-  if (!FR.promptData || !llmAvailable() || FR.llmInFlight) return;
-  const text  = $('fr-textarea').value;
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-  if (words < 10) return;  // too little to judge semantically
-
-  FR.llmInFlight      = true;
-  FR.llmLastWordCount = words;
-  $('fr-kp-ai-badge').style.display = 'inline';
-  try {
-    const data = await api('/api/fr/check-llm', {
-      prompt_id: FR.promptData.id,
-      text,
-      provider: S.provider,
-      model:    S.model,
-      api_key:  S.apiKey || undefined,
-    });
-    renderFrKeyPoints(data);
-  } catch (_) {
-    // silently fall back — keyword dots remain from last keyword check
-  } finally {
-    FR.llmInFlight = false;
-    $('fr-kp-ai-badge').style.display = 'none';
-  }
-}
-
 $('fr-textarea').addEventListener('keydown', e => WritingTracker.onKey(e));
 $('fr-textarea').addEventListener('paste', e => WritingTracker.onPaste(e, e.target.selectionStart));
 
 $('fr-textarea').addEventListener('input', function () {
-  const text  = this.value;
-  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const text = this.value;
 
   WritingTracker.onInput(text, this.selectionStart);
   updateFrWordCount(text);
-
-  // fast keyword check (600 ms debounce)
-  clearTimeout(FR.checkTimer);
-  FR.checkTimer = setTimeout(checkFrKeywords, 600);
-
-  // slower LLM check when a key is available
-  if (llmAvailable()) {
-    clearTimeout(FR.llmCheckTimer);
-    // check sooner if 20+ new words since last LLM check, otherwise wait for idle
-    const delay = (words - FR.llmLastWordCount >= 20) ? 3000 : 8000;
-    FR.llmCheckTimer = setTimeout(checkFrLlm, delay);
-  }
 });
 
 $('btn-fr-back').addEventListener('click', () => {

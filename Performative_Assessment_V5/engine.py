@@ -16,8 +16,6 @@ from loaders import (
     load_scenarios,
 )
 from scoring import (
-    check_fr_keywords,
-    check_fr_with_llm,
     score_free_response_with_keywords,
     score_free_response_with_llm,
     score_with_keywords,

@@ -342,55 +342,6 @@ def _extract_evidence(model, api_key, base_url, text, key_points, bypass_cache=F
 # FREE-RESPONSE SCORING  (unchanged from original)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def check_fr_keywords(prompt_data, text):
-    """Fast keyword check for live sidebar — no LLM, returns matched/missed/word_count."""
-    text_lower = text.lower()
-    ea = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
-    key_points = ea.get("key_points", [])
-    matched = [p for p in key_points if _phrase_in_text(p, text_lower)]
-    missed  = [p for p in key_points if not _phrase_in_text(p, text_lower)]
-    word_count = len(text.split()) if text.strip() else 0
-    return {"matched_points": matched, "missed_points": missed, "word_count": word_count}
-
-
-def check_fr_with_llm(model, api_key, base_url, prompt_data, text):
-    """LLM-based key point check for live sidebar — semantic matching, no scoring/feedback."""
-    ea = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
-    key_points = ea.get("key_points", [])
-
-    if not key_points or not text.strip():
-        return {"matched_points": [], "missed_points": list(key_points)}
-
-    kp_text = "\n".join("- " + p for p in key_points)
-
-    prompt = (
-        "KEY POINTS:\n" + kp_text + "\n\n"
-        "LEARNER'S TEXT (work in progress — may be incomplete):\n" + text + "\n\n"
-        "For each key point, decide if the learner has clearly addressed it. "
-        "Semantic equivalence counts — exact wording is not required.\n"
-        "Return ONLY this JSON (no markdown, no extra text):\n"
-        '{"matched_points": [<copy exact key point strings addressed so far>], '
-        '"missed_points": [<copy exact key point strings not yet addressed>]}'
-    )
-
-    system = (
-        "You check a learner's draft against key points. "
-        "Credit semantic equivalence — exact wording not required. "
-        "Respond with valid JSON only."
-    )
-
-    raw    = llm_chat_json(model, system, prompt, api_key, base_url)
-    result = _extract_json(raw)
-
-    matched     = result.get("matched_points", [])
-    matched_set = _resolve_llm_matches(matched, key_points)
-
-    return {
-        "matched_points": [p for p in key_points if p in matched_set],
-        "missed_points":  [p for p in key_points if p not in matched_set],
-    }
-
-
 def score_free_response_with_keywords(prompt_data, text):
     # Pure Python string/regex matching, no LLM call -- already deterministic,
     # so it's exempt from the determinism/caching/self-consistency work above.

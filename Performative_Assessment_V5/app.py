@@ -1356,6 +1356,20 @@ def api_admin_novel_equivalent_dismiss():
     return jsonify({"status": "dismissed"})
 
 
+@app.route("/api/admin/fr-match-stats", methods=["POST"])
+@auth.admin_required
+def api_admin_fr_match_stats():
+    """fr_hardening brief, Part D: per-key-point novel-equivalent reliability metric --
+    an admin-visible signal, not an alert. A high rate for a key point most often means
+    that key point's exemplar list is under-specified, not that scoring is unreliable.
+    """
+    title_by_id = {p["id"]: p["title"] for p in prompts}
+    stats = db.get_fr_match_stats()
+    for s in stats:
+        s["prompt_title"] = title_by_id.get(s["prompt_id"], s["prompt_id"])
+    return jsonify({"stats": stats})
+
+
 @app.route("/api/fr/submit", methods=["POST"])
 @auth.login_required
 def api_fr_submit():
@@ -1402,6 +1416,17 @@ def api_fr_submit():
             evidence_spans=m["evidence_spans"],
             justification=m.get("functional_justification") or "",
         )
+
+    # fr_hardening brief, Part D: log every accepted match (exemplar or novel_equivalent)
+    # so the novel-equivalent reliability metric has a real total-matches denominator.
+    for m in evaluation.get("matched_points", []):
+        if isinstance(m, dict) and m.get("key_point_id"):
+            db.log_fr_match(
+                prompt_id=prompt_id,
+                key_point_id=m["key_point_id"],
+                construct=m.get("construct", ""),
+                match_type=m.get("match_type", "exemplar"),
+            )
 
     sid = str(uuid.uuid4())
     _register_session(_fr_state, sid, {

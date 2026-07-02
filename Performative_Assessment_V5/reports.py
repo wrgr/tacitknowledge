@@ -259,6 +259,8 @@ def _append_fr_key_points(lines, ev):
     matched = ev.get("matched_points", [])
     missed  = ev.get("missed_points", [])
 
+    _quality_label = {0: "stated only", 1: "partial explanation", 2: "full explanation"}
+
     if matched:
         lines.append("**Key points covered:**")
         for m in matched:
@@ -272,7 +274,9 @@ def _append_fr_key_points(lines, ev):
                 tag = 'matched: known exemplar "' + m["matched_exemplar"] + '"'
             else:
                 tag = "matched"
+            qlabel = _quality_label.get(m.get("quality_rating", 0), "stated only")
             lines.append(f"  - {construct} — _{tag}_")
+            lines.append("    _Quality:_ " + qlabel)
             for span in m.get("evidence_spans", []):
                 lines.append(f'    > "{span}"')
             if m.get("functional_justification"):

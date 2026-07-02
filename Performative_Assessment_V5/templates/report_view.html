@@ -229,6 +229,7 @@ main {
   margin: 2px 0 2px 4px; padding-left: 10px; border-left: 2px solid var(--border);
 }
 .kp-detail-justification { font-size: .82rem; margin-top: 4px; }
+.kp-detail-quality { font-size: .82rem; margin-top: 4px; color: var(--muted); }
 
 /* ── Collapsible expert answer ── */
 details.expert-details { border-radius: var(--radius-sm); overflow: hidden; }
@@ -597,6 +598,9 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
             <span class="kp-detail-tag exemplar">Matched</span>
             {% endif %}
           </div>
+          {% if m.quality_label %}
+          <div class="kp-detail-quality"><strong>Quality:</strong> {{ m.quality_label }}</div>
+          {% endif %}
           {% for span in m.evidence_spans %}
           <div class="kp-detail-evidence">"{{ span }}"</div>
           {% endfor %}

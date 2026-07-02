@@ -134,6 +134,7 @@ def _parse_ai_assistance(lines):
 _FR_KP_BULLET = re.compile(r'^\s+-\s+(.*?)\s+—\s+_(.*)_\s*$')
 _FR_KP_SPAN   = re.compile(r'^\s+>\s+"(.*)"\s*$')
 _FR_KP_JUST   = re.compile(r'^\s+_Justification:_\s+(.*)$')
+_FR_KP_QUALITY = re.compile(r'^\s+_Quality:_\s+(.*)$')
 _FR_KP_EXEMPLAR = re.compile(r'^matched: known exemplar "(.*)"$')
 
 
@@ -239,11 +240,14 @@ def _parse_fr_evaluation(lines):
                     'matched_exemplar': matched_exemplar,
                     'evidence_spans': [],
                     'functional_justification': None,
+                    'quality_label': '',
                 }
             elif span and current_point is not None:
                 current_point['evidence_spans'].append(span.group(1))
             elif just and current_point is not None:
                 current_point['functional_justification'] = just.group(1).strip()
+            elif current_point is not None and _FR_KP_QUALITY.match(line):
+                current_point['quality_label'] = _FR_KP_QUALITY.match(line).group(1).strip()
             elif stripped.startswith('**'):
                 _flush_point()
                 state = None

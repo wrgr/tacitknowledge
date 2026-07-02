@@ -73,6 +73,20 @@ def init_db():
                 created_at         TEXT NOT NULL
             )
         """)
+        # fr_hardening brief, Part D: every accepted FR match (exemplar or novel_equivalent)
+        # is logged here so the novel-equivalent rate per key point has a real denominator --
+        # novel_equivalent_review alone only ever contains novel-equivalent matches, so it
+        # can't answer "novel-equivalent out of how many total matches" on its own.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS fr_match_log (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt_id    TEXT NOT NULL,
+                key_point_id TEXT NOT NULL,
+                construct    TEXT NOT NULL,
+                match_type   TEXT NOT NULL CHECK(match_type IN ('exemplar','novel_equivalent')),
+                created_at   TEXT NOT NULL
+            )
+        """)
         c.commit()
 
 
@@ -267,3 +281,82 @@ def set_novel_equivalent_status(review_id: int, status: str) -> bool:
         )
         c.commit()
         return cur.rowcount > 0
+
+
+# ── FR match log / novel-equivalent reliability metric (fr_hardening brief, Part D) ────
+
+def log_fr_match(prompt_id: str, key_point_id: str, construct: str, match_type: str):
+    """Record one accepted FR match (of either type) -- the denominator for the
+    novel-equivalent rate. Purely additive bookkeeping; never read at grading time.
+    """
+    if match_type not in ("exemplar", "novel_equivalent"):
+        return
+    init_db()
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO fr_match_log (prompt_id, key_point_id, construct, match_type, created_at) "
+            "VALUES (?, ?, ?, ?, datetime('now'))",
+            (prompt_id, key_point_id, construct, match_type),
+        )
+        c.commit()
+
+
+def get_fr_match_stats():
+    """Per-key-point reliability metric: total matches, novel-equivalent count/rate, and
+    promote/dismiss counts among reviewed novel-equivalent entries -- all-time, across
+    every prompt. A high rate for a key point is a signal to expand that point's
+    exemplars, not evidence the grader is behaving unreliably.
+    """
+    init_db()
+    with _conn() as c:
+        totals = c.execute(
+            "SELECT prompt_id, key_point_id, construct, "
+            "  COUNT(*) AS total_matches, "
+            "  SUM(CASE WHEN match_type='novel_equivalent' THEN 1 ELSE 0 END) AS novel_count "
+            "FROM fr_match_log GROUP BY prompt_id, key_point_id, construct"
+        ).fetchall()
+        reviews = c.execute(
+            "SELECT prompt_id, key_point_id, "
+            "  SUM(CASE WHEN status='promoted' THEN 1 ELSE 0 END) AS promoted, "
+            "  SUM(CASE WHEN status='dismissed' THEN 1 ELSE 0 END) AS dismissed, "
+            "  SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending "
+            "FROM novel_equivalent_review GROUP BY prompt_id, key_point_id"
+        ).fetchall()
+        review_by_kp = {(r["prompt_id"], r["key_point_id"]): dict(r) for r in reviews}
+
+        stats = []
+        for row in totals:
+            key = (row["prompt_id"], row["key_point_id"])
+            review = review_by_kp.pop(key, None)
+            total = row["total_matches"] or 0
+            novel = row["novel_count"] or 0
+            stats.append({
+                "prompt_id":        row["prompt_id"],
+                "key_point_id":     row["key_point_id"],
+                "construct":        row["construct"],
+                "total_matches":    total,
+                "novel_count":      novel,
+                "novel_rate":       (novel / total) if total else 0.0,
+                "promoted":         (review or {}).get("promoted", 0) or 0,
+                "dismissed":        (review or {}).get("dismissed", 0) or 0,
+                "pending_review":   (review or {}).get("pending", 0) or 0,
+            })
+        # key points with reviewed novel-equivalents but no match-log rows (pre-existing
+        # data from before this table was added) -- surface them with total=novel so the
+        # rate still reads as 100% rather than silently disappearing from the view.
+        for key, review in review_by_kp.items():
+            promoted, dismissed, pending = review.get("promoted", 0) or 0, review.get("dismissed", 0) or 0, review.get("pending", 0) or 0
+            novel = promoted + dismissed + pending
+            stats.append({
+                "prompt_id":        key[0],
+                "key_point_id":     key[1],
+                "construct":        "",
+                "total_matches":    novel,
+                "novel_count":      novel,
+                "novel_rate":       1.0 if novel else 0.0,
+                "promoted":         promoted,
+                "dismissed":        dismissed,
+                "pending_review":   pending,
+            })
+        stats.sort(key=lambda s: s["novel_rate"], reverse=True)
+        return stats

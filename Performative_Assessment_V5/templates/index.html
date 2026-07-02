@@ -1399,6 +1399,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
       {% if is_admin %}
       <div style="display:flex;gap:8px">
         <button class="btn btn-outline" onclick="showFrReview()">Review Queue</button>
+        <button class="btn btn-outline" onclick="showFrReliability()">Reliability Metrics</button>
         <button class="btn btn-outline" onclick="showFrCreate()">+ Create Prompt</button>
       </div>
       {% endif %}
@@ -1421,6 +1422,45 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
       the submission that triggered this entry is unaffected.
     </p>
     <div id="fr-review-list"></div>
+  </div>
+</div>
+
+<!-- Free Response: Novel-Equivalent Reliability Metrics (fr_hardening brief, Part D).
+     Admin-only feature, container renders unconditionally like the sibling views above. -->
+<div id="view-fr-reliability" class="view hidden">
+  <div id="fr-reliability-inner" style="max-width:900px;margin:0 auto;padding:32px 20px">
+    <span class="back-home-link" onclick="hide('view-fr-reliability');show('view-fr-prompts')">← Back</span>
+    <h2 style="margin-bottom:6px">Novel-Equivalent Reliability Metrics</h2>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">
+      Allowing the grader to recognize novel equivalents (not just pre-authored exemplars)
+      trades some structured-rubric reliability for coverage of valid techniques the prompt
+      author didn't anticipate. This table makes that tradeoff observable per key point.
+    </p>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:20px">
+      <strong>Reading this table:</strong> a high novel-equivalent rate for a key point most
+      often means that key point's exemplar list is under-specified — real learners are
+      demonstrating the construct in ways the author didn't list. Treat a high rate as a
+      prompt for the admin to review and expand that key point's exemplars (via the Review
+      Queue), not as evidence the grader is behaving unreliably.
+    </p>
+    <table class="fr-reliability-table" style="width:100%;border-collapse:collapse;font-size:.85rem">
+      <thead>
+        <tr style="text-align:left;border-bottom:1px solid var(--border)">
+          <th style="padding:6px 8px">Prompt</th>
+          <th style="padding:6px 8px">Key point</th>
+          <th style="padding:6px 8px">Total matches</th>
+          <th style="padding:6px 8px">Novel-equivalent</th>
+          <th style="padding:6px 8px">Novel-equivalent rate</th>
+          <th style="padding:6px 8px">Promoted</th>
+          <th style="padding:6px 8px">Dismissed</th>
+          <th style="padding:6px 8px">Pending review</th>
+        </tr>
+      </thead>
+      <tbody id="fr-reliability-body"></tbody>
+    </table>
+    <div id="fr-reliability-empty" style="display:none;color:var(--muted);padding:16px 0">
+      No FR matches logged yet.
+    </div>
   </div>
 </div>
 
@@ -1957,7 +1997,7 @@ async function api(path, body) {
 // ── Mode navigation ────────────────────────────
 function showHome() {
   ['view-dashboard','view-scenarios','view-assess','view-results','view-create',
-   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-fr-review','view-reports',
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-fr-review','view-fr-reliability','view-reports',
    'view-profile'].forEach(hide);
   show('view-home');
   syncHomeSelectors();
@@ -1968,7 +2008,7 @@ function showHome() {
 
 async function showDashboard() {
   ['view-home','view-scenarios','view-assess','view-results','view-create',
-   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-fr-review','view-reports',
+   'view-fr-prompts','view-fr-write','view-fr-results','view-fr-create','view-fr-review','view-fr-reliability','view-reports',
    'view-profile'].forEach(hide);
   show('view-dashboard');
   await _loadDashboardStats();
@@ -3473,6 +3513,44 @@ function renderFrReviewCard(r) {
   });
 
   return card;
+}
+
+// ── Novel-Equivalent Reliability Metrics (fr_hardening brief, Part D) ─────────
+
+async function showFrReliability() {
+  hide('view-fr-prompts');
+  show('view-fr-reliability');
+  await loadFrReliability();
+}
+
+async function loadFrReliability() {
+  const body  = $('fr-reliability-body');
+  const empty = $('fr-reliability-empty');
+  body.innerHTML = '<tr><td colspan="8" style="padding:6px 8px;color:var(--muted)">Loading…</td></tr>';
+  empty.style.display = 'none';
+  try {
+    const data  = await api('/api/admin/fr-match-stats', {});
+    const stats = data.stats || [];
+    if (!stats.length) {
+      body.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    body.innerHTML = stats.map(s => `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 8px">${_escapeHtml(s.prompt_title)}</td>
+        <td style="padding:6px 8px">${_escapeHtml(s.construct || s.key_point_id)}</td>
+        <td style="padding:6px 8px">${s.total_matches}</td>
+        <td style="padding:6px 8px">${s.novel_count}</td>
+        <td style="padding:6px 8px">${Math.round(s.novel_rate * 100)}%</td>
+        <td style="padding:6px 8px">${s.promoted}</td>
+        <td style="padding:6px 8px">${s.dismissed}</td>
+        <td style="padding:6px 8px">${s.pending_review}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    body.innerHTML = `<tr><td colspan="8" style="padding:6px 8px;color:var(--red)">Failed to load: ${_escapeHtml(err.message)}</td></tr>`;
+  }
 }
 
 // ── Prompt Creator ─────────────────────────────

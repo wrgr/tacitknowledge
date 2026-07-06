@@ -274,6 +274,12 @@ def eval_cache_get(key: str):
         return row["response"] if row else None
 
 
+# Keep the determinism cache bounded — it grows one row per unique evaluative
+# prompt and is never a cost-saving layer, so evicting the oldest rows only
+# costs a re-run of the LLM call for very old inputs.
+_EVAL_CACHE_MAX_ROWS = 2000
+
+
 def eval_cache_set(key: str, response: str):
     init_db()
     with _conn() as c:
@@ -281,6 +287,13 @@ def eval_cache_set(key: str, response: str):
             "INSERT OR REPLACE INTO llm_eval_cache (key, response, created_at) VALUES (?, ?, datetime('now'))",
             (key, response),
         )
+        excess = c.execute("SELECT COUNT(*) FROM llm_eval_cache").fetchone()[0] - _EVAL_CACHE_MAX_ROWS
+        if excess > 0:
+            c.execute(
+                "DELETE FROM llm_eval_cache WHERE key IN ("
+                "  SELECT key FROM llm_eval_cache ORDER BY created_at ASC, key ASC LIMIT ?)",
+                (excess,),
+            )
         c.commit()
 
 

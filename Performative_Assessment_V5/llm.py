@@ -389,9 +389,25 @@ def _raw_chat(model, api_key, base_url, max_tokens, system, user, think=None, js
         return json.loads(resp.read())["message"]["content"] or ""
 
 
+# Providers with hard per-request output-token ceilings. Requesting more than
+# the ceiling either 400s or silently truncates mid-JSON (which surfaces as
+# _extract_json failures), so clamp at the dispatch choke point.
+_MAX_OUTPUT_TOKENS_BY_HOST = {
+    "models.github.ai": 4000,   # GitHub Models free tier: 4000 output tokens/request
+}
+
+
+def _cap_max_tokens(base_url, max_tokens):
+    for host, cap in _MAX_OUTPUT_TOKENS_BY_HOST.items():
+        if host in (base_url or ""):
+            return min(max_tokens, cap)
+    return max_tokens
+
+
 def _call_llm(model, api_key, base_url, max_tokens, system, user, think=None, json_mode=False,
               temperature=None, seed=None):
     """Dispatch to the right backend. No package is required at import time."""
+    max_tokens = _cap_max_tokens(base_url, max_tokens)
     try:
         if _ANTHROPIC_HOST in base_url:
             try:

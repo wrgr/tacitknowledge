@@ -138,6 +138,24 @@ def _user_theme():
     return session.get("theme", "light")
 
 
+def _resolve_model(provider_name, requested, provider_cfg):
+    """Pick a valid model for the provider.
+
+    Guards against blank/whitespace model strings and provider/model desync
+    (e.g. an OpenAI model still selected after switching to GitHub Models,
+    whose IDs are publisher-prefixed) — both of which make providers reject
+    the request with a 400/404. Falls back to the provider's configured
+    default when the requested model isn't valid for this provider.
+    """
+    requested = (requested or "").strip()
+    if provider_name == "Ollama":
+        return requested or provider_cfg["model"]
+    valid = engine.get_available_models(provider_name, provider_cfg)
+    if requested and (not valid or requested in valid):
+        return requested
+    return provider_cfg["model"]
+
+
 def _coerce_fr_rating(value):
     """Validate a rate/re-rate confidence rating (1-10 int); None if missing or out of range."""
     try:
@@ -906,7 +924,7 @@ def api_validate_key():
     provider_name = data.get("provider") or config.DEFAULT_PROVIDER
     provider_cfg  = config.PROVIDERS.get(provider_name) or config.PROVIDERS[config.DEFAULT_PROVIDER]
     api_key       = (data.get("api_key") or "").strip()
-    model         = data.get("model") or provider_cfg["model"]
+    model         = _resolve_model(provider_name, data.get("model"), provider_cfg)
     base_url      = provider_cfg["base_url"]
 
     if not api_key:
@@ -944,7 +962,7 @@ def api_start():
     api_key_override = (data.get("api_key") or "").strip()
     api_key          = api_key_override if api_key_override else provider_cfg["api_key"]
     base_url         = provider_cfg["base_url"]
-    model            = data.get("model") or provider_cfg["model"]
+    model            = _resolve_model(provider_name, data.get("model"), provider_cfg)
     use_llm          = engine.llm_is_available(api_key)
 
     runner  = engine.ScenarioRunner(scenario, model=model, api_key=api_key, base_url=base_url)
@@ -1160,7 +1178,7 @@ def api_generate_scenario():
         return jsonify({"error": "An API key is required for AI generation. "
                                   "Enter one in the key field or configure it in config.py."}), 400
 
-    model = data.get("model") or provider_cfg["model"]
+    model = _resolve_model(provider_name, data.get("model"), provider_cfg)
     draft = engine.generate_scenario_draft(
         description, model=model, api_key=api_key, base_url=provider_cfg["base_url"]
     )
@@ -1231,7 +1249,7 @@ def api_generate_prompt():
         return jsonify({"error": "An API key is required for AI generation. "
                                   "Enter one in the key field or configure it in config.py."}), 400
 
-    model = data.get("model") or provider_cfg["model"]
+    model = _resolve_model(provider_name, data.get("model"), provider_cfg)
     draft = engine.generate_prompt_draft(
         description, model=model, api_key=api_key, base_url=provider_cfg["base_url"]
     )
@@ -1411,7 +1429,7 @@ def api_fr_submit():
     api_key_override = (data.get("api_key") or "").strip()
     api_key          = api_key_override if api_key_override else provider_cfg["api_key"]
     base_url         = provider_cfg["base_url"]
-    model            = data.get("model") or provider_cfg["model"]
+    model            = _resolve_model(provider_name, data.get("model"), provider_cfg)
     use_llm          = engine.llm_is_available(api_key)
 
     if use_llm:
@@ -1791,7 +1809,7 @@ def api_learning_profile_analysis():
     api_key_override = (data.get("api_key") or "").strip()
     api_key          = api_key_override if api_key_override else provider_cfg["api_key"]
     base_url         = provider_cfg["base_url"]
-    model            = data.get("model") or provider_cfg["model"]
+    model            = _resolve_model(provider_name, data.get("model"), provider_cfg)
 
     if not engine.llm_is_available(api_key):
         return jsonify({"error": "LLM not available — configure a provider with an API key."}), 400

@@ -1595,6 +1595,13 @@ def api_fr_report():
         process_overlay = dict(process_overlay or {})
         process_overlay["confidence_calibration"] = confidence_calibration
 
+    # Closing-nudge brief, Part B5: report-facing metadata only -- never passed to the
+    # grading call (that already happened in api_fr_submit, on text alone), and not itself
+    # an evidence-model signal, just context for reading the Coverage Score note.
+    if process_log and process_log.get("closing_nudge_used") is not None:
+        process_overlay = dict(process_overlay or {})
+        process_overlay["closing_nudge_used"] = bool(process_log.get("closing_nudge_used"))
+
     st["process_overlay"] = process_overlay
 
     try:

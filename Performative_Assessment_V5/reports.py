@@ -16,6 +16,16 @@ _INFERENCE_BOUNDARY = (
     "it does not verify physical execution or psychomotor skill."
 )
 
+# FR evidence model, Coverage Score row (docs/fr_evidence_model.md) -- a standing
+# calibration note next to the score itself, not a single end-of-report disclaimer.
+# Coverage Score was previously treated as the ground-truth measure everything else in
+# that table gets checked against, rather than a signal needing its own audit.
+_FR_COVERAGE_CALIBRATION_NOTE = (
+    "Coverage reflects what was addressed in a single unaided pass. Per this system's own "
+    "evidence model, unaided recall can under-represent true knowledge — a missed point is "
+    "not conclusive evidence of a gap."
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SHARED HELPERS
@@ -216,6 +226,15 @@ def _append_process_overlay(lines, overlay):
             lines.append("  > " + cc["note"])
         if cc.get("alternative_interpretation"):
             lines.append("  > Alternative: " + cc["alternative_interpretation"])
+        lines.append("")
+
+    # Context only, for reading alongside the Coverage Score calibration note above --
+    # never itself a claim, never scored, so it carries no evidence-model row of its own.
+    nudge_used = overlay.get("closing_nudge_used")
+    if nudge_used is not None:
+        nudge_label = "Yes — content was added after the closing checkpoint" if nudge_used \
+            else "No — submitted in a single pass"
+        lines.append("**Closing nudge used:** " + nudge_label)
         lines.append("")
 
     lines.append("> " + _PROCESS_INTERPRETATION_CAUTION)
@@ -588,6 +607,7 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
     lines.append("## Evaluation")
     lines.append("")
     lines.append("**Score:** " + score_pct)
+    lines.append("_" + _FR_COVERAGE_CALIBRATION_NOTE + "_")
     lines.append("")
 
     if ev.get("feedback"):

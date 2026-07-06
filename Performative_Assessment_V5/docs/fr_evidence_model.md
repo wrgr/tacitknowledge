@@ -21,6 +21,13 @@ number in a debug/instructor-only view.
 | Large paste with little surrounding revision (`authenticity`) | The final text may not be fully the learner's own original composition | Low as a standalone signal; ambiguous per Koedinger & Aleven's Assistance Dilemma | Legitimate reuse of the learner's own prior notes, appropriate quotation, or simply confident single-pass writing |
 | Frictionless/fast completion, low revision, strong product (`quadrant`: authenticity_review / disengaged_shallow_confident) | — no single confident claim — | N/A by design | Could be genuine fluent competence, prior preparation, or unflagged reuse; cannot be distinguished from process data alone |
 | Confidence rating collapse, pre-write vs. post-write (`confidence_calibration`) | The writer's forced explanation exposed a gap between perceived and actual understanding | Moderate-high; this is the most directly validated mechanism in the whole system (Rozenblit & Keil, 2002) | A learner who is simply a harsh self-rater in general, not specifically because of a gap this task exposed |
+| Coverage Score — key points addressed in unaided single-pass writing (`score`) | The learner demonstrated this knowledge spontaneously, without prompting | Moderate — grounded by evidence-span verification, but recall-limited by design | Absence of a key point may reflect production/recall failure under single-pass, unaided conditions rather than absent knowledge — the same omission phenomenon (unprompted recall systematically underrepresents true knowledge) that justifies the scenario mode's probing architecture applies here, uncorrected, since FR has no probing phase |
+
+This last row was added after the fact — Coverage Score had been treated as the
+ground-truth measure everything else in this table gets checked against, rather than a
+signal needing its own audit. It gets no exemption from the rule above: a missed key
+point is evidence of non-production under single-pass conditions, not proof of absent
+knowledge.
 
 ## Language audit
 
@@ -35,6 +42,12 @@ is implemented as:
   own one-line `alternative_explanation` per instance (that judgment is not stable across
   instances the way the others are, so it isn't a static lookup).
 - `reports.py` — `_append_process_overlay()` renders the alternative next to each claim.
+- `reports.py` — `_FR_COVERAGE_CALIBRATION_NOTE`, rendered directly under the Score line
+  in `generate_fr_report()`, carries the Coverage Score row's alternative. It is a
+  standing calibration note next to the number itself, not a single end-of-report
+  disclaimer — this is the one row whose language rule lives outside
+  `_append_process_overlay()`, because Coverage Score is the product score, not a
+  process-overlay signal.
 
 Audited and corrected against this table:
 - The authenticity line no longer reads as an accusation ("authenticity concern: elevated").

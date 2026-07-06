@@ -788,7 +788,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   box-shadow: 0 10px 30px rgba(0,0,0,.25);
   text-align: center;
 }
-#fr-rating-question { font-size: .98rem; font-weight: 600; margin-bottom: 18px; }
+.fr-rating-question { font-size: .98rem; font-weight: 600; margin-bottom: 18px; }
 .fr-rating-scale { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .fr-rating-btn {
   width: 34px; height: 34px; border-radius: 8px;
@@ -797,6 +797,7 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   transition: background .12s, border-color .12s;
 }
 .fr-rating-btn:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+.fr-closing-nudge-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 #fr-write-header {
   background: var(--card);
@@ -1598,8 +1599,20 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 <!-- Rate → explain → re-rate confidence prompt (pre-write and post-write) -->
 <div id="fr-rating-overlay" class="fr-rating-overlay hidden">
   <div class="fr-rating-box">
-    <p id="fr-rating-question"></p>
+    <p id="fr-rating-question" class="fr-rating-question"></p>
     <div class="fr-rating-scale" id="fr-rating-scale"></div>
+  </div>
+</div>
+
+<!-- Closing nudge: single, generic, content-blind checkpoint before final submission.
+     Fixed text, never key-point-aware -- see docs/fr_evidence_model.md non-leakage note. -->
+<div id="fr-closing-nudge-overlay" class="fr-rating-overlay hidden">
+  <div class="fr-rating-box">
+    <p class="fr-rating-question">Before you submit — is there anything else you'd like to add?</p>
+    <div class="fr-closing-nudge-actions">
+      <button type="button" class="btn btn-ghost" id="btn-fr-nudge-add">Add more</button>
+      <button type="button" class="btn btn-primary" id="btn-fr-nudge-submit">Submit as final</button>
+    </div>
   </div>
 </div>
 
@@ -1706,7 +1719,14 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 
 // ── State ──────────────────────────────────────
 const S  = { sessionId: null, phase: 'recall', probeCount: 0, probeNumber: 0, turn: 0, busy: false, provider: null, model: null, apiKey: '', providerIsConfigured: false };
-const FR = { sessionId: null, promptData: null, preRating: null, postRating: null };
+const FR = {
+  sessionId: null, promptData: null, preRating: null, postRating: null,
+  // Closing nudge (fr_recall_omission_fix brief, Part B): capped at two displays total --
+  // the second only happens if "Add more" was chosen the first time. closingNudgeUsed is
+  // true only if the learner actually chose to add content, not merely because the nudge
+  // was shown -- it's report-facing metadata about whether the pass was extended.
+  closingNudgeShown: 0, closingNudgeUsed: false,
+};
 
 // ── Writing Tracker ────────────────────────────
 // Captures per-turn behavioural metrics: typing speed, deletions, pauses, paste events.
@@ -2933,11 +2953,34 @@ function askFrRating(question) {
   });
 }
 
+// Closing nudge (Part B): fixed, generic, content-blind text -- never references key
+// points or varies by what's missing (same non-leakage principle as general_guidance
+// and the api_fr_prompts key-point whitelist). Resolves true = "Add more", false =
+// "Submit as final".
+function askClosingNudge() {
+  return new Promise(resolve => {
+    const addBtn    = $('btn-fr-nudge-add');
+    const submitBtn = $('btn-fr-nudge-submit');
+    function onAdd()    { cleanup(); resolve(true); }
+    function onSubmit() { cleanup(); resolve(false); }
+    function cleanup() {
+      hide('fr-closing-nudge-overlay');
+      addBtn.removeEventListener('click', onAdd);
+      submitBtn.removeEventListener('click', onSubmit);
+    }
+    addBtn.addEventListener('click', onAdd);
+    submitBtn.addEventListener('click', onSubmit);
+    show('fr-closing-nudge-overlay');
+  });
+}
+
 function startFrPrompt(index, promptList) {
   const p = promptList[index];
   FR.promptData       = p;
   FR.preRating        = null;
   FR.postRating       = null;
+  FR.closingNudgeShown = 0;
+  FR.closingNudgeUsed  = false;
 
   $('fr-write-title').textContent = p.title;
   $('fr-prompt-text').textContent = p.prompt_text || p.description;
@@ -3012,9 +3055,32 @@ $('btn-fr-back').addEventListener('click', () => {
 $('btn-fr-submit').addEventListener('click', async () => {
   const text = $('fr-textarea').value.trim();
   if (!text) { alert('Please write your response before submitting.'); return; }
+
+  // Closing nudge (Part B1-B4): a single checkpoint before submission, capped at two
+  // displays total -- the second happens only if "Add more" was chosen the first time,
+  // and proceeds regardless of choice after that. Never becomes an open-ended loop, so
+  // FR stays lightweight rather than turning into a probing conversation.
+  if (FR.closingNudgeShown < 2) {
+    FR.closingNudgeShown++;
+    const wantsToAddMore = await askClosingNudge();
+    if (wantsToAddMore) {
+      FR.closingNudgeUsed = true;
+      const ta = $('fr-textarea');
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      return;
+    }
+  }
+
   if (!confirm('Submit your response? You will not be able to edit it after submitting.')) return;
 
   const writingMetrics = WritingTracker.collect(text);
+  // Report-facing metadata only (Part B5/B6) -- merged into process_log, never sent
+  // anywhere the grading call could see it; the grading call in api_fr_submit only ever
+  // receives `text` and prompt_data, not writing_metrics.
+  if (writingMetrics.process_log) {
+    writingMetrics.process_log.closing_nudge_used = FR.closingNudgeUsed;
+  }
 
   $('fr-textarea').disabled     = true;
   $('btn-fr-submit').disabled   = true;

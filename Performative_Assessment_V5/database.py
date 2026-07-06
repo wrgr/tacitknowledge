@@ -19,6 +19,43 @@ VALID_THEMES = {"light", "dark", "rustic", "ultra-light", "ultra-dark"}
 # system Python (linked against LibreSSL) lacks — so pin pbkdf2 for portability.
 _HASH_METHOD = "pbkdf2:sha256"
 
+# Canonical column list for the assessments results table. Mirrors the research
+# export data dictionary (docs/research_export_data_dictionary.md) -- app.py's
+# _RESEARCH_EXPORT_FIELDS is defined from this so the two can never drift.
+ASSESSMENT_FIELDS = [
+    "username",
+    "display_name",
+    "role",
+    "report_file",
+    "report_type",
+    "task_title",
+    "timestamp",
+    "product_score_percent",
+    "text_only_baseline_percent",
+    "coverage_score_percent",
+    "quality_score_percent",
+    "matched_points",
+    "missed_points",
+    "strengths",
+    "gaps",
+    "word_count",
+    "has_process_overlay",
+    "process_quadrant",
+    "effort_profile",
+    "revision_toward_quality",
+    "difficulty_point_count",
+    "authenticity",
+    "confidence_calibration",
+    "thinking_honey_mumford",
+    "thinking_solo",
+    "ai_assistance_used",
+    "ai_assistance_notes",
+    "annotation_label",
+    "annotation_notes",
+    "annotation_reviewer",
+    "annotation_updated_at",
+]
+
 _SEED_STUDENTS = [
     ("emma",  "Learn@2024", "Emma Clarke"),
     ("liam",  "Learn@2024", "Liam Patel"),
@@ -87,6 +124,20 @@ def init_db():
                 created_at   TEXT NOT NULL
             )
         """)
+        # Structured assessment results -- one row per assessed task (FR reports
+        # produce one row; scenario reports one row per scenario). Columns mirror
+        # the research-export data dictionary exactly; rows are written at report
+        # generation (and backfilled from existing report files at startup), so
+        # the export and analytics can query this instead of re-parsing markdown.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS assessments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {cols},
+                UNIQUE(username, report_file, task_title)
+            )
+        """.format(cols=", ".join(f"{f} TEXT NOT NULL DEFAULT ''"
+                                  for f in ASSESSMENT_FIELDS)))
+        c.execute("CREATE INDEX IF NOT EXISTS idx_assessments_user ON assessments(username)")
         c.commit()
 
 
@@ -178,6 +229,12 @@ def update_user(old_username: str, new_username: str,
         try:
             c.execute(
                 "UPDATE users SET username=?, display_name=?, role=? WHERE username=?",
+                (new_username, display_name, role, old_username),
+            )
+            # Keep persisted assessment rows pointing at the renamed account
+            # (app.py moves the reports/<username>/ folder to match).
+            c.execute(
+                "UPDATE assessments SET username=?, display_name=?, role=? WHERE username=?",
                 (new_username, display_name, role, old_username),
             )
         except sqlite3.IntegrityError:
@@ -360,3 +417,61 @@ def get_fr_match_stats():
             })
         stats.sort(key=lambda s: s["novel_rate"], reverse=True)
         return stats
+
+
+# ── Assessment results (structured write-through of report data) ─────────────
+
+def upsert_assessment_rows(rows):
+    """Insert or replace assessment rows (dicts keyed by ASSESSMENT_FIELDS).
+
+    Idempotent on (username, report_file, task_title), so re-generating a report
+    or re-running the startup backfill never duplicates rows.
+    """
+    if not rows:
+        return
+    cols         = ", ".join(ASSESSMENT_FIELDS)
+    placeholders = ", ".join("?" for _ in ASSESSMENT_FIELDS)
+    with _conn() as c:
+        c.executemany(
+            f"INSERT OR REPLACE INTO assessments ({cols}) VALUES ({placeholders})",
+            [tuple(str(r.get(f, "") or "") for f in ASSESSMENT_FIELDS) for r in rows],
+        )
+        c.commit()
+
+
+def assessment_report_files():
+    """Set of (username, report_file) pairs already persisted — used by the
+    startup backfill to skip reports that are already in the table."""
+    with _conn() as c:
+        rows = c.execute("SELECT DISTINCT username, report_file FROM assessments").fetchall()
+        return {(r["username"], r["report_file"]) for r in rows}
+
+
+def delete_assessment_rows(username: str, report_file: str):
+    """Drop rows for a report file that no longer exists on disk."""
+    with _conn() as c:
+        c.execute("DELETE FROM assessments WHERE username=? AND report_file=?",
+                  (username, report_file))
+        c.commit()
+
+
+def update_assessment_annotation(username: str, report_file: str,
+                                 label: str, notes: str, reviewer: str, updated_at: str):
+    """Mirror an instructor annotation onto the persisted rows for a report."""
+    with _conn() as c:
+        c.execute(
+            "UPDATE assessments SET annotation_label=?, annotation_notes=?, "
+            "annotation_reviewer=?, annotation_updated_at=? "
+            "WHERE username=? AND report_file=?",
+            (label, notes, reviewer, updated_at, username, report_file),
+        )
+        c.commit()
+
+
+def all_assessment_rows():
+    """Every persisted assessment row, ordered for the research export."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT * FROM assessments ORDER BY username, timestamp, report_file, task_title"
+        ).fetchall()
+        return [dict(r) for r in rows]

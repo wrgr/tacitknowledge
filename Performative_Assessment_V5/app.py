@@ -193,39 +193,9 @@ def _word_count(text):
     return len(text.split()) if text and text.strip() else 0
 
 
-_RESEARCH_EXPORT_FIELDS = [
-    "username",
-    "display_name",
-    "role",
-    "report_file",
-    "report_type",
-    "task_title",
-    "timestamp",
-    "product_score_percent",
-    "text_only_baseline_percent",
-    "coverage_score_percent",
-    "quality_score_percent",
-    "matched_points",
-    "missed_points",
-    "strengths",
-    "gaps",
-    "word_count",
-    "has_process_overlay",
-    "process_quadrant",
-    "effort_profile",
-    "revision_toward_quality",
-    "difficulty_point_count",
-    "authenticity",
-    "confidence_calibration",
-    "thinking_honey_mumford",
-    "thinking_solo",
-    "ai_assistance_used",
-    "ai_assistance_notes",
-    "annotation_label",
-    "annotation_notes",
-    "annotation_reviewer",
-    "annotation_updated_at",
-]
+# Canonical field list lives in database.py (ASSESSMENT_FIELDS) — the export
+# columns and the assessments table schema are the same thing by construction.
+_RESEARCH_EXPORT_FIELDS = list(db.ASSESSMENT_FIELDS)
 
 _ANNOTATION_LABELS = {"", "correct", "partial", "missing", "needs_expert_review"}
 
@@ -357,6 +327,49 @@ def _research_rows_for_report(username, user, filename, report):
             "ai_assistance_notes": "",
         })
     return rows
+
+
+def _persist_assessment_rows(username, report_filename):
+    """Parse a just-generated report file and write its rows to the assessments
+    table. Best-effort: persistence must never fail report generation itself."""
+    try:
+        report_path = REPORTS_BASE / username / report_filename
+        report = report_parser.parse_report_md(report_path.read_text(encoding="utf-8"))
+        user = auth.load_users().get(username, {})
+        db.upsert_assessment_rows(
+            _research_rows_for_report(username, user, report_filename, report))
+    except Exception as e:
+        app.logger.warning("assessment persistence failed for %s/%s: %s",
+                           username, report_filename, e)
+
+
+def _sync_assessments_table():
+    """One-time-per-file backfill: persist any report on disk that isn't in the
+    assessments table yet (legacy reports, or rows lost to a DB reset), and drop
+    rows whose report file has been deleted. Cheap after the first run."""
+    try:
+        persisted = db.assessment_report_files()
+    except Exception as e:
+        app.logger.warning("assessment sync skipped: %s", e)
+        return
+    on_disk = set()
+    if REPORTS_BASE.is_dir():
+        for user_dir in REPORTS_BASE.iterdir():
+            if not user_dir.is_dir() or user_dir.name.startswith("_"):
+                continue
+            for f in user_dir.glob("*.md"):
+                on_disk.add((user_dir.name, f.name))
+    added = 0
+    for username, fname in sorted(on_disk - persisted):
+        _persist_assessment_rows(username, fname)
+        added += 1
+    for username, fname in sorted(persisted - on_disk):
+        db.delete_assessment_rows(username, fname)
+    if added:
+        print(f"  [db] Backfilled {added} report file(s) into the assessments table.")
+
+
+_sync_assessments_table()
 
 
 # ── Auth routes ────────────────────────────────────────────────────────────────
@@ -537,34 +550,40 @@ def admin_save_report_annotation(username, filename):
     if label not in _ANNOTATION_LABELS:
         abort(400)
 
-    _save_annotation(
+    annotation = _save_annotation(
         username,
         filename,
         label,
         notes,
         session.get("display_name", session.get("user_id", "Admin")),
     )
+    # Mirror onto the persisted assessment rows so the research export and any
+    # analytics stay in sync without re-reading the annotation sidecar files.
+    try:
+        db.update_assessment_annotation(
+            username, filename,
+            annotation["label"], annotation["notes"],
+            annotation["reviewer"], annotation["updated_at"],
+        )
+    except Exception as e:
+        app.logger.warning("annotation mirror failed for %s/%s: %s", username, filename, e)
     return redirect(url_for("admin_view_report", username=username, filename=filename))
 
 
 @app.route("/admin/research-export.csv")
 @auth.admin_required
 def admin_research_export():
+    # Reads the assessments table (written at report generation, backfilled at
+    # startup) instead of re-parsing every report file on each request.
     all_users = auth.load_users()
     rows = []
-
-    for username, user in all_users.items():
-        user_dir = REPORTS_BASE / username
-        if not user_dir.is_dir():
-            continue
-
-        for report_file in sorted(user_dir.glob("*.md")):
-            try:
-                content = report_file.read_text(encoding="utf-8")
-                report = report_parser.parse_report_md(content)
-            except Exception:
-                continue
-            rows.extend(_research_rows_for_report(username, user, report_file.name, report))
+    for row in db.all_assessment_rows():
+        row.pop("id", None)
+        user = all_users.get(row["username"])
+        if user:  # refresh live account fields so renames/role changes show current values
+            row["display_name"] = user.get("display_name", row["display_name"])
+            row["role"]         = user.get("role", row["role"])
+        rows.append(row)
 
     out = io.StringIO(newline="")
     writer = csv.DictWriter(out, fieldnames=_RESEARCH_EXPORT_FIELDS)
@@ -1119,6 +1138,8 @@ def api_report():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+    _persist_assessment_rows(session["user_id"], Path(path).name)
     return jsonify({"path": str(path)})
 
 
@@ -1583,6 +1604,7 @@ def api_fr_report():
         except Exception:
             pass
 
+    _persist_assessment_rows(session["user_id"], Path(path).name)
     return jsonify({"path": str(path)})
 
 

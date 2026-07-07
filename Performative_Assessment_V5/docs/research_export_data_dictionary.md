@@ -18,6 +18,7 @@ certification or readiness gating.
 | `report_type` | parsed report | `free_response` or `scenario`. |
 | `task_title` | parsed report | Prompt title for free response, or scenario title. |
 | `timestamp` | report filename | Timestamp inferred from the report filename, when available. |
+| `export_schema_version` | export pipeline | Version of the structured export schema used to parse and persist this row. |
 
 ### Product-Only Assessment
 
@@ -51,6 +52,8 @@ against product-only scores and human annotations.
 | `difficulty_point_count` | parsed writing process | Count of pause-plus-heavy-revision difficulty-point candidates. |
 | `authenticity` | parsed writing process | Paste/revision-based authenticity signal. Ambiguous by design. |
 | `confidence_calibration` | parsed writing process | Pre/post confidence change after explaining. |
+| `closing_nudge_used` | parsed writing process | Whether the learner added content after the final generic recall checkpoint. Context only; not scored. |
+| `process_caution` | parsed writing process | The report's standing caution that process signals are indirect supporting context, not verdicts. |
 
 ### Learner Self-Report
 

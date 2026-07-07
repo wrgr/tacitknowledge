@@ -279,6 +279,7 @@ def _word_count(text):
 # Canonical field list lives in database.py (ASSESSMENT_FIELDS) — the export
 # columns and the assessments table schema are the same thing by construction.
 _RESEARCH_EXPORT_FIELDS = list(db.ASSESSMENT_FIELDS)
+_ASSESSMENT_EXPORT_SCHEMA_VERSION = "2"
 
 _ANNOTATION_LABELS = {"", "correct", "partial", "missing", "needs_expert_review"}
 
@@ -340,6 +341,7 @@ def _research_rows_for_report(username, user, filename, report):
         "role": user.get("role", ""),
         "report_file": filename,
         "timestamp": _timestamp_from_report_filename(filename),
+        "export_schema_version": _ASSESSMENT_EXPORT_SCHEMA_VERSION,
         "annotation_label": annotation.get("label", ""),
         "annotation_notes": annotation.get("notes", ""),
         "annotation_reviewer": annotation.get("reviewer", ""),
@@ -376,6 +378,12 @@ def _research_rows_for_report(username, user, filename, report):
             "difficulty_point_count": len(overlay.get("difficulty_points", [])) if overlay else "",
             "authenticity": overlay.get("authenticity_text", "") if overlay else "",
             "confidence_calibration": overlay.get("confidence_calibration_text", "") if overlay else "",
+            "closing_nudge_used": (
+                "yes" if overlay.get("closing_nudge_used") is True
+                else "no" if overlay.get("closing_nudge_used") is False
+                else ""
+            ) if overlay else "",
+            "process_caution": overlay.get("caution", "") if overlay else "",
             "ai_assistance_used": ai.get("used", ""),
             "ai_assistance_notes": ai.get("notes", ""),
         }]
@@ -406,6 +414,8 @@ def _research_rows_for_report(username, user, filename, report):
             "difficulty_point_count": "",
             "authenticity": "",
             "confidence_calibration": "",
+            "closing_nudge_used": "",
+            "process_caution": "",
             "ai_assistance_used": "",
             "ai_assistance_notes": "",
         })
@@ -432,6 +442,7 @@ def _sync_assessments_table():
     rows whose report file has been deleted. Cheap after the first run."""
     try:
         persisted = db.assessment_report_files()
+        persisted_versions = db.assessment_report_export_versions()
     except Exception as e:
         app.logger.warning("assessment sync skipped: %s", e)
         return
@@ -446,10 +457,18 @@ def _sync_assessments_table():
     for username, fname in sorted(on_disk - persisted):
         _persist_assessment_rows(username, fname)
         added += 1
+    refreshed = 0
+    for username, fname in sorted(on_disk & persisted):
+        versions = persisted_versions.get((username, fname), set())
+        if versions != {_ASSESSMENT_EXPORT_SCHEMA_VERSION}:
+            _persist_assessment_rows(username, fname)
+            refreshed += 1
     for username, fname in sorted(persisted - on_disk):
         db.delete_assessment_rows(username, fname)
     if added:
         print(f"  [db] Backfilled {added} report file(s) into the assessments table.")
+    if refreshed:
+        print(f"  [db] Refreshed {refreshed} report file(s) for export schema v{_ASSESSMENT_EXPORT_SCHEMA_VERSION}.")
 
 
 _sync_assessments_table()

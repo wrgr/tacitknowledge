@@ -30,6 +30,7 @@ ASSESSMENT_FIELDS = [
     "report_type",
     "task_title",
     "timestamp",
+    "export_schema_version",
     "product_score_percent",
     "text_only_baseline_percent",
     "coverage_score_percent",
@@ -46,6 +47,8 @@ ASSESSMENT_FIELDS = [
     "difficulty_point_count",
     "authenticity",
     "confidence_calibration",
+    "closing_nudge_used",
+    "process_caution",
     "thinking_honey_mumford",
     "thinking_solo",
     "ai_assistance_used",
@@ -138,6 +141,16 @@ def init_db():
         """.format(cols=", ".join(f"{f} TEXT NOT NULL DEFAULT ''"
                                   for f in ASSESSMENT_FIELDS)))
         c.execute("CREATE INDEX IF NOT EXISTS idx_assessments_user ON assessments(username)")
+
+        # Keep existing databases in sync with ASSESSMENT_FIELDS. CREATE TABLE IF NOT
+        # EXISTS only helps fresh DBs; assessmentRework widens this table as new
+        # report-facing evidence becomes exportable.
+        existing_assessment_cols = {
+            row["name"] for row in c.execute("PRAGMA table_info(assessments)").fetchall()
+        }
+        for field in ASSESSMENT_FIELDS:
+            if field not in existing_assessment_cols:
+                c.execute(f"ALTER TABLE assessments ADD COLUMN {field} TEXT NOT NULL DEFAULT ''")
 
         # Pooled key points (choose_n_of_m brief, Part B4): a novel-equivalent match on a
         # pool member needs to know which pool it belongs to, so the review UI can offer
@@ -471,6 +484,19 @@ def assessment_report_files():
     with _conn() as c:
         rows = c.execute("SELECT DISTINCT username, report_file FROM assessments").fetchall()
         return {(r["username"], r["report_file"]) for r in rows}
+
+
+def assessment_report_export_versions():
+    """Map each persisted report file to the export schema versions present in its rows."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT username, report_file, export_schema_version FROM assessments"
+        ).fetchall()
+        versions = {}
+        for r in rows:
+            key = (r["username"], r["report_file"])
+            versions.setdefault(key, set()).add(r["export_schema_version"])
+        return versions
 
 
 def delete_assessment_rows(username: str, report_file: str):

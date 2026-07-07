@@ -919,6 +919,29 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 .fr-constraints-list li:last-child { border-bottom: none; }
 .fr-constraints-list li::before { content: "— "; }
 
+details.expert-details { border-radius: 8px; overflow: hidden; }
+details.expert-details summary {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer; font-size: .78rem; font-weight: 600;
+  color: var(--muted); list-style: none;
+  transition: background .12s;
+}
+details.expert-details summary::marker { display: none; }
+details.expert-details summary .chevron { margin-left: auto; transition: transform .2s; }
+details[open].expert-details summary .chevron { transform: rotate(90deg); }
+.expert-body {
+  font-size: .82rem; line-height: 1.6;
+  color: var(--text);
+  border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--amber);
+  white-space: pre-wrap; word-break: break-word;
+}
+
 @media (max-width: 580px) {
   #fr-write-body  { flex-direction: column; }
   #fr-sidebar     { width: 100%; max-height: 200px; border-left: none; border-top: 1px solid var(--border); }
@@ -1606,19 +1629,8 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
   </div>
   <div id="fr-write-body">
     <div id="fr-write-main">
-      <p id="fr-process-disclosure" style="font-size:.78rem;color:var(--muted);margin-bottom:8px">
-        This assessment records your final response, intermediate drafts, and basic writing-process signals such as timing, pauses, revisions, and pasted text. These signals help instructors understand how the response was produced; they are reviewed as supporting context, not as automatic penalties.
-      </p>
       <div class="fr-prompt-box" id="fr-prompt-text"></div>
       <p id="fr-general-guidance" style="font-size:.85rem;color:var(--muted);font-style:italic;margin-bottom:12px"></p>
-      <div id="fr-ai-assist-box" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;background:var(--card)">
-        <label for="fr-ai-used" style="display:block;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">AI assistance</label>
-        <select id="fr-ai-used" style="width:100%;margin-bottom:8px">
-          <option value="no">No AI assistance used</option>
-          <option value="yes">I used AI assistance</option>
-        </select>
-        <textarea id="fr-ai-notes" class="hidden" maxlength="2000" style="min-height:70px;margin-top:4px" placeholder="Briefly describe what you used AI for, or paste the relevant AI conversation summary."></textarea>
-      </div>
       <textarea id="fr-textarea" maxlength="8000" placeholder="Write your response here…"></textarea>
     </div>
     <div id="fr-sidebar">
@@ -1630,6 +1642,15 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
         <div class="fr-sidebar-label">Constraints</div>
         <ul id="fr-constraints-list" class="fr-constraints-list"></ul>
       </div>
+      <details class="expert-details" style="margin-top:auto">
+        <summary>
+          <span class="icon">🔒</span> Privacy Notice
+          <span class="chevron">▶</span>
+        </summary>
+        <div class="expert-body" style="font-size:.78rem">
+          This assessment records your final response, intermediate drafts, and basic writing-process signals such as timing, pauses, revisions, and pasted text. These signals help instructors understand how the response was produced; they are reviewed as supporting context, not as automatic penalties.
+        </div>
+      </details>
     </div>
   </div>
 </div>
@@ -1650,6 +1671,22 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
     <div class="fr-closing-nudge-actions">
       <button type="button" class="btn btn-ghost" id="btn-fr-nudge-add">Add more</button>
       <button type="button" class="btn btn-primary" id="btn-fr-nudge-submit">Submit as final</button>
+    </div>
+  </div>
+</div>
+
+<!-- Final submit confirmation, including the AI-assistance declaration -->
+<div id="fr-submit-confirm-overlay" class="fr-rating-overlay hidden">
+  <div class="fr-rating-box">
+    <p class="fr-rating-question">Submit your response? You will not be able to edit it after submitting.</p>
+    <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;margin-bottom:10px;cursor:pointer">
+      <input type="checkbox" id="fr-ai-used-checkbox">
+      I used AI assistance
+    </label>
+    <textarea id="fr-ai-notes" class="hidden" maxlength="2000" style="min-height:70px;margin-bottom:14px;width:100%" placeholder="Briefly describe what you used AI for, or paste the relevant AI conversation summary."></textarea>
+    <div class="fr-closing-nudge-actions">
+      <button type="button" class="btn btn-ghost" id="btn-fr-confirm-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="btn-fr-confirm-submit">Submit</button>
     </div>
   </div>
 </div>
@@ -3012,6 +3049,40 @@ function askClosingNudge() {
   });
 }
 
+// Final submit confirmation, including the AI-assistance declaration. Resolves null on
+// cancel (submission aborted), or {used, notes} on confirm.
+function askFrSubmitConfirm() {
+  return new Promise(resolve => {
+    const checkbox  = $('fr-ai-used-checkbox');
+    const notes     = $('fr-ai-notes');
+    const cancelBtn = $('btn-fr-confirm-cancel');
+    const submitBtn = $('btn-fr-confirm-submit');
+    checkbox.checked = false;
+    notes.value = '';
+    hide('fr-ai-notes');
+
+    function onToggle() {
+      if (checkbox.checked) show('fr-ai-notes');
+      else { notes.value = ''; hide('fr-ai-notes'); }
+    }
+    function onCancel() { cleanup(); resolve(null); }
+    function onSubmit() {
+      cleanup();
+      resolve({ used: checkbox.checked ? 'yes' : 'no', notes: checkbox.checked ? notes.value.trim() : '' });
+    }
+    function cleanup() {
+      hide('fr-submit-confirm-overlay');
+      checkbox.removeEventListener('change', onToggle);
+      cancelBtn.removeEventListener('click', onCancel);
+      submitBtn.removeEventListener('click', onSubmit);
+    }
+    checkbox.addEventListener('change', onToggle);
+    cancelBtn.addEventListener('click', onCancel);
+    submitBtn.addEventListener('click', onSubmit);
+    show('fr-submit-confirm-overlay');
+  });
+}
+
 function startFrPrompt(index, promptList) {
   const p = promptList[index];
   FR.promptData       = p;
@@ -3024,9 +3095,6 @@ function startFrPrompt(index, promptList) {
   $('fr-prompt-text').textContent = p.prompt_text || p.description;
   $('fr-general-guidance').textContent = p.general_guidance || '';
   $('fr-textarea').value    = '';
-  $('fr-ai-used').value     = 'no';
-  $('fr-ai-notes').value    = '';
-  hide('fr-ai-notes');
   // disabled until the pre-write confidence rating is answered — this gate sits outside
   // the writing window itself, so it does not compromise passive process capture
   $('fr-textarea').disabled = true;
@@ -3070,13 +3138,6 @@ function updateFrWordCount(text, limit) {
 
 $('fr-textarea').addEventListener('keydown', e => WritingTracker.onKey(e));
 $('fr-textarea').addEventListener('paste', e => WritingTracker.onPaste(e, e.target.selectionStart));
-$('fr-ai-used').addEventListener('change', function () {
-  if (this.value === 'yes') show('fr-ai-notes');
-  else {
-    $('fr-ai-notes').value = '';
-    hide('fr-ai-notes');
-  }
-});
 
 $('fr-textarea').addEventListener('input', function () {
   const text = this.value;
@@ -3110,7 +3171,8 @@ $('btn-fr-submit').addEventListener('click', async () => {
     }
   }
 
-  if (!confirm('Submit your response? You will not be able to edit it after submitting.')) return;
+  const aiAssistance = await askFrSubmitConfirm();
+  if (!aiAssistance) return;
 
   const writingMetrics = WritingTracker.collect(text);
   // Report-facing metadata only (Part B5/B6) -- merged into process_log, never sent
@@ -3130,10 +3192,7 @@ $('btn-fr-submit').addEventListener('click', async () => {
       text,
       writing_metrics: writingMetrics,
       pre_rating: FR.preRating || undefined,
-      ai_assistance: {
-        used: $('fr-ai-used').value,
-        notes: $('fr-ai-used').value === 'yes' ? $('fr-ai-notes').value.trim() : '',
-      },
+      ai_assistance: aiAssistance,
       provider: S.provider,
       model:    S.model,
       api_key:  S.apiKey || undefined,

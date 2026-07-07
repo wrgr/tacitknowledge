@@ -471,6 +471,69 @@ main {
 }
 .empty-state.show { display: block; }
 
+/* ───────────────── Grading Reliability panel ─────────────────── */
+.cal-body { padding: 18px 20px; }
+.cal-empty { font-size: .88rem; color: var(--muted); line-height: 1.6; }
+
+.cal-kpis {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 12px; margin-bottom: 20px;
+}
+.cal-kpi {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px;
+}
+.cal-kpi b { display: block; font-size: 1.5rem; font-weight: 800; line-height: 1.15; }
+.cal-kpi span { font-size: .72rem; color: var(--muted); }
+.cal-kpi.good b { color: var(--green); }
+.cal-kpi.warn b { color: var(--amber); }
+.cal-kpi.bad  b { color: #dc2626; }
+
+.cal-labels { display: flex; flex-direction: column; gap: 7px; }
+.cal-label-row { display: flex; align-items: center; gap: 10px; }
+.cal-label-name { width: 100px; font-size: .78rem; font-weight: 600; flex-shrink: 0; }
+.cal-bar-track {
+  flex: 1; height: 14px; border-radius: 7px;
+  background: var(--bg); border: 1px solid var(--border); overflow: hidden;
+}
+.cal-bar-track.slim { height: 8px; max-width: 110px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.cal-bar { height: 100%; border-radius: 7px; }
+.cal-bar.agree { background: var(--green); }
+.cal-bar.lbl-correct, .cal-chip.lbl-correct { background: var(--green); }
+.cal-bar.lbl-partial, .cal-chip.lbl-partial { background: var(--amber); }
+.cal-bar.lbl-missing, .cal-chip.lbl-missing { background: #dc2626; }
+.cal-bar.lbl-needs_expert_review, .cal-chip.lbl-needs_expert_review { background: var(--blue-dk); }
+.cal-label-n { width: 32px; text-align: right; font-size: .8rem; font-weight: 700; flex-shrink: 0; }
+.cal-label-avg { width: 150px; font-size: .73rem; color: var(--muted); flex-shrink: 0; }
+
+.cal-note { font-size: .75rem; color: var(--muted); margin: 10px 0 4px; line-height: 1.5; }
+
+.cal-subhead {
+  font-size: .72rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted);
+  margin: 20px 0 8px;
+}
+.cal-subhead span { font-weight: 500; text-transform: none; letter-spacing: 0; }
+
+.cal-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.cal-table th {
+  text-align: left; font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  padding: 6px 10px; border-bottom: 1px solid var(--border);
+}
+.cal-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.cal-table tr:last-child td { border-bottom: none; }
+.cal-task { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-dim { color: var(--muted); font-style: italic; font-size: .78rem; }
+.cal-link { color: var(--blue-dk); font-weight: 600; text-decoration: none; }
+.cal-link:hover { text-decoration: underline; }
+.cal-chip {
+  display: inline-block; color: #fff; font-size: .7rem; font-weight: 700;
+  padding: 2px 9px; border-radius: 99px; text-transform: capitalize;
+}
+
+@media (max-width: 880px) { .cal-kpis { grid-template-columns: 1fr 1fr; } .cal-label-avg { display: none; } }
+
 /* ─────────────────────── Responsive ──────────────────────────── */
 @media (max-width: 880px) {
   .layout { grid-template-columns: 1fr; }
@@ -609,6 +672,7 @@ main {
       <nav class="nav">
         <a href="#overview" class="active" data-nav><span class="dot"></span> Overview</a>
         <a href="#directory" data-nav><span class="dot"></span> User Directory <span class="count">{{ users|length }}</span></a>
+        <a href="#calibration" data-nav><span class="dot"></span> Grading Reliability{% if calibration and calibration.annotated %} <span class="count">{{ calibration.annotated }}</span>{% endif %}</a>
       </nav>
     </div>
 
@@ -778,6 +842,126 @@ main {
         {% endfor %}
 
         <div class="empty-state" id="empty-state">No users match your search.</div>
+      </div>
+    </section>
+
+    <section class="panel" id="calibration">
+      <div class="panel-head">
+        <div class="panel-title">Grading Reliability <span>· instructor annotations vs LLM scores</span></div>
+      </div>
+      <div class="cal-body">
+
+      {% if not calibration or calibration.annotated == 0 %}
+        <p class="cal-empty">
+          No annotated reports yet. Open any report from the directory above and use its
+          annotation box to record whether the LLM's grading was correct — agreement
+          statistics will appear here as annotations accumulate.
+        </p>
+      {% else %}
+        {% set cal = calibration %}
+        <div class="cal-kpis">
+          <div class="cal-kpi">
+            <b>{{ cal.total }}</b>
+            <span>Assessed tasks</span>
+          </div>
+          <div class="cal-kpi">
+            <b>{{ cal.annotated }}</b>
+            <span>Annotated ({{ (100 * cal.annotated / cal.total) | round | int if cal.total else 0 }}%)</span>
+          </div>
+          <div class="cal-kpi {{ 'good' if cal.agreement_rate >= 0.8 else ('warn' if cal.agreement_rate >= 0.5 else 'bad') }}">
+            <b>{{ (100 * cal.agreement_rate) | round | int }}%</b>
+            <span>Agreement (labelled correct)</span>
+          </div>
+          <div class="cal-kpi {{ 'warn' if cal.labels.needs_expert_review else '' }}">
+            <b>{{ cal.labels.needs_expert_review }}</b>
+            <span>Pending expert review</span>
+          </div>
+        </div>
+
+        {# Label distribution + the miscalibration signal: avg LLM score per label #}
+        <div class="cal-labels">
+          {% for label, pretty in [('correct','Correct'), ('partial','Partial'),
+                                   ('missing','Missing'), ('needs_expert_review','Expert review')] %}
+          {% set n = cal.labels[label] %}
+          <div class="cal-label-row">
+            <span class="cal-label-name lbl-{{ label }}">{{ pretty }}</span>
+            <div class="cal-bar-track">
+              <div class="cal-bar lbl-{{ label }}" style="width: {{ (100 * n / cal.annotated) | round(1) }}%"></div>
+            </div>
+            <span class="cal-label-n">{{ n }}</span>
+            <span class="cal-label-avg">
+              {% if cal.avg_score_by_label[label] is not none %}avg LLM score {{ cal.avg_score_by_label[label] }}%{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        <p class="cal-note">
+          A high average LLM score on <em>Missing</em>-labelled reports means the model is
+          over-crediting; a low average on <em>Correct</em> ones means it is over-strict.
+        </p>
+
+        <div class="cal-subhead">Agreement by task <span>· lowest first</span></div>
+        <table class="cal-table">
+          <thead><tr><th>Task</th><th>Type</th><th>Annotated</th><th>Agreement</th><th>Avg LLM score</th></tr></thead>
+          <tbody>
+            {% for t in cal.by_task %}
+            <tr>
+              <td class="cal-task">{{ t.task_title or '—' }}</td>
+              <td>{{ 'FR' if t.report_type == 'free_response' else 'Scenario' }}</td>
+              <td>{{ t.annotated }} / {{ t.total }}</td>
+              <td>
+                {% if t.agreement_rate is not none %}
+                  <div class="cal-bar-track slim"><div class="cal-bar agree" style="width: {{ (100 * t.agreement_rate) | round(1) }}%"></div></div>
+                  {{ (100 * t.agreement_rate) | round | int }}%
+                {% else %}<span class="cal-dim">not annotated</span>{% endif %}
+              </td>
+              <td>{{ t.avg_score if t.avg_score is not none else '—' }}{% if t.avg_score is not none %}%{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        {% if cal.recent %}
+        <div class="cal-subhead">Recent annotations</div>
+        <table class="cal-table">
+          <thead><tr><th>When</th><th>Student</th><th>Task</th><th>Label</th><th>LLM score</th><th>Reviewer</th></tr></thead>
+          <tbody>
+            {% for r in cal.recent %}
+            <tr>
+              <td>{{ r.annotation_updated_at or '—' }}</td>
+              <td><a class="cal-link" href="/admin/report/{{ r.username }}/{{ r.report_file }}" target="_blank" rel="noopener">{{ r.username }}</a></td>
+              <td class="cal-task">{{ r.task_title }}</td>
+              <td><span class="cal-chip lbl-{{ r.annotation_label }}">{{ r.annotation_label.replace('_',' ') }}</span></td>
+              <td>{{ r.product_score_percent }}{% if r.product_score_percent %}%{% endif %}</td>
+              <td>{{ r.annotation_reviewer }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      {% endif %}
+
+      {% if match_stats %}
+      <div class="cal-subhead">Novel-equivalent match reliability <span>· highest novel rate first</span></div>
+      <table class="cal-table">
+        <thead><tr><th>Prompt</th><th>Key point</th><th>Matches</th><th>Novel rate</th><th>Promoted</th><th>Dismissed</th><th>Pending</th></tr></thead>
+        <tbody>
+          {% for s in match_stats %}
+          <tr>
+            <td class="cal-task">{{ s.prompt_title }}</td>
+            <td>{{ s.key_point_id }}</td>
+            <td>{{ s.total_matches }}</td>
+            <td>{{ (100 * s.novel_rate) | round | int }}%</td>
+            <td>{{ s.promoted }}</td>
+            <td>{{ s.dismissed }}</td>
+            <td>{{ s.pending_review }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="cal-note">A high novel-equivalent rate usually means that key point's exemplar list is under-specified, not that scoring is unreliable.</p>
+      {% endif %}
+
       </div>
     </section>
   </main>

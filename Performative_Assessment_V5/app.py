@@ -506,11 +506,28 @@ def admin_dashboard():
         else:
             report_tree[u["username"]] = []
 
+    # Grading-reliability panel: instructor annotations vs LLM scores, plus the
+    # novel-equivalent match reliability already tracked in fr_match_log.
+    try:
+        calibration = db.assessment_calibration_stats()
+    except Exception as e:
+        app.logger.warning("calibration stats unavailable: %s", e)
+        calibration = None
+    title_by_id = {p["id"]: p["title"] for p in prompts}
+    try:
+        match_stats = db.get_fr_match_stats()[:5]
+        for s in match_stats:
+            s["prompt_title"] = title_by_id.get(s["prompt_id"], s["prompt_id"])
+    except Exception:
+        match_stats = []
+
     return render_template(
         "admin.html",
         admin_name=session.get("display_name", "Admin"),
         users=user_list,
         report_tree=report_tree,
+        calibration=calibration,
+        match_stats=match_stats,
         user_theme=_user_theme(),
     )
 

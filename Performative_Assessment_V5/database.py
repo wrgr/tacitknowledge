@@ -501,3 +501,64 @@ def all_assessment_rows():
             "SELECT * FROM assessments ORDER BY username, timestamp, report_file, task_title"
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def assessment_calibration_stats():
+    """Aggregate instructor-annotation labels against LLM product scores.
+
+    The annotation labels record an instructor's verdict on the LLM's grading
+    of a report ('correct'/'partial'/'missing'/'needs_expert_review'), so the
+    share labelled 'correct' is the LLM-vs-instructor agreement rate, and the
+    average LLM score per label is the miscalibration signal (a high average
+    score on 'missing'-labelled reports means the LLM over-credits).
+    """
+    labels = ("correct", "partial", "missing", "needs_expert_review")
+    with _conn() as c:
+        total = c.execute("SELECT COUNT(*) FROM assessments").fetchone()[0]
+
+        label_rows = c.execute(
+            "SELECT annotation_label AS label, COUNT(*) AS n, "
+            "       AVG(CAST(NULLIF(product_score_percent,'') AS REAL)) AS avg_score "
+            "FROM assessments WHERE annotation_label != '' GROUP BY annotation_label"
+        ).fetchall()
+        by_label   = {r["label"]: r["n"] for r in label_rows}
+        avg_scores = {r["label"]: (round(r["avg_score"], 1) if r["avg_score"] is not None else None)
+                      for r in label_rows}
+        annotated  = sum(by_label.values())
+
+        task_rows = c.execute(
+            "SELECT task_title, report_type, COUNT(*) AS total, "
+            "  SUM(annotation_label != '') AS annotated, "
+            "  SUM(annotation_label = 'correct') AS correct, "
+            "  SUM(annotation_label = 'partial') AS partial, "
+            "  SUM(annotation_label = 'missing') AS missing, "
+            "  SUM(annotation_label = 'needs_expert_review') AS needs_expert_review, "
+            "  AVG(CAST(NULLIF(product_score_percent,'') AS REAL)) AS avg_score "
+            "FROM assessments GROUP BY task_title, report_type"
+        ).fetchall()
+        by_task = []
+        for r in task_rows:
+            t = dict(r)
+            t["avg_score"] = round(t["avg_score"], 1) if t["avg_score"] is not None else None
+            t["agreement_rate"] = (t["correct"] / t["annotated"]) if t["annotated"] else None
+            by_task.append(t)
+        # most-disagreeing tasks first; un-annotated tasks sink to the bottom
+        by_task.sort(key=lambda t: (t["agreement_rate"] is None,
+                                    t["agreement_rate"] if t["agreement_rate"] is not None else 0))
+
+        recent = [dict(r) for r in c.execute(
+            "SELECT username, report_file, task_title, annotation_label, "
+            "       product_score_percent, annotation_reviewer, annotation_updated_at "
+            "FROM assessments WHERE annotation_label != '' "
+            "ORDER BY annotation_updated_at DESC LIMIT 10"
+        ).fetchall()]
+
+    return {
+        "total":          total,
+        "annotated":      annotated,
+        "labels":         {l: by_label.get(l, 0) for l in labels},
+        "avg_score_by_label": {l: avg_scores.get(l) for l in labels},
+        "agreement_rate": (by_label.get("correct", 0) / annotated) if annotated else None,
+        "by_task":        by_task,
+        "recent":         recent,
+    }

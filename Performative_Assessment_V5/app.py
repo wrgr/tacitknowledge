@@ -23,8 +23,10 @@ import io
 import json
 import re
 import secrets
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from flask import (Flask, abort, jsonify, redirect, render_template,
@@ -179,6 +181,69 @@ def _get_state(data):
         return None, (jsonify({"error": "forbidden"}), 403)
     st["_ts"] = time.monotonic()   # keep an in-progress session from being evicted
     return st, None
+
+
+_fr_profile_lock = threading.Lock()
+
+
+def _compute_fr_thinking_profile(st):
+    """Compute the FR thinking profile exactly once per session.
+
+    Both /api/fr/thinking-profile (fired asynchronously right after submit)
+    and /api/fr/report (fired when the user clicks Generate Report) need the
+    profile. Without coordination, a quick Generate Report click recomputes
+    it while the async call is still in flight — two identical LLM calls.
+    A per-session event makes the second caller wait for the first instead.
+    """
+    if st.get("profile") is not None:
+        return st["profile"]
+    if not engine.llm_is_available(st["api_key"]):
+        return None
+
+    with _fr_profile_lock:
+        event = st.get("_profile_event")
+        is_owner = event is None
+        if is_owner:
+            event = st["_profile_event"] = threading.Event()
+
+    if not is_owner:
+        event.wait(timeout=180)          # LLM call timeout is 120 s
+        return st.get("profile")
+
+    try:
+        st["profile"] = engine.analyse_thinking_profile(
+            st["prompt"], st["evaluation"]["text"],
+            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
+            writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
+            user_inputs=[st["evaluation"]["text"]],
+        )
+        return st["profile"]
+    finally:
+        event.set()
+        if st.get("profile") is None:    # failed — let a later call retry
+            with _fr_profile_lock:
+                st.pop("_profile_event", None)
+
+
+# Parsed-report cache keyed by file mtime. Report files are immutable once
+# written (timestamped filenames), so this is effectively parse-once — it
+# spares the report viewers and learning-profile endpoints from re-parsing
+# every markdown file on every request.
+_parse_cache: dict = {}
+_PARSE_CACHE_MAX = 500
+
+
+def _parse_report_cached(path):
+    key = str(path)
+    mtime = path.stat().st_mtime
+    hit = _parse_cache.get(key)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    parsed = report_parser.parse_report_md(path.read_text(encoding="utf-8"))
+    if len(_parse_cache) >= _PARSE_CACHE_MAX:
+        _parse_cache.pop(next(iter(_parse_cache)))   # drop oldest inserted
+    _parse_cache[key] = (mtime, parsed)
+    return parsed
 
 
 def _timestamp_from_report_filename(filename):
@@ -546,8 +611,7 @@ def admin_view_report(username, filename):
     if not report_path.exists():
         abort(404)
 
-    content = report_path.read_text(encoding="utf-8")
-    report = report_parser.parse_report_md(content)
+    report = _parse_report_cached(report_path)
     annotation = _load_annotation(username, filename)
     return render_template(
         "report_view.html",
@@ -679,8 +743,7 @@ def student_view_report(filename):
     if not report_path.exists():
         abort(404)
 
-    content = report_path.read_text(encoding="utf-8")
-    report = report_parser.parse_report_md(content)
+    report = _parse_report_cached(report_path)
     return render_template(
         "student_report.html",
         filename=filename,
@@ -1621,19 +1684,10 @@ def api_fr_thinking_profile():
     if st["user_id"] != session.get("user_id") and session.get("role") != "admin":
         return jsonify({"error": "forbidden"}), 403
 
-    if not engine.llm_is_available(st["api_key"]):
-        return jsonify({"profile": None})
-
     try:
-        profile = engine.analyse_thinking_profile(
-            st["prompt"], st["evaluation"]["text"],
-            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
-            writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
-            user_inputs=[st["evaluation"]["text"]],
-        )
+        profile = _compute_fr_thinking_profile(st)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    st["profile"] = profile
     return jsonify({"profile": profile})
 
 
@@ -1651,30 +1705,30 @@ def api_fr_report():
 
     user_reports_dir = REPORTS_BASE / session["user_id"]
 
-    # Generate the thinking profile now if the async frontend call hasn't finished yet.
-    thinking_profile = st.get("profile")
-    if thinking_profile is None and engine.llm_is_available(st["api_key"]):
-        thinking_profile = engine.analyse_thinking_profile(
-            st["prompt"], st["evaluation"]["text"],
-            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
-            writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
-            user_inputs=[st["evaluation"]["text"]],
-        )
-        st["profile"] = thinking_profile
-
-    # Writing-process overlay: interpretive only, never blended into the product score.
-    # Skipped entirely when the prompt disables it or no process_log was captured
-    # (e.g. CLI submissions have no WritingTracker) — FR then scores product-only.
+    # The thinking profile and the writing-process overlay are independent LLM
+    # analyses (one reads the submission text, the other the process log), so
+    # run them concurrently — report generation waits on the slower of the two
+    # instead of their sum. The profile task reuses the once-only helper, so a
+    # still-running async /api/fr/thinking-profile call is awaited, not redone.
     process_overlay = st.get("process_overlay")
     process_log = (st.get("writing_metrics") or {}).get("process_log")
-    if (process_overlay is None and st["prompt"].get("process_overlay_enabled", True)
-            and process_log):
-        process_overlay = engine.analyze_writing_process(
+    need_overlay = (process_overlay is None
+                    and st["prompt"].get("process_overlay_enabled", True)
+                    and process_log)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        profile_future = pool.submit(_compute_fr_thinking_profile, st)
+        overlay_future = pool.submit(
+            engine.analyze_writing_process,
             process_log, st.get("writing_metrics"), st["evaluation"]["text"],
             product_score=st["evaluation"]["score"],
             model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
             use_llm=engine.llm_is_available(st["api_key"]),
-        )
+        ) if need_overlay else None
+
+        thinking_profile = profile_future.result()
+        if overlay_future is not None:
+            process_overlay = overlay_future.result()
 
     # Confidence calibration (rate → explain → re-rate) is independent of process_log —
     # it can be present even when no writing process was captured at all, and vice versa.
@@ -1774,8 +1828,7 @@ def api_learning_profile():
             date_str = f"{d[:4]}-{d[4:6]}-{d[6:]} {t[:2]}:{t[2:4]}"
 
             try:
-                content = f.read_text(encoding="utf-8")
-                parsed  = report_parser.parse_report_md(content)
+                parsed = _parse_report_cached(f)
             except Exception:
                 continue
 
@@ -1925,8 +1978,7 @@ def api_learning_profile_analysis():
             d, t     = m.group(1), m.group(2)
             date_str = f"{d[:4]}-{d[4:6]}-{d[6:]} {t[:2]}:{t[2:4]}"
             try:
-                content = f.read_text(encoding="utf-8")
-                parsed  = report_parser.parse_report_md(content)
+                parsed = _parse_report_cached(f)
             except Exception:
                 continue
 

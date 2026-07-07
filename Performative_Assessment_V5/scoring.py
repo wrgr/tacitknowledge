@@ -536,17 +536,117 @@ def _fr_exemplars_for_match(kp):
     return kp.get("exemplars") or [kp.get("construct", "")]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# POOLED KEY POINTS  (choose_n_of_m brief)
+#
+# A pool groups several key points where the FR prompt's own task instructions only
+# ask for `required_count` of them (e.g. "describe at least two techniques"), not
+# every member individually. Matching is per-member and completely unchanged -- a
+# pool member goes through the exact same construct/exemplar (and novel-equivalent)
+# path as a standalone key point. Only Coverage's total/earned arithmetic changes:
+# a pool contributes its full importance weight to the denominator and
+# pool_coverage_fraction * weight to the numerator, capped at 1.0 via min(). Quality
+# (mean quality_rating over matched points) is untouched -- pool members are matched
+# and present in matched_points exactly as standalone points would be, uncapped.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fr_flatten_matchable(ea):
+    """Flatten standalone key points and every pool member into one list for matching.
+    Pool members get ephemeral dict copies carrying `importance` (the pool's, for
+    prompt/display purposes only -- importance is a pool-level concept, not per-member)
+    and `pool_id` (so matched/missed entries can be grouped back into their pool) --
+    the loaded prompt data itself is never mutated. Returns (standalone_kps, pools,
+    all_matchable).
+    """
+    standalone_kps = ea.get("key_points", [])
+    pools = ea.get("pools", [])
+    all_matchable = list(standalone_kps)
+    for pool in pools:
+        for member in pool.get("members", []):
+            all_matchable.append({
+                **member,
+                "importance": pool["importance"],
+                "pool_id":    pool["pool_id"],
+            })
+    return standalone_kps, pools, all_matchable
+
+
+def _score_fr_pools(pools, matched_by_id):
+    """Part B1: per-pool coverage contribution.
+
+        matched_in_pool = count of members with an accepted match
+        credited_count  = min(matched_in_pool, required_count)
+        pool_coverage_fraction = credited_count / required_count
+
+    The pool contributes pool_coverage_fraction * pool_importance_weight to the
+    numerator and pool_importance_weight to the denominator -- exactly as a single
+    standalone key point would, just with pool_coverage_fraction in place of a binary
+    matched/missed. Matching more than required_count cannot earn more than the pool's
+    full weight (the min() cap).
+    """
+    total, earned = 0.0, 0.0
+    pool_results = []
+    for pool in pools:
+        members = pool["members"]
+        matched_members = [matched_by_id[m["id"]] for m in members if m["id"] in matched_by_id]
+        missed_members = [
+            {"key_point_id": m["id"], "construct": m["construct"],
+             "importance": pool["importance"], "pool_id": pool["pool_id"]}
+            for m in members if m["id"] not in matched_by_id
+        ]
+        matched_in_pool = len(matched_members)
+        required_count  = pool["required_count"]
+        credited_count  = min(matched_in_pool, required_count)
+        pool_coverage_fraction = credited_count / required_count if required_count else 0.0
+        weight = _FR_IMPORTANCE_WEIGHT.get(pool["importance"], 2)
+
+        total  += weight
+        earned += pool_coverage_fraction * weight
+
+        pool_results.append({
+            "pool_id":                pool["pool_id"],
+            "importance":             pool["importance"],
+            "required_count":         required_count,
+            "member_count":           len(members),
+            "matched_in_pool":        matched_in_pool,
+            "credited_count":         credited_count,
+            "pool_coverage_fraction": pool_coverage_fraction,
+            "matched_members":        matched_members,
+            "missed_members":         missed_members,
+        })
+    return total, earned, pool_results
+
+
+def _compute_fr_coverage(standalone_kps, pools, matched):
+    """Part B3: overall Coverage as a weighted sum across standalone points and pools.
+    Standalone arithmetic is byte-identical to the pre-pool code (Part B2) -- only the
+    pool terms, computed by _score_fr_pools, are new. Returns (total, earned,
+    pool_results); callers apply their own zero-total fallback for `score`.
+    """
+    matched_by_id = {m["key_point_id"]: m for m in matched}
+
+    standalone_total  = sum(_FR_IMPORTANCE_WEIGHT.get(kp["importance"], 2) for kp in standalone_kps)
+    standalone_earned = sum(
+        _FR_IMPORTANCE_WEIGHT.get(kp["importance"], 2) for kp in standalone_kps
+        if kp["id"] in matched_by_id
+    )
+
+    pool_total, pool_earned, pool_results = _score_fr_pools(pools, matched_by_id)
+
+    return standalone_total + pool_total, standalone_earned + pool_earned, pool_results
+
+
 def score_free_response_with_keywords(prompt_data, text):
     # Pure Python string/regex matching, no LLM call -- already deterministic,
     # so it's exempt from the determinism/caching/self-consistency work above.
     # No semantic judgment available here, so only the exemplar path applies --
     # novel-equivalent recognition requires the LLM grader.
-    ea         = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
-    key_points = ea.get("key_points", [])
+    ea = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
+    standalone_kps, pools, all_matchable = _fr_flatten_matchable(ea)
     text_lower = text.lower()
 
     matched, missed = [], []
-    for kp in key_points:
+    for kp in all_matchable:
         hit = next((e for e in _fr_exemplars_for_match(kp) if _phrase_in_text(e, text_lower)), None)
         if hit is not None:
             matched.append({
@@ -557,13 +657,16 @@ def score_free_response_with_keywords(prompt_data, text):
                 "matched_exemplar":          hit if kp.get("exemplars") else None,
                 "evidence_spans":            [],
                 "functional_justification":  None,
+                "pool_id":                   kp.get("pool_id"),
             })
         else:
-            missed.append({"key_point_id": kp["id"], "construct": kp["construct"], "importance": kp["importance"]})
+            missed.append({
+                "key_point_id": kp["id"], "construct": kp["construct"], "importance": kp["importance"],
+                "pool_id": kp.get("pool_id"),
+            })
 
-    total  = sum(_FR_IMPORTANCE_WEIGHT.get(kp["importance"], 2) for kp in key_points)
-    earned = sum(_FR_IMPORTANCE_WEIGHT.get(m["importance"], 2) for m in matched)
-    score  = earned / total if total > 0 else 0.0
+    total, earned, pool_results = _compute_fr_coverage(standalone_kps, pools, matched)
+    score = earned / total if total > 0 else 0.0
 
     parts = []
     if matched:
@@ -577,6 +680,7 @@ def score_free_response_with_keywords(prompt_data, text):
         "expert_answer":  ea,
         "matched_points": matched,
         "missed_points":  missed,
+        "pools":          pool_results,
         "score":          score,
         "feedback":       "\n".join(parts) if parts else "No key points defined.",
         "strengths":      [],
@@ -585,13 +689,13 @@ def score_free_response_with_keywords(prompt_data, text):
 
 
 def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, bypass_cache=False):
-    ea         = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
-    key_points = ea.get("key_points", [])
-    by_id      = {kp["id"]: kp for kp in key_points}
+    ea = prompt_data["expert_answers"][0] if prompt_data.get("expert_answers") else {}
+    standalone_kps, pools, all_matchable = _fr_flatten_matchable(ea)
+    by_id = {kp["id"]: kp for kp in all_matchable}
 
-    if key_points:
+    if all_matchable:
         kp_lines = []
-        for kp in key_points:
+        for kp in all_matchable:
             exemplars = kp.get("exemplars") or []
             ex_text = "; ".join(exemplars) if exemplars else "(none authored -- treat the construct itself as the reference)"
             kp_lines.append(
@@ -669,7 +773,7 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
     def _grade():
         if config.SELF_CONSISTENCY_SCORING:
             samples = [_grade_once() for _ in range(config.SELF_CONSISTENCY_SAMPLES)]
-            return _aggregate_fr_grading_samples(samples, key_points)
+            return _aggregate_fr_grading_samples(samples, all_matchable)
         return _grade_once()
 
     result = cached_evaluative_call(model, base_url, _PROMPT_VERSION_FR_GRADE,
@@ -720,6 +824,7 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
             "evidence_spans":           grounded_spans,
             "functional_justification": justification,
             "quality_rating":           quality_rating,
+            "pool_id":                  kp.get("pool_id"),
         }
         matched.append(entry)
         if match_type == "novel_equivalent":
@@ -745,13 +850,13 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
 
     matched_ids = {m["key_point_id"] for m in matched}
     missed = [
-        {"key_point_id": kp["id"], "construct": kp["construct"], "importance": kp["importance"]}
-        for kp in key_points if kp["id"] not in matched_ids
+        {"key_point_id": kp["id"], "construct": kp["construct"], "importance": kp["importance"],
+         "pool_id": kp.get("pool_id")}
+        for kp in all_matchable if kp["id"] not in matched_ids
     ]
 
-    total  = sum(_FR_IMPORTANCE_WEIGHT.get(kp["importance"], 2) for kp in key_points)
-    earned = sum(_FR_IMPORTANCE_WEIGHT.get(m["importance"], 2) for m in matched)
-    score  = earned / total if total > 0 else 0.5
+    total, earned, pool_results = _compute_fr_coverage(standalone_kps, pools, matched)
+    score = earned / total if total > 0 else 0.5
 
     return {
         "prompt_id":      prompt_data["id"],
@@ -759,6 +864,7 @@ def score_free_response_with_llm(model, api_key, base_url, prompt_data, text, by
         "expert_answer":  ea,
         "matched_points": matched,
         "missed_points":  missed,
+        "pools":          pool_results,
         # Part C: the caller logs these to the review queue -- scoring itself doesn't
         # gate on review, the learner's score is final at grading time either way.
         "novel_equivalent_matches": novel_equivalents,

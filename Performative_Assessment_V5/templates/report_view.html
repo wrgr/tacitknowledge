@@ -634,6 +634,44 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
         </details>
         {% endif %}
 
+        {% if ev.pools %}
+        <hr class="divider">
+        {% for pool in ev.pools %}
+        <div class="chips-label" style="margin-top:10px">{{ pool.label }}</div>
+        <div style="font-size:.88rem;color:var(--muted);margin-bottom:8px">
+          Matched {{ pool.matched_in_pool }} of {{ pool.member_count }} — {{ pool.required_count }} required — {{ pool.credit_label }} credit for this section.
+        </div>
+        {% for m in pool.matched_members %}
+        <div class="kp-detail-card">
+          <div class="kp-detail-construct">
+            {{ m.construct }}
+            {% if m.match_type == 'novel_equivalent' %}
+            <span class="kp-detail-tag novel">Novel match — pending review</span>
+            {% elif m.matched_exemplar %}
+            <span class="kp-detail-tag exemplar">Exemplar: {{ m.matched_exemplar }}</span>
+            {% else %}
+            <span class="kp-detail-tag exemplar">Matched</span>
+            {% endif %}
+          </div>
+          {% if m.quality_label %}
+          <div class="kp-detail-quality"><strong>Quality:</strong> {{ m.quality_label }}</div>
+          {% endif %}
+          {% for span in m.evidence_spans %}
+          <div class="kp-detail-evidence">"{{ span }}"</div>
+          {% endfor %}
+          {% if m.functional_justification %}
+          <div class="kp-detail-justification"><strong>Justification:</strong> {{ m.functional_justification }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% if pool.missed_members %}
+        <div class="chips-row">
+          {% for label in pool.missed_members %}<span class="chip missed">{{ label }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+
       </div>
     </div>
 

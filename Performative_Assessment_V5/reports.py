@@ -268,44 +268,108 @@ def _append_key_points_with_attribution(lines, ev):
         lines.append("")
 
 
+_FR_QUALITY_LABEL = {0: "stated only", 1: "partial explanation", 2: "full explanation"}
+
+
+def _fr_match_bullet_lines(m):
+    """One matched-point bullet: construct + match-type tag, quality, evidence spans,
+    and (for novel-equivalent matches) justification. Factored out so the flat "Key
+    points covered" list and the per-pool member list (choose_n_of_m brief, Part C)
+    render matches identically -- report_parser.py's bullet regexes then parse both the
+    same way with no extra cases.
+    """
+    if not isinstance(m, dict):
+        return [f"  - {m} — _matched_"]  # legacy flat-string fallback
+
+    lines = []
+    construct = m.get("construct", "")
+    if m.get("match_type") == "novel_equivalent":
+        tag = "novel equivalent (pending admin review)"
+    elif m.get("matched_exemplar"):
+        tag = 'matched: known exemplar "' + m["matched_exemplar"] + '"'
+    else:
+        tag = "matched"
+    qlabel = _FR_QUALITY_LABEL.get(m.get("quality_rating", 0), "stated only")
+    lines.append(f"  - {construct} — _{tag}_")
+    lines.append("    _Quality:_ " + qlabel)
+    for span in m.get("evidence_spans", []):
+        lines.append(f'    > "{span}"')
+    if m.get("functional_justification"):
+        lines.append("    _Justification:_ " + m["functional_justification"])
+    return lines
+
+
 def _append_fr_key_points(lines, ev):
     """Write FR key points (construct/exemplar brief, Part D) -- one bullet per matched
     point showing HOW it was matched (known exemplar vs. novel equivalent pending admin
     review) and its full evidence. Multi-span evidence is shown together as one combined
     block, never implying the response was itemized when it wasn't -- both single- and
     multi-span matches are full matches, only match_type is a meaningful distinction here.
-    """
-    matched = ev.get("matched_points", [])
-    missed  = ev.get("missed_points", [])
 
-    _quality_label = {0: "stated only", 1: "partial explanation", 2: "full explanation"}
+    Pooled key points (choose_n_of_m brief, Part B2/C): pool members are excluded here
+    -- they render in their own '## Pools' section (_append_fr_pools) grouped by pool,
+    rather than mixed into this flat list. Standalone points render exactly as before.
+    """
+    matched = [m for m in ev.get("matched_points", []) if not (isinstance(m, dict) and m.get("pool_id"))]
+    missed  = [m for m in ev.get("missed_points",  []) if not (isinstance(m, dict) and m.get("pool_id"))]
 
     if matched:
         lines.append("**Key points covered:**")
         for m in matched:
-            if not isinstance(m, dict):
-                lines.append(f"  - {m} — _matched_")  # legacy flat-string fallback
-                continue
-            construct = m.get("construct", "")
-            if m.get("match_type") == "novel_equivalent":
-                tag = "novel equivalent (pending admin review)"
-            elif m.get("matched_exemplar"):
-                tag = 'matched: known exemplar "' + m["matched_exemplar"] + '"'
-            else:
-                tag = "matched"
-            qlabel = _quality_label.get(m.get("quality_rating", 0), "stated only")
-            lines.append(f"  - {construct} — _{tag}_")
-            lines.append("    _Quality:_ " + qlabel)
-            for span in m.get("evidence_spans", []):
-                lines.append(f'    > "{span}"')
-            if m.get("functional_justification"):
-                lines.append("    _Justification:_ " + m["functional_justification"])
+            lines.extend(_fr_match_bullet_lines(m))
         lines.append("")
 
     if missed:
         labels = [m.get("construct", "") if isinstance(m, dict) else m for m in missed]
         lines.append("**Key points missed:** " + ", ".join(labels))
         lines.append("")
+
+
+def _append_fr_pools(lines, ev):
+    """Pooled key points (choose_n_of_m brief, Part C): a dedicated '## Pools' section
+    -- its own top-level heading, deliberately not nested inside '## Evaluation', so
+    report_parser.py's existing Evaluation-section state machine never has to change
+    (see report_parser._parse_fr_pools for the counterpart that reads this section back
+    out). Neutral framing throughout: states what was required and what was matched,
+    and that credit is full once the requirement is met, without editorializing about
+    whether matching more than required was a good or bad choice -- that judgment
+    belongs to Quality, which this feature does not touch.
+    """
+    pools = ev.get("pools") or []
+    if not pools:
+        return
+
+    lines.append("## Pools")
+    lines.append("")
+
+    for pool in pools:
+        label = pool["pool_id"].replace("_", " ").title()
+        lines.append("**" + label + "**")
+        lines.append("")
+
+        required        = pool["required_count"]
+        matched_in_pool = pool["matched_in_pool"]
+        member_count    = pool["member_count"]
+        if pool["credited_count"] >= required:
+            credit_phrase = "full credit for this section"
+        else:
+            credit_phrase = f"{pool['pool_coverage_fraction']:.0%} credit for this section"
+        lines.append(
+            f"Matched {matched_in_pool} of {member_count} — {required} required — {credit_phrase}."
+        )
+        lines.append("")
+
+        matched_members = pool.get("matched_members") or []
+        if matched_members:
+            for m in matched_members:
+                lines.extend(_fr_match_bullet_lines(m))
+            lines.append("")
+
+        missed_members = pool.get("missed_members") or []
+        if missed_members:
+            labels = [m.get("construct", "") for m in missed_members]
+            lines.append("Not matched: " + ", ".join(labels))
+            lines.append("")
 
 
 def _instructor_summary_fallback(overall_pct, coverage_pct, quality_pct, matched, missed):
@@ -629,6 +693,8 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
         lines.append("**Expert reference answer:**")
         lines.append("> " + ev["expert_answer"]["answer"])
         lines.append("")
+
+    _append_fr_pools(lines, ev)
 
     lines.append("---")
     lines.append("")

@@ -1282,6 +1282,42 @@ def api_save_prompt():
         exemplars = [e.strip() for e in (kp.get("exemplars") or []) if isinstance(e, str) and e.strip()]
         key_points.append({"construct": construct, "exemplars": exemplars, "importance": importance})
 
+    # Pooled key points (choose_n_of_m brief, Part D) -- pool_id arrives as a raw human
+    # label from the admin UI; written without ids, exactly like key_points above --
+    # loaders.py's migration assigns the slugified pool_id and per-member ids on the
+    # immediately-following engine.load_prompts(PROMPTS_DIR) reload.
+    pools = []
+    for pool in (data.get("pools") or []):
+        if not isinstance(pool, dict):
+            continue
+        pool_id = (pool.get("pool_id") or "").strip()
+        if not pool_id:
+            continue
+        pool_importance = pool.get("importance")
+        if pool_importance not in loaders.FR_IMPORTANCE_LEVELS:
+            pool_importance = "MEDIUM"
+        try:
+            required_count = int(pool.get("required_count"))
+        except (TypeError, ValueError):
+            required_count = 0
+        members = []
+        for member in (pool.get("members") or []):
+            if not isinstance(member, dict):
+                continue
+            construct = (member.get("construct") or "").strip()
+            if not construct:
+                continue
+            exemplars = [e.strip() for e in (member.get("exemplars") or []) if isinstance(e, str) and e.strip()]
+            members.append({"construct": construct, "exemplars": exemplars})
+        if not members:
+            continue
+        pools.append({
+            "pool_id":        pool_id,
+            "required_count": required_count,
+            "importance":     pool_importance,
+            "members":        members,
+        })
+
     prompt_id   = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
     prompt_data = {
         "id":          prompt_id,
@@ -1295,6 +1331,7 @@ def api_save_prompt():
                 "id":         "expert_001",
                 "answer":     data.get("expert_answer", ""),
                 "key_points": key_points,
+                "pools":      pools,
             }
         ],
         "metadata": {},
@@ -1348,12 +1385,19 @@ def api_admin_novel_equivalents():
 @app.route("/api/admin/novel-equivalents/promote", methods=["POST"])
 @auth.admin_required
 def api_admin_novel_equivalent_promote():
+    """Part C of the construct/exemplar brief, extended by the choose_n_of_m brief's
+    Part B4: a novel-equivalent match on a pool member can be promoted two ways --
+    "add_exemplar" (default) folds it into an existing member's exemplars, exactly like
+    a standalone key point; "new_member" instead treats it as a genuinely different
+    technique the author didn't anticipate at all, and adds it as a brand-new member of
+    the same pool. The system doesn't decide which case it is -- both are just available
+    actions for the admin's review judgment.
+    """
     global prompts
     data      = request.get_json(silent=True) or {}
     review_id = data.get("review_id")
+    action    = data.get("action") or "add_exemplar"
     exemplar  = (data.get("exemplar") or "").strip()
-    if not exemplar:
-        return jsonify({"error": "exemplar text is required"}), 400
 
     review = db.get_novel_equivalent_review(review_id)
     if not review or review["status"] != "pending":
@@ -1364,15 +1408,40 @@ def api_admin_novel_equivalent_promote():
         return jsonify({"error": "prompt not found"}), 404
 
     updated = False
-    for ea in prompt_data.get("expert_answers", []):
-        for kp in ea.get("key_points", []):
-            if kp["id"] == review["key_point_id"]:
-                if exemplar not in kp["exemplars"]:
-                    kp["exemplars"].append(exemplar)
-                updated = True
 
-    if not updated:
-        return jsonify({"error": "key point no longer exists on this prompt"}), 404
+    if action == "new_member":
+        member_construct = (data.get("member_construct") or "").strip()
+        if not member_construct:
+            return jsonify({"error": "member_construct text is required"}), 400
+        if not review.get("pool_id"):
+            return jsonify({"error": "this review is not a pool member -- 'new_member' only applies to pool reviews"}), 400
+        for ea in prompt_data.get("expert_answers", []):
+            for pool in ea.get("pools", []):
+                if pool["pool_id"] == review["pool_id"]:
+                    pool["members"].append({
+                        "construct": member_construct,
+                        "exemplars": [exemplar] if exemplar else [],
+                    })
+                    updated = True
+        if not updated:
+            return jsonify({"error": "pool no longer exists on this prompt"}), 404
+    else:
+        if not exemplar:
+            return jsonify({"error": "exemplar text is required"}), 400
+        for ea in prompt_data.get("expert_answers", []):
+            for kp in ea.get("key_points", []):
+                if kp["id"] == review["key_point_id"]:
+                    if exemplar not in kp["exemplars"]:
+                        kp["exemplars"].append(exemplar)
+                    updated = True
+            for pool in ea.get("pools", []):
+                for member in pool.get("members", []):
+                    if member["id"] == review["key_point_id"]:
+                        if exemplar not in member["exemplars"]:
+                            member["exemplars"].append(exemplar)
+                        updated = True
+        if not updated:
+            return jsonify({"error": "key point no longer exists on this prompt"}), 404
 
     path = PROMPTS_DIR / (prompt_data["id"] + ".json")
     path.write_text(json.dumps(prompt_data, indent=2), encoding="utf-8")
@@ -1454,6 +1523,10 @@ def api_fr_submit():
             submission_excerpt=text[:2000],
             evidence_spans=m["evidence_spans"],
             justification=m.get("functional_justification") or "",
+            # Pooled key points (choose_n_of_m brief, Part B4): present when the match is
+            # a pool member, None for a standalone key point -- lets the review UI offer
+            # "add as new pool member" only where a pool actually exists to add one to.
+            pool_id=m.get("pool_id"),
         )
 
     # fr_hardening brief, Part D: log every accepted match (exemplar or novel_equivalent)

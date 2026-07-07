@@ -459,6 +459,29 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
 .fp-kp-exemplar-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 .fp-kp-exemplar-row input { flex: 1; }
 
+/* Pooled key points -- choose_n_of_m brief, Part D. Pool card nests member cards,
+   each of which reuses the .fp-kp-exemplar-row markup/CSS above verbatim. */
+.fp-pool-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: var(--card, #fff);
+}
+.fp-pool-card-top { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.fp-pool-card-top input[type="text"] { flex: 1; }
+.fp-pool-card-top input[type="number"] { width: 90px; }
+.fp-pool-member-list { margin: 8px 0 4px 14px; }
+.fp-pool-member-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+.fp-pool-member-card-top { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.fp-pool-member-card-top input { flex: 1; }
+
 .create-actions { display: flex; gap: 10px; margin-top: 8px; }
 #create-note { font-size: .82rem; color: var(--muted); margin-top: 10px; }
 
@@ -1548,6 +1571,21 @@ header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .01em; }
       </p>
       <div id="fp-keypoint-list"></div>
       <button class="btn-add" id="btn-fp-add-keypoint">+ Add key point</button>
+    </div>
+
+    <!-- Pooled key points (choose_n_of_m brief) -->
+    <div class="form-section">
+      <h3>Pooled Key Points &nbsp;<span style="font-weight:400;color:var(--muted);text-transform:none;font-size:.78rem;letter-spacing:0">— "choose N of M" (optional)</span></h3>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px">
+        Use a pool when the prompt's own instructions only ask for a limited number of
+        items from a larger set (e.g. "describe at least two techniques"). Each pool has
+        its own importance and a <strong>required count</strong> — a response earns full
+        credit for the pool once that many members are matched, however many more it also
+        names. Members reuse the same construct + exemplars fields as a standalone key
+        point above, but importance applies to the pool as a whole, not per member.
+      </p>
+      <div id="fp-pool-list"></div>
+      <button class="btn-add" id="btn-fp-add-pool">+ Add pool</button>
     </div>
 
     <div class="create-actions">
@@ -3530,9 +3568,24 @@ function renderFrReviewCard(r) {
 
   const spansHtml = (r.evidence_spans || []).map(s => `<blockquote style="margin:4px 0;padding-left:10px;border-left:2px solid var(--border);font-size:.85rem">"${_escapeHtml(s)}"</blockquote>`).join('');
   const suggestedExemplar = (r.evidence_spans && r.evidence_spans[0]) || '';
+  const isPool = !!r.pool_id;
+
+  // Pooled key points (choose_n_of_m brief, Part B4): a pool-member review gets a second
+  // promotion path -- "add as new pool member" -- alongside the existing exemplar route.
+  // The system doesn't decide which is right; both are just available admin actions.
+  const poolBadge = isPool
+    ? `<div style="font-size:.72rem;color:var(--blue);margin-bottom:4px">Pool: ${_escapeHtml(r.pool_id)}</div>`
+    : '';
+  const newMemberSection = isPool ? `
+    <div class="field" style="margin-top:10px">
+      <label style="font-size:.78rem">New technique description (if this is a genuinely different technique, not a paraphrase of an existing member)</label>
+      <input type="text" class="fr-review-member-input" value="${_escapeHtml(r.construct)}">
+    </div>
+  ` : '';
 
   card.innerHTML = `
     <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${_escapeHtml(r.prompt_title)}</div>
+    ${poolBadge}
     <div style="font-weight:600;margin-bottom:6px">${_escapeHtml(r.construct)}</div>
     <div style="font-size:.85rem;color:var(--muted);margin-bottom:6px">Evidence:</div>
     ${spansHtml}
@@ -3541,8 +3594,10 @@ function renderFrReviewCard(r) {
       <label style="font-size:.78rem">Exemplar phrase to add (edit/generalize before promoting)</label>
       <input type="text" class="fr-review-exemplar-input" value="${_escapeHtml(suggestedExemplar)}">
     </div>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn btn-primary fr-review-promote">Promote</button>
+    ${newMemberSection}
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary fr-review-promote">${isPool ? 'Add as new exemplar' : 'Promote'}</button>
+      ${isPool ? '<button class="btn btn-primary fr-review-new-member">Add as new pool member</button>' : ''}
       <button class="btn btn-ghost fr-review-dismiss">Dismiss</button>
     </div>
     <div class="fr-review-note" style="font-size:.8rem;margin-top:6px"></div>
@@ -3556,7 +3611,7 @@ function renderFrReviewCard(r) {
     if (!exemplar) { note.textContent = 'Enter an exemplar phrase first.'; note.style.color = 'var(--red)'; return; }
     btn.disabled = true;
     try {
-      await api('/api/admin/novel-equivalents/promote', { review_id: r.id, exemplar });
+      await api('/api/admin/novel-equivalents/promote', { review_id: r.id, action: 'add_exemplar', exemplar });
       card.remove();
     } catch (err) {
       note.textContent = 'Promote failed: ' + err.message;
@@ -3564,6 +3619,27 @@ function renderFrReviewCard(r) {
       btn.disabled = false;
     }
   });
+
+  const newMemberBtn = card.querySelector('.fr-review-new-member');
+  if (newMemberBtn) {
+    newMemberBtn.addEventListener('click', async (e) => {
+      const btn = e.target;
+      const memberConstruct = card.querySelector('.fr-review-member-input').value.trim();
+      const exemplar = card.querySelector('.fr-review-exemplar-input').value.trim();
+      if (!memberConstruct) { note.textContent = 'Enter a description for the new technique first.'; note.style.color = 'var(--red)'; return; }
+      btn.disabled = true;
+      try {
+        await api('/api/admin/novel-equivalents/promote', {
+          review_id: r.id, action: 'new_member', member_construct: memberConstruct, exemplar,
+        });
+        card.remove();
+      } catch (err) {
+        note.textContent = 'Add as new member failed: ' + err.message;
+        note.style.color = 'var(--red)';
+        btn.disabled = false;
+      }
+    });
+  }
 
   card.querySelector('.fr-review-dismiss').addEventListener('click', async (e) => {
     const btn = e.target;
@@ -3631,6 +3707,7 @@ function showFrCreate() {
   $('fp-general-guidance').value  = '';
   $('fp-constraint-list').innerHTML = '';
   $('fp-keypoint-list').innerHTML   = '';
+  $('fp-pool-list').innerHTML       = '';
   $('fr-create-note').textContent   = '';
   hide('view-fr-prompts');
   show('view-fr-create');
@@ -3730,8 +3807,124 @@ function addFpKeyPointRow(kp) {
   list.appendChild(card);
 }
 
+// Pooled key points (choose_n_of_m brief, Part D). member: {construct, exemplars} --
+// no importance field (importance is pool-level only, set on the pool card).
+function addFpPoolMemberRow(list, member) {
+  member = member || {};
+  const card = document.createElement('div');
+  card.className = 'fp-pool-member-card';
+
+  const top = document.createElement('div');
+  top.className = 'fp-pool-member-card-top';
+
+  const input = document.createElement('input');
+  input.type        = 'text';
+  input.className   = 'fp-pm-construct';
+  input.placeholder = 'e.g. Names a technique for confirming understanding of what was said';
+  input.value        = member.construct || '';
+
+  const removeMember = document.createElement('button');
+  removeMember.className   = 'btn-remove';
+  removeMember.title       = 'Remove member';
+  removeMember.textContent = '×';
+  removeMember.addEventListener('click', () => card.remove());
+
+  top.appendChild(input);
+  top.appendChild(removeMember);
+  card.appendChild(top);
+
+  const exLabel = document.createElement('div');
+  exLabel.className  = 'fp-kp-exemplars-label';
+  exLabel.textContent = 'Exemplars (concrete, distinct ways to satisfy the construct)';
+  card.appendChild(exLabel);
+
+  const exemplarList = document.createElement('div');
+  exemplarList.className = 'fp-kp-exemplar-list';
+  card.appendChild(exemplarList);
+
+  const addExemplarBtn = document.createElement('button');
+  addExemplarBtn.className   = 'btn-add';
+  addExemplarBtn.textContent = '+ Add exemplar';
+  addExemplarBtn.addEventListener('click', (e) => { e.preventDefault(); addFpExemplarRow(exemplarList); });
+  card.appendChild(addExemplarBtn);
+
+  (member.exemplars && member.exemplars.length ? member.exemplars : ['']).forEach(ex => addFpExemplarRow(exemplarList, ex));
+
+  list.appendChild(card);
+}
+
+// pool: {pool_id, required_count, importance, members} -- pool_id is a human label here;
+// the server slugifies it into the stable pool_id on save (loaders.py migration), same
+// as how a standalone key point's construct text becomes its id.
+function addFpPoolRow(pool) {
+  pool = pool || {};
+  const list = $('fp-pool-list');
+  const card = document.createElement('div');
+  card.className = 'fp-pool-card';
+
+  const top = document.createElement('div');
+  top.className = 'fp-pool-card-top';
+
+  const label = document.createElement('input');
+  label.type        = 'text';
+  label.className   = 'fp-pool-label';
+  label.placeholder = 'Pool label, e.g. Listening techniques';
+  label.value        = pool.pool_id || '';
+
+  const required = document.createElement('input');
+  required.type        = 'number';
+  required.className   = 'fp-pool-required';
+  required.min          = '1';
+  required.placeholder = 'Required';
+  required.title       = 'How many members a response must match for full credit';
+  required.value        = pool.required_count || '';
+
+  const sel = document.createElement('select');
+  sel.className = 'fp-pool-importance';
+  sel.title     = 'Importance (applies to the whole pool)';
+  [['LOW','Low'],['MEDIUM','Medium'],['HIGH','High'],['CRITICAL','Critical']].forEach(([v, lbl]) => {
+    const opt = document.createElement('option');
+    opt.value       = v;
+    opt.textContent = lbl;
+    if ((pool.importance || 'MEDIUM') === v) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  const removePool = document.createElement('button');
+  removePool.className   = 'btn-remove';
+  removePool.title       = 'Remove pool';
+  removePool.textContent = '×';
+  removePool.addEventListener('click', () => card.remove());
+
+  top.appendChild(label);
+  top.appendChild(required);
+  top.appendChild(sel);
+  top.appendChild(removePool);
+  card.appendChild(top);
+
+  const memberLabel = document.createElement('div');
+  memberLabel.className  = 'fp-kp-exemplars-label';
+  memberLabel.textContent = 'Members';
+  card.appendChild(memberLabel);
+
+  const memberList = document.createElement('div');
+  memberList.className = 'fp-pool-member-list';
+  card.appendChild(memberList);
+
+  const addMemberBtn = document.createElement('button');
+  addMemberBtn.className   = 'btn-add';
+  addMemberBtn.textContent = '+ Add member';
+  addMemberBtn.addEventListener('click', (e) => { e.preventDefault(); addFpPoolMemberRow(memberList); });
+  card.appendChild(addMemberBtn);
+
+  (pool.members && pool.members.length ? pool.members : [{}, {}]).forEach(m => addFpPoolMemberRow(memberList, m));
+
+  list.appendChild(card);
+}
+
 $('btn-fp-add-constraint').addEventListener('click', () => addFpConstraintRow());
 $('btn-fp-add-keypoint').addEventListener('click',   () => addFpKeyPointRow());
+$('btn-fp-add-pool').addEventListener('click',       () => addFpPoolRow());
 
 $('btn-cancel-fr-create').addEventListener('click', () => {
   hide('view-fr-create');
@@ -3799,6 +3992,28 @@ $('btn-save-prompt').addEventListener('click', async () => {
     keyPoints.push({ construct, exemplars, importance });
   });
 
+  // Pooled key points (choose_n_of_m brief, Part D) -- pool_id here is the raw label
+  // text; the server slugifies it into a stable id on save (loaders.py migration).
+  const pools = [];
+  $('fp-pool-list').querySelectorAll('.fp-pool-card').forEach(card => {
+    const poolLabel = card.querySelector('.fp-pool-label').value.trim();
+    if (!poolLabel) return;
+    const requiredCount = parseInt(card.querySelector('.fp-pool-required').value) || 0;
+    const importance    = card.querySelector('.fp-pool-importance').value;
+    const members = [];
+    card.querySelectorAll('.fp-pool-member-card').forEach(mcard => {
+      const construct = mcard.querySelector('.fp-pm-construct').value.trim();
+      if (!construct) return;
+      const exemplars = [];
+      mcard.querySelectorAll('.fp-kp-exemplar-row input').forEach(input => {
+        if (input.value.trim()) exemplars.push(input.value.trim());
+      });
+      members.push({ construct, exemplars });
+    });
+    if (!members.length) return;
+    pools.push({ pool_id: poolLabel, required_count: requiredCount, importance, members });
+  });
+
   const constraints = [];
   $('fp-constraint-list').querySelectorAll('.dynamic-item input').forEach(input => {
     if (input.value.trim()) constraints.push(input.value.trim());
@@ -3819,6 +4034,7 @@ $('btn-save-prompt').addEventListener('click', async () => {
       constraints:       constraints,
       expert_answer:     answer,
       key_points:        keyPoints,
+      pools:             pools,
       general_guidance:  $('fp-general-guidance').value.trim(),
     });
 

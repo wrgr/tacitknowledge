@@ -138,6 +138,18 @@ def init_db():
         """.format(cols=", ".join(f"{f} TEXT NOT NULL DEFAULT ''"
                                   for f in ASSESSMENT_FIELDS)))
         c.execute("CREATE INDEX IF NOT EXISTS idx_assessments_user ON assessments(username)")
+
+        # Pooled key points (choose_n_of_m brief, Part B4): a novel-equivalent match on a
+        # pool member needs to know which pool it belongs to, so the review UI can offer
+        # "add as new exemplar" (existing behavior) vs. "add as a new pool member" (a
+        # genuinely different technique the author didn't anticipate at all). No formal
+        # migration framework here -- a guarded ADD COLUMN is the established idiom for
+        # widening an existing table without disturbing existing rows.
+        try:
+            c.execute("ALTER TABLE novel_equivalent_review ADD COLUMN pool_id TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
         c.commit()
 
 
@@ -300,15 +312,16 @@ def eval_cache_set(key: str, response: str):
 # ── Novel-equivalent review queue (FR construct/exemplar matching, Part C) ─────────────
 
 def log_novel_equivalent(prompt_id: str, key_point_id: str, construct: str,
-                         submission_excerpt: str, evidence_spans: list, justification: str):
+                         submission_excerpt: str, evidence_spans: list, justification: str,
+                         pool_id: str = None):
     init_db()
     with _conn() as c:
         c.execute(
             "INSERT INTO novel_equivalent_review "
             "(prompt_id, key_point_id, construct, submission_excerpt, evidence_spans, "
-            "justification, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'))",
+            "justification, pool_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))",
             (prompt_id, key_point_id, construct, submission_excerpt,
-             json.dumps(list(evidence_spans or [])), justification or ""),
+             json.dumps(list(evidence_spans or [])), justification or "", pool_id),
         )
         c.commit()
 

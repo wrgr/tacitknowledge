@@ -15,22 +15,43 @@
       "answer": "Active listening is the practice of fully concentrating on a speaker — not just hearing words, but understanding their meaning, emotion, and intent. Key techniques include maintaining eye contact and open body language to signal engagement, paraphrasing or summarising what the speaker said before responding to confirm understanding, and asking open-ended follow-up questions to deepen clarity. Avoiding interruptions and refraining from mentally planning your response while the other person is still speaking are equally important. In a workplace context, active listening reduces misunderstandings, builds trust between colleagues, and leads to better decision-making. Poor listening results in repeated errors, damaged working relationships, and reduced team morale.",
       "key_points": [
         "definition of active listening",
-        "eye contact or body language",
-        "paraphrasing or summarising",
-        "open-ended questions",
-        "avoiding interruptions",
         "workplace benefit",
         "consequence of poor listening"
       ],
       "rubric": {
         "definition of active listening": 3,
-        "eye contact or body language": 2,
-        "paraphrasing or summarising": 3,
-        "open-ended questions": 2,
-        "avoiding interruptions": 2,
         "workplace benefit": 2,
         "consequence of poor listening": 3
-      }
+      },
+      "pools": [
+        {
+          "pool_id": "listening_techniques",
+          "required_count": 2,
+          "importance": "HIGH",
+          "members": [
+            {
+              "id": "technique_engagement_signal",
+              "construct": "Names a technique for signaling engagement during listening",
+              "exemplars": ["eye contact", "open body language", "attentive posture", "nodding"]
+            },
+            {
+              "id": "technique_confirm_understanding",
+              "construct": "Names a technique for confirming understanding of what was said",
+              "exemplars": ["paraphrasing", "summarising what the speaker said"]
+            },
+            {
+              "id": "technique_open_questions",
+              "construct": "Names the use of open-ended follow-up questions",
+              "exemplars": ["asking open-ended questions", "follow-up questions"]
+            },
+            {
+              "id": "technique_avoid_interruption",
+              "construct": "Names avoiding interruption while the other person is speaking",
+              "exemplars": ["avoiding interruptions", "not interrupting"]
+            }
+          ]
+        }
+      ]
     }
   ],
   "metadata": {

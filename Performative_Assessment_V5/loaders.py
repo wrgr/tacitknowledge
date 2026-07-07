@@ -68,6 +68,75 @@ def _migrate_fr_key_points(ea):
         # silently skip malformed entries (neither str nor dict)
 
     ea["key_points"] = migrated
+
+    # Pooled key points (choose_n_of_m brief, Part A): a pool groups several key points
+    # where the FR prompt's own task instructions only ask for `required_count` of them
+    # (e.g. "describe at least two techniques"), rather than every member individually.
+    # Member ids share the SAME seen_ids/_unique_id namespace as standalone key points
+    # above, because scoring resolves a matched id through one flat lookup covering both
+    # -- a member id must never collide with a standalone key point's id.
+    raw_pools = ea.get("pools", [])
+    if not isinstance(raw_pools, list):
+        raw_pools = []
+    seen_pool_ids = set()
+
+    def _unique_pool_id(base):
+        candidate = base
+        n = 2
+        while candidate in seen_pool_ids:
+            candidate = f"{base}_{n}"
+            n += 1
+        seen_pool_ids.add(candidate)
+        return candidate
+
+    migrated_pools = []
+    for pool in raw_pools:
+        if not isinstance(pool, dict):
+            continue
+        importance = pool.get("importance")
+        if importance not in FR_IMPORTANCE_LEVELS:
+            importance = "MEDIUM"
+
+        members = []
+        for member in (pool.get("members") or []):
+            if not isinstance(member, dict):
+                continue
+            construct = member.get("construct", "")
+            if not construct:
+                continue
+            base_id = member.get("id") or _slugify(construct)
+            members.append({
+                "id":         _unique_id(base_id),
+                "construct":  construct,
+                "exemplars":  [e for e in (member.get("exemplars") or []) if isinstance(e, str) and e.strip()],
+            })
+        if not members:
+            # An empty pool can never be matched against and can't contribute to
+            # Coverage -- dropping it is equivalent to it never having been authored.
+            continue
+
+        # required_count is an authoring decision (Part A: "set to match the number
+        # stated in the FR prompt's own task instructions") -- no derivation from the
+        # instructions text and no validation that it matches (Part D, declined). A
+        # missing/invalid value falls back to "all members required", the pre-pool
+        # semantics, rather than guessing a smaller number.
+        required_count = pool.get("required_count")
+        try:
+            required_count = int(required_count)
+        except (TypeError, ValueError):
+            required_count = 0
+        if required_count < 1:
+            required_count = len(members)
+
+        migrated_pools.append({
+            "pool_id":        _unique_pool_id(_slugify(pool.get("pool_id") or "pool")),
+            "required_count": required_count,
+            "importance":     importance,
+            "members":        members,
+        })
+
+    ea["pools"] = migrated_pools
+
     # rubric is superseded by per-point importance for FR prompts -- drop it so nothing
     # downstream mistakes it for the still-active scenario-mode rubric format.
     ea.pop("rubric", None)
@@ -111,6 +180,8 @@ def load_prompt(path):
     for ea in data.get("expert_answers", []):
         if "key_points" not in ea:
             ea["key_points"] = []
+        if "pools" not in ea:
+            ea["pools"] = []
         _migrate_fr_key_points(ea)
 
     return data

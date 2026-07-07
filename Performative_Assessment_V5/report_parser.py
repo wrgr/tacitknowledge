@@ -40,6 +40,9 @@ def parse_report_md(content):
         result['evaluation'] = _parse_fr_evaluation(
             sections.get('Evaluation', [])
         )
+        result['evaluation']['pools'] = _parse_fr_pools(
+            sections.get('Pools', [])
+        )
         result['process_overlay'] = _parse_process_overlay(
             sections.get('Writing Process', [])
         )
@@ -254,6 +257,89 @@ def _parse_fr_evaluation(lines):
     _flush_point()
     ev['expert_answer'] = '\n'.join(expert_lines).strip()
     return ev
+
+
+_FR_POOL_LABEL   = re.compile(r'^\*\*(.+)\*\*$')
+_FR_POOL_SUMMARY = re.compile(
+    r'^Matched (\d+) of (\d+) — (\d+) required — (.+?) credit for this section\.$'
+)
+_FR_POOL_MISSED  = re.compile(r'^Not matched:\s*(.*)$')
+
+
+def _parse_fr_pools(lines):
+    """Pooled key points (choose_n_of_m brief, Part C): parse the '## Pools' section
+    back into structured data. Reuses the same _FR_KP_* bullet regexes as
+    _parse_fr_evaluation's flat key-points list, since reports._fr_match_bullet_lines
+    renders matched members identically in both places -- only the surrounding pool
+    label/summary/missed-list lines are new here.
+    """
+    pools = []
+    current = None
+    current_point = None
+
+    def _flush_point():
+        nonlocal current_point
+        if current_point is not None and current is not None:
+            current['matched_members'].append(current_point)
+            current_point = None
+
+    for line in lines:
+        stripped = line.strip()
+        label_m   = _FR_POOL_LABEL.match(stripped)
+        summary_m = _FR_POOL_SUMMARY.match(stripped)
+        missed_m  = _FR_POOL_MISSED.match(stripped)
+        bullet    = _FR_KP_BULLET.match(line)
+        span      = _FR_KP_SPAN.match(line)
+        just      = _FR_KP_JUST.match(line)
+        qual      = _FR_KP_QUALITY.match(line)
+
+        if label_m:
+            _flush_point()
+            current = {
+                'label':            label_m.group(1).strip(),
+                'matched_in_pool':  0,
+                'member_count':     0,
+                'required_count':   0,
+                'credit_label':     '',
+                'matched_members':  [],
+                'missed_members':   [],
+            }
+            pools.append(current)
+        elif summary_m and current is not None:
+            current['matched_in_pool'] = int(summary_m.group(1))
+            current['member_count']    = int(summary_m.group(2))
+            current['required_count']  = int(summary_m.group(3))
+            current['credit_label']    = summary_m.group(4).strip()
+        elif missed_m and current is not None:
+            _flush_point()
+            val = missed_m.group(1).strip()
+            current['missed_members'] = [p.strip() for p in val.split(',') if p.strip()]
+        elif bullet and current is not None:
+            _flush_point()
+            construct, tag = bullet.group(1).strip(), bullet.group(2).strip()
+            m_ex = _FR_KP_EXEMPLAR.match(tag)
+            if tag.startswith('novel equivalent'):
+                match_type, matched_exemplar = 'novel_equivalent', None
+            elif m_ex:
+                match_type, matched_exemplar = 'exemplar', m_ex.group(1)
+            else:
+                match_type, matched_exemplar = 'exemplar', None
+            current_point = {
+                'construct':                construct,
+                'match_type':               match_type,
+                'matched_exemplar':         matched_exemplar,
+                'evidence_spans':           [],
+                'functional_justification': None,
+                'quality_label':            '',
+            }
+        elif span and current_point is not None:
+            current_point['evidence_spans'].append(span.group(1))
+        elif just and current_point is not None:
+            current_point['functional_justification'] = just.group(1).strip()
+        elif qual and current_point is not None:
+            current_point['quality_label'] = qual.group(1).strip()
+    _flush_point()
+    return pools
 
 
 def _parse_process_overlay(lines):

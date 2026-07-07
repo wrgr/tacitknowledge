@@ -109,7 +109,11 @@ def compute_effort_profile(process_log, writing_metrics, essay_text):
     total_active_s = writing_metrics.get("total_time_s")
     if total_active_s is None:
         snapshots = process_log.get("snapshots") or []
-        total_active_s = snapshots[-1]["timestamp_s"] if snapshots else 0.0
+        snapshot_times = [
+            s.get("timestamp_s") for s in snapshots
+            if isinstance(s, dict) and isinstance(s.get("timestamp_s"), (int, float))
+        ]
+        total_active_s = max(snapshot_times) if snapshot_times else 0.0
     total_active_s = total_active_s or 0.0
 
     pause_time_s = sum(p.get("duration_s", 0) for p in pauses)

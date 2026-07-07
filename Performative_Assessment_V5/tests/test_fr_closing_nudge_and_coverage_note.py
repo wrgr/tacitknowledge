@@ -10,6 +10,7 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 import reports
+import report_parser
 
 
 class CoverageCalibrationNoteTests(unittest.TestCase):
@@ -42,6 +43,16 @@ class CoverageCalibrationNoteTests(unittest.TestCase):
         # The note itself must not claim a missed point proves absent knowledge.
         self.assertIn("not conclusive evidence of a gap", reports._FR_COVERAGE_CALIBRATION_NOTE)
 
+    def test_fallback_summary_never_renders_missing_coverage_as_none(self):
+        evaluation = {
+            "text": "My answer.", "score": 0.5, "feedback": "", "strengths": [], "gaps": [],
+            "matched_points": [], "missed_points": ["key idea"],
+        }
+        text = self._generate(evaluation)
+
+        self.assertIn("Coverage: 50%.", text)
+        self.assertNotIn("Coverage: None", text)
+
 
 class ClosingNudgeReportRenderingTests(unittest.TestCase):
     """fr_recall_omission_fix brief, Part B5: closing_nudge_used is report-facing context,
@@ -64,6 +75,24 @@ class ClosingNudgeReportRenderingTests(unittest.TestCase):
         reports._append_process_overlay(lines, {"quadrant": {}})
         joined = "\n".join(lines)
         self.assertNotIn("Closing nudge used", joined)
+
+    def test_generated_report_parser_round_trips_closing_nudge_signal(self):
+        prompt_data = {"id": "p1", "title": "Explain the concept", "prompt_text": "Explain it."}
+        evaluation = {
+            "text": "My answer.", "score": 0.5, "feedback": "", "strengths": [], "gaps": [],
+            "matched_points": [], "missed_points": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(reports, "llm_chat", side_effect=RuntimeError("no network in tests")):
+                path = reports.generate_fr_report(
+                    prompt_data, evaluation, model="test-model", api_key=None,
+                    base_url="http://example.invalid", output_dir=tmp,
+                    process_overlay={"closing_nudge_used": True},
+                )
+            parsed = report_parser.parse_report_md(path.read_text(encoding="utf-8"))
+
+        self.assertTrue(parsed["process_overlay"]["closing_nudge_used"])
+        self.assertIn("Yes", parsed["process_overlay"]["closing_nudge_text"])
 
 
 class EvidenceModelDocTests(unittest.TestCase):

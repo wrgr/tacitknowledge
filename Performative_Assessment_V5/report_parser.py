@@ -360,6 +360,8 @@ def _parse_process_overlay(lines):
         'confidence_calibration_text': '',
         'confidence_calibration_note': '',
         'confidence_calibration_alternative': '',
+        'closing_nudge_used': None,
+        'closing_nudge_text': '',
         'caution': '',
     }
     state = None
@@ -384,6 +386,11 @@ def _parse_process_overlay(lines):
         elif stripped.startswith('**Confidence calibration:**'):
             overlay['confidence_calibration_text'] = stripped.split('**Confidence calibration:**', 1)[1].strip()
             state = 'confidence'
+        elif stripped.startswith('**Closing nudge used:**'):
+            text = stripped.split('**Closing nudge used:**', 1)[1].strip()
+            overlay['closing_nudge_text'] = text
+            overlay['closing_nudge_used'] = text.lower().startswith('yes')
+            state = None
         elif alt_match and state == 'quadrant':
             overlay['quadrant_alternative'] = alt_match.group(1)
         elif alt_match and state == 'revision':

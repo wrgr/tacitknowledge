@@ -64,6 +64,22 @@ class WritingProcessCalibrationTests(unittest.TestCase):
         self.assertGreater(authenticity["pasted_fraction"], 0.4)
         self.assertTrue(authenticity["alternative_interpretations"])
 
+    def test_effort_profile_tolerates_snapshots_without_timestamps(self):
+        process_log = {
+            "snapshots": [
+                {"text": "draft without timestamp"},
+                {"timestamp_s": 42, "text": "timestamped draft"},
+                {"timestamp_s": None, "text": "bad timestamp"},
+            ],
+            "pause_events": [],
+            "revision_events": [],
+        }
+
+        effort = wp.compute_effort_profile(process_log, {}, "final text")
+
+        self.assertEqual(effort["total_active_time_s"], 42)
+        self.assertEqual(effort["pause_to_writing_ratio"], 0.0)
+
     def test_confidence_drop_creates_confidence_collapse_signal(self):
         calibration = wp.compute_confidence_calibration(8, 5)
 

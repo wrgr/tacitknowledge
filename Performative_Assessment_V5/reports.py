@@ -617,8 +617,12 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
     def _fallback():
         matched_labels = [m.get("construct", "") if isinstance(m, dict) else m for m in ev.get("matched_points", [])]
         missed_labels  = [m.get("construct", "") if isinstance(m, dict) else m for m in ev.get("missed_points", [])]
+        coverage_score = ev.get("coverage_score", ev.get("score"))
+        quality_score  = ev.get("quality_score")
+        coverage_pct   = f"{coverage_score:.0%}" if isinstance(coverage_score, (int, float)) else score_pct
+        quality_pct    = f"{quality_score:.0%}" if isinstance(quality_score, (int, float)) else None
         return _instructor_summary_fallback(
-            score_pct, ev.get("coverage_score"), ev.get("quality_score"),
+            score_pct, coverage_pct, quality_pct,
             matched_labels, missed_labels,
         )
 

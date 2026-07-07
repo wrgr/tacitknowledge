@@ -29,6 +29,6 @@ from runner import (
     FALLBACK_PROBE,
 )
 from session import Session
-from thinking import analyse_thinking_profile
+from thinking import analyse_thinking_profile, derive_fr_solo_level
 from writing_process import analyze_writing_process, compute_confidence_calibration
 from reports import generate_report, generate_fr_report

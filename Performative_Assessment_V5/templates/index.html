@@ -2663,6 +2663,22 @@ function renderProfile(p) {
   $('profile-content').innerHTML = _buildProfileHTML(p);
 }
 
+// FR thinking-profile fix: FR gets its own render function rather than reusing
+// _buildProfileHTML above, which stays scenario-mode-only and unchanged. FR's
+// profile is a single deterministic SOLO level (no LLM call) -- no Honey & Mumford
+// (dropped entirely) and no invented confidence tag (the actual inputs -- matched
+// point count and mean quality -- are shown instead).
+function _buildFrProfileHTML(p) {
+  return `<div class="profile-frameworks">
+    <div class="profile-card">
+      <div class="profile-card-label">SOLO Level</div>
+      <div class="profile-card-value">${p.solo_level || '—'}</div>
+      <div class="profile-card-evidence">Inputs: ${p.matched_count ?? 0} matched point(s), mean quality ${p.mean_quality ?? 0}/2 — see Key Points Covered above for the underlying evidence.</div>
+      <div class="profile-card-reasoning">Deterministic reading of the Coverage/Quality data already scored above, not a separate judgment. Does not detect Extended Abstract (generalising beyond the given task).</div>
+    </div>
+  </div>`;
+}
+
 // ── End recall (I'm Done button) ───────────────
 async function endRecall() {
   if (S.busy || S.phase !== 'recall') return;
@@ -3283,7 +3299,7 @@ async function fetchFrThinkingProfile() {
 }
 
 function renderFrProfile(p) {
-  $('fr-profile-content').innerHTML = _buildProfileHTML(p);
+  $('fr-profile-content').innerHTML = _buildFrProfileHTML(p);
 }
 
 $('btn-fr-report').addEventListener('click', async () => {

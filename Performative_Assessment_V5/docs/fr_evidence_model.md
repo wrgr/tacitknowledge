@@ -22,12 +22,24 @@ number in a debug/instructor-only view.
 | Frictionless/fast completion, low revision, strong product (`quadrant`: authenticity_review / disengaged_shallow_confident) | — no single confident claim — | N/A by design | Could be genuine fluent competence, prior preparation, or unflagged reuse; cannot be distinguished from process data alone |
 | Confidence rating collapse, pre-write vs. post-write (`confidence_calibration`) | The writer's forced explanation exposed a gap between perceived and actual understanding | Moderate-high; this is the most directly validated mechanism in the whole system (Rozenblit & Keil, 2002) | A learner who is simply a harsh self-rater in general, not specifically because of a gap this task exposed |
 | Coverage Score — key points addressed in unaided single-pass writing (`score`) | The learner demonstrated this knowledge spontaneously, without prompting | Moderate — grounded by evidence-span verification, but recall-limited by design | Absence of a key point may reflect production/recall failure under single-pass, unaided conditions rather than absent knowledge — the same omission phenomenon (unprompted recall systematically underrepresents true knowledge) that justifies the scenario mode's probing architecture applies here, uncorrected, since FR has no probing phase |
+| SOLO level (derived from Coverage/Quality) | Structural complexity of the response — how many required constructs were addressed and how well-integrated the reasoning around them was | As strong as the underlying Coverage/Quality grounding it's derived from (no new evidence introduced) | A Multistructural label may reflect a deliberate stylistic choice (breadth over depth) rather than an inability to integrate reasoning; this method cannot detect Extended-Abstract-level generalization beyond the given task, and never claims to |
 
-This last row was added after the fact — Coverage Score had been treated as the
-ground-truth measure everything else in this table gets checked against, rather than a
-signal needing its own audit. It gets no exemption from the rule above: a missed key
-point is evidence of non-production under single-pass conditions, not proof of absent
+The Coverage Score row above was added after the fact — Coverage Score had been treated
+as the ground-truth measure everything else in this table gets checked against, rather
+than a signal needing its own audit. It gets no exemption from the rule above: a missed
+key point is evidence of non-production under single-pass conditions, not proof of absent
 knowledge.
+
+FR previously rendered a Honey & Mumford (Activist/Reflector/Theorist/Pragmatist)
+learning-style classification with no row in this table — a violation of the rule
+above, and the reason it was removed rather than given one after the fact. Honey &
+Mumford has weak validity even in its own validated (80-item self-report) instrument
+(Coffield et al., 2004), and was being inferred here from a single short paragraph plus
+a few keystroke metrics, a much thinner basis than the original instrument. Pashler,
+McDaniel, Rohrer & Bjork (2008) additionally found no credible evidence that acting on a
+learning-style label improves outcomes. It does not appear in this table because it does
+not exist in FR at all, not because it was overlooked. Scenario mode still computes and
+renders it (`thinking.analyse_thinking_profile`), unaffected — this table covers FR only.
 
 ## Language audit
 

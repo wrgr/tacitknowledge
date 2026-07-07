@@ -23,7 +23,6 @@ import io
 import json
 import re
 import secrets
-import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -183,46 +182,20 @@ def _get_state(data):
     return st, None
 
 
-_fr_profile_lock = threading.Lock()
-
-
 def _compute_fr_thinking_profile(st):
-    """Compute the FR thinking profile exactly once per session.
+    """Compute (once) and cache the FR thinking profile for this session.
 
-    Both /api/fr/thinking-profile (fired asynchronously right after submit)
-    and /api/fr/report (fired when the user clicks Generate Report) need the
-    profile. Without coordination, a quick Generate Report click recomputes
-    it while the async call is still in flight — two identical LLM calls.
-    A per-session event makes the second caller wait for the first instead.
+    As of the FR thinking-profile fix, this is a deterministic SOLO-level derivation
+    from already-computed Coverage/Quality data (see thinking.derive_fr_solo_level) --
+    no LLM call, no Honey & Mumford, no probe_phase_improvement (FR has no probe
+    phase). Both /api/fr/thinking-profile (fired asynchronously right after submit)
+    and /api/fr/report (fired when the user clicks Generate Report) need the profile;
+    since this is now cheap and instant rather than an LLM call, simple memoization is
+    enough -- no cross-request locking is needed to avoid a duplicate expensive call.
     """
-    if st.get("profile") is not None:
-        return st["profile"]
-    if not engine.llm_is_available(st["api_key"]):
-        return None
-
-    with _fr_profile_lock:
-        event = st.get("_profile_event")
-        is_owner = event is None
-        if is_owner:
-            event = st["_profile_event"] = threading.Event()
-
-    if not is_owner:
-        event.wait(timeout=180)          # LLM call timeout is 120 s
-        return st.get("profile")
-
-    try:
-        st["profile"] = engine.analyse_thinking_profile(
-            st["prompt"], st["evaluation"]["text"],
-            model=st["model"], api_key=st["api_key"], base_url=st["base_url"],
-            writing_metrics=[st.get("writing_metrics")] if st.get("writing_metrics") else None,
-            user_inputs=[st["evaluation"]["text"]],
-        )
-        return st["profile"]
-    finally:
-        event.set()
-        if st.get("profile") is None:    # failed — let a later call retry
-            with _fr_profile_lock:
-                st.pop("_profile_event", None)
+    if st.get("profile") is None:
+        st["profile"] = engine.derive_fr_solo_level(st["evaluation"])
+    return st["profile"]
 
 
 # Parsed-report cache keyed by file mtime. Report files are immutable once
@@ -1724,11 +1697,12 @@ def api_fr_report():
 
     user_reports_dir = REPORTS_BASE / session["user_id"]
 
-    # The thinking profile and the writing-process overlay are independent LLM
-    # analyses (one reads the submission text, the other the process log), so
-    # run them concurrently — report generation waits on the slower of the two
-    # instead of their sum. The profile task reuses the once-only helper, so a
-    # still-running async /api/fr/thinking-profile call is awaited, not redone.
+    # The thinking profile is now a cheap deterministic derivation (no LLM call), but
+    # the writing-process overlay is still an independent LLM analysis of the process
+    # log, so both are still submitted together -- report generation waits on the
+    # overlay rather than the sum of the two. The profile task reuses the once-only
+    # helper, so a still-running async /api/fr/thinking-profile call is awaited, not
+    # redone.
     process_overlay = st.get("process_overlay")
     process_log = (st.get("writing_metrics") or {}).get("process_log")
     need_overlay = (process_overlay is None

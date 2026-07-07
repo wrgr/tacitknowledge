@@ -1,10 +1,15 @@
 """
 thinking.py — Honey & Mumford / SOLO taxonomy analysis of learner responses.
 
-Now uses separate recall and probe transcripts to detect probe_phase_improvement:
-whether the learner demonstrated notably richer or more specific knowledge under
-structured probing than in free recall — a meaningful signal of whether depth
-exists but wasn't spontaneously surfaced.
+analyse_thinking_profile() below is scenario mode's holistic LLM classifier: Honey &
+Mumford style, LLM-judged SOLO level, and probe_phase_improvement (whether the learner
+demonstrated notably richer or more specific knowledge under structured probing than in
+free recall). It is scenario-mode-only -- FR does not have a probe phase, and per the
+FR thinking-profile fix, does not use this function at all.
+
+derive_fr_solo_level() below is FR's replacement: a deterministic, LLM-free SOLO
+derivation from data the FR scoring pipeline already computed. See its docstring for
+why FR dropped Honey & Mumford and the LLM SOLO judgment entirely.
 """
 
 import re
@@ -247,3 +252,63 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
             result[field] = _strip_md(result[field])
 
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FR SOLO LEVEL — deterministic derivation (no LLM call)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# FR thinking-profile fix: for FR specifically, Honey & Mumford and the holistic
+# LLM-judged SOLO level above are dropped in favour of this function. H&M has weak
+# validity even in its own validated instrument (Coffield et al., 2004) and is being
+# inferred here from a much thinner basis; the LLM SOLO judgment duplicates, and can
+# silently contradict, what Explanation Quality already measures via Chi's
+# conditional/goal-linked/consequence-aware markers, with no evidence-span grounding
+# or reconciliation against the Quality score it substantially overlaps with.
+#
+# This function replaces both for FR only, reading data the FR scoring pipeline has
+# already computed and already grounded -- matched_points (standalone key points and
+# credited pool members alike), each carrying a 0/1/2 quality_rating. Scenario mode
+# continues to call analyse_thinking_profile() above, completely unchanged.
+#
+# SOLO's top level, Extended Abstract (generalising beyond the given task into new,
+# hypothetical, or self-generated territory), is categorically outside what
+# Coverage/Quality can capture -- both are scoped strictly to whether the *authored*
+# key points were addressed within the *given* task. This function must never return
+# "Extended Abstract"; that is a known, accepted scope limitation, not an oversight,
+# and no LLM call is added to try to detect it either (that would reintroduce the
+# exact ungrounded-holistic-judgment problem this function exists to remove).
+
+# TUNABLE -- mean-quality cut point (0-2 scale) separating Multistructural from
+# Relational; adjust after reviewing real FR submissions.
+SOLO_RELATIONAL_QUALITY_THRESHOLD = 1.0
+
+
+def derive_fr_solo_level(evaluation):
+    """Deterministically derive a SOLO level for an FR evaluation.
+
+    Returns matched_count and mean_quality alongside the level -- the actual inputs
+    the rule used -- rather than an invented LLM-style confidence rating, since a
+    deterministic rule over already-verified inputs doesn't need one.
+    """
+    matched = [m for m in (evaluation.get("matched_points") or []) if isinstance(m, dict)]
+    matched_count = len(matched)
+    mean_quality = (
+        sum(m.get("quality_rating", 0) for m in matched) / matched_count
+        if matched_count else 0.0
+    )
+
+    if matched_count == 0:
+        level = "Prestructural"
+    elif matched_count == 1:
+        level = "Unistructural"
+    elif mean_quality >= SOLO_RELATIONAL_QUALITY_THRESHOLD:
+        level = "Relational"
+    else:
+        level = "Multistructural"
+
+    return {
+        "solo_level":    level,
+        "matched_count": matched_count,
+        "mean_quality":  round(mean_quality, 2),
+    }

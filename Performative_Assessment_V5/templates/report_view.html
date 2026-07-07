@@ -899,6 +899,10 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
           {% if solo.confidence %}
           <span class="conf-badge {{ solo.confidence }}">{{ solo.confidence }} confidence</span>
           {% endif %}
+          {% if solo.matched_count is defined %}
+          {# FR: deterministic derivation -- show the actual inputs, not an invented confidence tag #}
+          <div class="profile-note">Inputs: {{ solo.matched_count }} matched point(s), mean quality {{ solo.mean_quality }}/2</div>
+          {% endif %}
           {% if solo.evidence %}
           <ul class="evidence-list">
             {% for e in solo.evidence %}<li>{{ e }}</li>{% endfor %}

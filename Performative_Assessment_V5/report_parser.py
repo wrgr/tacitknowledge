@@ -456,6 +456,11 @@ def _parse_instructor_summary(lines):
     return summary
 
 
+_FR_SOLO_INPUTS = re.compile(
+    r'^\s+-\s+_matched_count:\s*(\d+),\s*mean_quality:\s*([\d.]+)_\s*$'
+)
+
+
 def _parse_thinking_profile(lines):
     if not any(line.strip() for line in lines):
         return None
@@ -521,9 +526,13 @@ def _parse_thinking_profile(lines):
                 state = None
         elif state == 'solo':
             m_ev = re.match(r'^\s+-\s+_"(.+)"_', line)
+            m_in = _FR_SOLO_INPUTS.match(line)
             m_rs = re.match(r'^\s+>\s+(.*)', line)
             if m_ev:
                 solo['evidence'].append(m_ev.group(1))
+            elif m_in:
+                solo['matched_count'] = int(m_in.group(1))
+                solo['mean_quality']  = float(m_in.group(2))
             elif m_rs:
                 solo['reasoning'] = m_rs.group(1)
         elif in_patterns:

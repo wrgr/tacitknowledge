@@ -98,6 +98,37 @@ def _append_thinking_profile(lines, thinking_profile):
         lines.append("")
 
 
+# FR thinking-profile fix: FR's Learner Thinking Profile section is a single
+# deterministic SOLO level (thinking.derive_fr_solo_level) -- no Honey & Mumford
+# (weak validity even in its own validated instrument, inferred here from a much
+# thinner basis -- see the brief), no probe_phase_improvement (FR has no probe
+# phase), and no invented LLM-style confidence tag (the actual inputs are shown
+# instead). Scenario mode keeps the original holistic LLM classification above,
+# rendered by _append_thinking_profile(), completely unchanged.
+_FR_SOLO_SCOPE_NOTE = (
+    "Derived from the Coverage/Quality data above (see Key points covered) -- a "
+    "reading of already-graded evidence, not a new judgment. Does not detect "
+    "Extended Abstract (generalising beyond the given task); see "
+    "docs/fr_evidence_model.md."
+)
+
+
+def _append_fr_solo(lines, thinking_profile):
+    solo_level = thinking_profile.get("solo_level", "")
+    if not solo_level:
+        return
+
+    lines.append("## Learner Thinking Profile")
+    lines.append("")
+    lines.append("**SOLO level:** " + solo_level)
+    lines.append(
+        "  - _matched_count: " + str(thinking_profile.get("matched_count", 0)) + ", "
+        "mean_quality: " + str(thinking_profile.get("mean_quality", 0)) + "_"
+    )
+    lines.append("  > " + _FR_SOLO_SCOPE_NOTE)
+    lines.append("")
+
+
 def _append_scores(lines, ev):
     """Write Coverage, Quality, and Overall score sections."""
     coverage_pct = f"{ev.get('coverage_score', ev.get('score', 0)):.0%}"
@@ -722,7 +753,7 @@ def generate_fr_report(prompt_data, evaluation, model, api_key, base_url, output
         _append_process_overlay(lines, process_overlay)
 
     if thinking_profile:
-        _append_thinking_profile(lines, thinking_profile)
+        _append_fr_solo(lines, thinking_profile)
 
     lines.append("---")
     lines.append("")

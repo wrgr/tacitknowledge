@@ -39,6 +39,21 @@ class CoverageCalibrationNoteTests(unittest.TestCase):
         score_idx = next(i for i in range(eval_idx, len(lines)) if lines[i].startswith("**Score:**"))
         self.assertIn(reports._FR_COVERAGE_CALIBRATION_NOTE, lines[score_idx + 1])
 
+    def test_calibration_note_round_trips_through_report_parser(self):
+        evaluation = {
+            "text": "My answer.", "score": 0.5, "feedback": "", "strengths": [], "gaps": [],
+            "matched_points": [], "missed_points": [],
+        }
+        text = self._generate(evaluation)
+        parsed = report_parser.parse_report_md(text)
+
+        self.assertEqual(parsed["evaluation"]["coverage_note"], reports._FR_COVERAGE_CALIBRATION_NOTE)
+
+    def test_report_viewers_render_parsed_coverage_note(self):
+        for template_name in ("report_view.html", "student_report.html"):
+            template = (APP_DIR / "templates" / template_name).read_text(encoding="utf-8")
+            self.assertIn("ev.coverage_note", template)
+
     def test_calibration_note_licenses_no_more_certainty_than_a_missed_point_warrants(self):
         # The note itself must not claim a missed point proves absent knowledge.
         self.assertIn("not conclusive evidence of a gap", reports._FR_COVERAGE_CALIBRATION_NOTE)
@@ -93,6 +108,12 @@ class ClosingNudgeReportRenderingTests(unittest.TestCase):
 
         self.assertTrue(parsed["process_overlay"]["closing_nudge_used"])
         self.assertIn("Yes", parsed["process_overlay"]["closing_nudge_text"])
+
+    def test_report_viewers_render_parsed_closing_nudge_text(self):
+        for template_name in ("report_view.html", "student_report.html"):
+            template = (APP_DIR / "templates" / template_name).read_text(encoding="utf-8")
+            self.assertIn("Closing nudge", template)
+            self.assertIn("po.closing_nudge_text", template)
 
 
 class EvidenceModelDocTests(unittest.TestCase):

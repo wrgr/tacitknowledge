@@ -156,6 +156,7 @@ def _parse_fr_evaluation(lines):
     """
     ev = {
         'score': '',
+        'coverage_note': '',
         'feedback': '',
         'strengths': [],
         'gaps': [],
@@ -180,6 +181,9 @@ def _parse_fr_evaluation(lines):
         if stripped.startswith('**Score:**'):
             _flush_point()
             ev['score'] = stripped.split('**Score:**')[1].strip()
+            state = None
+        elif ev['score'] and not ev['coverage_note'] and stripped.startswith('_') and 'Coverage reflects' in stripped:
+            ev['coverage_note'] = stripped.strip('_')
             state = None
         elif stripped.startswith('**Feedback for learner:**'):
             _flush_point()

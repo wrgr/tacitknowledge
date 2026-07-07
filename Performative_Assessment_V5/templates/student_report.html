@@ -465,6 +465,10 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
         <div class="feedback-text">{{ ev.feedback }}</div>
         {% endif %}
 
+        {% if ev.coverage_note %}
+        <div class="profile-note">{{ ev.coverage_note }}</div>
+        {% endif %}
+
         <div class="sg-grid">
           <div class="sg-box strengths">
             <div class="sg-label">Strengths</div>
@@ -607,6 +611,13 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
           {% if po.confidence_calibration_alternative %}
           <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.confidence_calibration_alternative }}</div>
           {% endif %}
+        </div>
+        {% endif %}
+
+        {% if po.closing_nudge_text %}
+        <div class="patterns-section">
+          <div class="summary-section-label">Closing nudge</div>
+          <p style="font-size:.87rem;line-height:1.6;color:var(--text)">{{ po.closing_nudge_text }}</p>
         </div>
         {% endif %}
 

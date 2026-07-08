@@ -724,6 +724,7 @@ async function startScenario(index, title) {
   S.sessionId = data.session_id;
   S.phase = data.phase || 'recall';
   S.debugExpertAnswer = data.debug_expert_answer || '';
+  S.debugKeyPoints = data.debug_key_points || [];
   updateMeta();
 
   hide('view-scenarios');
@@ -742,7 +743,7 @@ async function startScenario(index, title) {
     const testCasesList    = $('test-cases-list');
     if (testCasesWrapper && testCasesList) {
       testCasesList.innerHTML = '';
-      const keyPoints = data.debug_key_points || [];
+      const keyPoints = S.debugKeyPoints;
       keyPoints.forEach(kp => {
         const li = document.createElement('li');
         li.style.cssText = 'padding:4px 2px;border-bottom:1px solid rgba(245,158,11,.15)';

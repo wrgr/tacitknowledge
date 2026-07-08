@@ -33,6 +33,27 @@ $('test-cases-toggle').addEventListener('click', (e) => {
 });
 document.addEventListener('click', () => { $('test-cases-menu').style.display = 'none'; });
 
+// Recall text for 'poor' and 'alright' is generated from the current scenario's
+// own key points (S.debugKeyPoints, populated from debug_key_points in /api/start)
+// rather than hardcoded per-scenario, so Auto-run adapts to any scenario JSON that
+// follows the expert_answers[].key_points structure (e.g. Changing Tire, CPR) — not
+// just the one it was originally written against.
+function buildKeyPointRecall(mode) {
+  const points = (S.debugKeyPoints || []).map(kp => kp.point).filter(Boolean);
+  if (!points.length) return null;
+
+  if (mode === 'poor') {
+    const mentioned = points.slice(0, Math.max(1, Math.ceil(points.length * 0.25)));
+    return `I would try to ${mentioned.join(' and ')}. Then I would just do whatever seems right ` +
+           'at the time and hope for the best.';
+  }
+  if (mode === 'alright') {
+    return `I would make sure to ${points.join(', ')}. ` +
+           "I'd try to do each part carefully and in a reasonable order, though I might not get every detail exactly right.";
+  }
+  return null;
+}
+
 const AUTO_RUN_RESPONSES = {
   gibberish: {
     recall: 'The purple elephant carefully rotates seventeen times before the kitchen sink downloads a bicycle. ' +
@@ -42,17 +63,13 @@ const AUTO_RUN_RESPONSES = {
             'on various factors which I have already considered at this point in time.',
   },
   poor: {
-    recall: 'I would pull over and stop the car. Then I would get the spare tyre out and put it on. ' +
-            'After that I would drive away carefully and hope for the best.',
+    recall: null,   // filled at runtime from the scenario's own key points
     probe:  "I'm not really sure about that specific part. I would just do what seems right at the time.",
   },
   alright: {
-    recall: 'I would put on the hazard lights and pull onto the hard shoulder. Apply the handbrake. ' +
-            'Get the spare tyre and jack from the boot. Jack up the car on a solid point, remove the flat, ' +
-            'fit the spare and tighten the wheel nuts. Lower the car and drive off, ' +
-            'making sure to check the tyre pressure when I can.',
+    recall: null,   // filled at runtime from the scenario's own key points
     probe:  'I would do that step carefully to make sure everything is safe and secure. ' +
-            'It is important to follow the correct order so the car stays stable throughout.',
+            'It is important to follow the correct order so the outcome remains safe and correct throughout.',
   },
   ace: {
     recall: null,   // filled at runtime from S.debugExpertAnswer
@@ -66,7 +83,7 @@ async function autoRunScenario(mode) {
   if (S.busy || S.phase !== 'recall' || !S.debugExpertAnswer) return;
 
   const responses = AUTO_RUN_RESPONSES[mode] || AUTO_RUN_RESPONSES.ace;
-  const recallText = responses.recall || S.debugExpertAnswer;
+  const recallText = responses.recall || buildKeyPointRecall(mode) || S.debugExpertAnswer;
   const probeText  = responses.probe;
 
   $('autorun-wrapper').style.display = 'none';

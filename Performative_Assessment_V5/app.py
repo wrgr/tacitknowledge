@@ -1124,6 +1124,13 @@ def api_start():
     }
     if session.get("role") == "admin" and scenario.get("expert_answers"):
         result["debug_expert_answer"] = scenario["expert_answers"][0].get("answer", "")
+        # TESTING PURPOSES ONLY: surface every expert answer's key points so admins
+        # can reference them in the "TEST CASES" dropdown while manually testing.
+        result["debug_key_points"] = [
+            {"point": kp, "weight": ea.get("rubric", {}).get(kp)}
+            for ea in scenario["expert_answers"]
+            for kp in ea.get("key_points", [])
+        ]
     return jsonify(result)
 
 

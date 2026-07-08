@@ -733,6 +733,20 @@ async function startScenario(index, title) {
   if (IS_ADMIN) {
     const wrapper = $('autorun-wrapper');
     wrapper.style.display = S.debugExpertAnswer ? 'inline-block' : 'none';
+
+    // TESTING PURPOSES ONLY: populate the admin "TEST CASES" dropdown with this
+    // scenario's expert key points so testers have a quick scoring reference.
+    const testCases = $('test-cases-dropdown');
+    if (testCases) {
+      testCases.innerHTML = '<option value="">TEST CASES</option>';
+      const keyPoints = data.debug_key_points || [];
+      keyPoints.forEach(kp => {
+        const opt = document.createElement('option');
+        opt.textContent = kp.weight != null ? `${kp.point} (${kp.weight})` : kp.point;
+        testCases.appendChild(opt);
+      });
+      testCases.style.display = keyPoints.length ? '' : 'none';
+    }
   }
   addBubble('examiner', data.opening);
   WritingTracker.reset();

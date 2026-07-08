@@ -1270,7 +1270,15 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
 <div id="view-assess" class="view hidden">
   <div id="assess-header">
     <span id="assess-title"></span>
-    <span id="assess-meta"></span>
+    <div style="display:flex;align-items:center;gap:12px">
+      {% if is_admin %}
+      <!-- TESTING PURPOSES ONLY: admin-only reference dropdown listing this scenario's expert key points, to aid manual testing -->
+      <select id="test-cases-dropdown" title="Reference: expert key points for this scenario (admin testing aid)" style="font-size:.75rem;max-width:220px;border:1px solid #f59e0b;color:#f59e0b;background:transparent;border-radius:6px;padding:3px 6px">
+        <option value="">TEST CASES</option>
+      </select>
+      {% endif %}
+      <span id="assess-meta"></span>
+    </div>
   </div>
   <div id="probing-banner" class="hidden" style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:8px 20px;font-size:.82rem;color:#1d4ed8;display:flex;align-items:center;gap:8px;flex-shrink:0">
     <span style="font-weight:700">Probing Phase</span>

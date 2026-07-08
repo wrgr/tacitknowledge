@@ -92,6 +92,18 @@ class ScenarioFixtureShapeTests(unittest.TestCase):
         for key in ("decision_points", "failure_modes", "edge_cases", "scoring_weights"):
             self.assertNotIn(key, s)
 
+    def test_cpr_aed_response_has_full_authored_context_above_the_queue_cap(self):
+        # Unlike Changing_Tire.json (exactly 6 probes -- one per type, so it can
+        # never be truncated now that MAX_PROBE_QUEUE_SIZE is 6), this fixture
+        # authors 11 probes (2 how/rationale/decision/error/edge_case + 1
+        # sequencing) specifically so a real authored bank exercises truncation
+        # and the error/edge_case single-instance caps colliding with real
+        # duplicate-type candidates, not just synthetic dicts.
+        s = _load_scenario("cpr_aed_response.json")
+        for key in ("id", "probe_bank", "decision_points", "failure_modes", "edge_cases", "scoring_weights"):
+            self.assertIn(key, s)
+        self.assertGreater(len(s["probe_bank"]), runner.MAX_PROBE_QUEUE_SIZE)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Part B: probe queue builder
@@ -352,6 +364,81 @@ class ProbeQueueAboveCapPriorityAndTypeCapTests(unittest.TestCase):
         self.assertEqual(types.count("rationale"), 2)
         selected_texts = {c["probe_text"] for c in queue}
         self.assertEqual(selected_texts, {"how?", "d?", "e1?", "x1?", "r1?", "r2?"})
+
+
+class RealFixtureAboveCapProbeQueueTests(unittest.TestCase):
+    """Same properties as ProbeQueueAboveCapPriorityAndTypeCapTests above, but
+    exercised end to end against cpr_aed_response.json's real 11-probe authored
+    bank instead of synthetic dicts -- this is the fixture Phase 1.2's
+    requirements doc specifically asked for to close that gap.
+
+    cpr_aed_response.json's probe_bank order (index -> type, target):
+      0 sequencing "calls 911..."             6 decision  "calls 911..."
+      1 how        "compresses to a depth..." 7 error     "compresses at a rate..."
+      2 how        "places hands..."          8 error     "makes sure no one..."
+      3 rationale  "compresses to a depth..." 9 edge_case "calls 911..."
+      4 rationale  "allows full chest..."    10 edge_case "checks for breathing..."
+      5 decision   "uses a 30 compressions..."
+
+    Probe #3 (rationale) shares its target with probe #1 (how), so it is folded
+    away and can never appear in a built queue regardless of coverage -- that
+    check happens unconditionally in runner._build_probe_queue's how_targets
+    logic, before coverage or priority are even considered."""
+
+    FOLDED_RATIONALE_TEXT = (
+        "Why does it matter so much that compressions actually reach that depth "
+        "— what happens if they're too shallow?"
+    )
+
+    def test_all_missing_coverage_lets_high_priority_types_fill_the_cap(self):
+        # With every target "missing" (uniform +0.08 bonus), the two how and two
+        # decision probes alone outscore every rationale/sequencing candidate, so
+        # they and one error + one edge_case (per-type cap) fill all 6 slots --
+        # demonstrating truncation and the single-instance cap against 2 real
+        # error and 2 real edge_case candidates, not synthetic ones.
+        scenario = _load_scenario("cpr_aed_response.json")
+        r = _make_runner(scenario, "recall text")
+        statuses = ["missing"] * len(scenario["probe_bank"])
+
+        with patch.object(runner, "llm_chat_json", return_value=_coverage_response(statuses, disordered=True)):
+            queue = r._build_probe_queue()
+
+        self.assertEqual(len(queue), runner.MAX_PROBE_QUEUE_SIZE)
+        types = [c["probe_type"] for c in queue]
+        self.assertEqual(types.count("how"), 2)
+        self.assertEqual(types.count("decision"), 2)
+        self.assertEqual(types.count("error"), 1)
+        self.assertEqual(types.count("edge_case"), 1)
+        self.assertNotIn("rationale", types)
+        self.assertNotIn("sequencing", types)
+        self.assertNotIn(self.FOLDED_RATIONALE_TEXT, [c["probe_text"] for c in queue])
+
+    def test_how_already_covered_makes_room_for_rationale_and_sequencing(self):
+        # When both how probes are marked "covered" (already addressed in
+        # recall), runner._build_probe_queue drops them as candidates entirely
+        # (not just lower-scored) -- freeing slots for the standalone rationale
+        # and the sequencing probe to survive into the final 6, alongside both
+        # decision probes and the single-instance-capped error/edge_case.
+        scenario = _load_scenario("cpr_aed_response.json")
+        r = _make_runner(scenario, "recall text")
+        statuses = ["missing"] * len(scenario["probe_bank"])
+        statuses[1] = "covered"  # how: compression depth
+        statuses[2] = "covered"  # how: hand position
+
+        with patch.object(runner, "llm_chat_json", return_value=_coverage_response(statuses, disordered=True)):
+            queue = r._build_probe_queue()
+
+        self.assertEqual(len(queue), runner.MAX_PROBE_QUEUE_SIZE)
+        types = [c["probe_type"] for c in queue]
+        self.assertEqual(types.count("decision"), 2)
+        self.assertEqual(types.count("error"), 1)
+        self.assertEqual(types.count("edge_case"), 1)
+        self.assertEqual(types.count("rationale"), 1)
+        self.assertEqual(types.count("sequencing"), 1)
+        self.assertNotIn("how", types)
+        # The surviving rationale is the standalone one, never the folded one.
+        rationale_texts = [c["probe_text"] for c in queue if c["probe_type"] == "rationale"]
+        self.assertEqual(rationale_texts, ["Why is letting the chest fully recoil between compressions important?"])
 
 
 class ProbeQueueEmptyPathTests(unittest.TestCase):

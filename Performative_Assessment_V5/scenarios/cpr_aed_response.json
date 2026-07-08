@@ -1,0 +1,151 @@
+{
+  "id": "cpr_aed_response",
+  "title": "Cardiac Arrest Response: CPR and AED Use",
+  "description": "Single-rescuer adult out-of-hospital cardiac arrest scenario grounded in the 2020 AHA BLS guidelines (still the current adult algorithm as of the 2025 AHA update). Exercises full probe-type spread including duplicate error/edge_case probes and a folding rationale/how pair, deliberately authored above the 6-probe cap.",
+  "situation": "You're a lay rescuer who finished a basic CPR/AED certification course a few months ago. You're at your gym when a middle-aged man suddenly collapses near the free weights and stops moving. There's a wall-mounted AED about 20 feet away, and another gym member has just noticed and is looking at you for direction. You have your phone in your pocket. Walk me through exactly what you would do — step by step, in as much detail as you can, from the moment you see him go down through sustained resuscitation efforts.",
+  "user_role": "rescuer",
+  "constraints": [
+    "Must never delay starting compressions to search for a pulse beyond 10 seconds",
+    "Must never withhold compressions while waiting for the AED to arrive",
+    "Must never stop compressions for more than 10 seconds except to allow the AED to analyze the rhythm or deliver a shock",
+    "Must ensure the scene is safe before making physical contact with the patient"
+  ],
+  "expert_answers": [
+    {
+      "answer": "1. Confirm the scene is safe to approach (no traffic, exposed electrical hazards, etc.). 2. Tap his shoulders firmly and shout to check for responsiveness. 3. Since he doesn't respond, immediately call 911 (or point at the other gym member and tell them directly to call 911 and bring the AED) rather than continuing to assess first. 4. Check for breathing and a pulse at the same time, for no more than 10 seconds — if he's only gasping occasionally, that's agonal breathing, not normal breathing, and counts as 'no breathing.' 5. Since there's no normal breathing and no pulse, begin chest compressions right away. 6. Place the heel of one hand on the center of his chest, on the lower half of the sternum, with the other hand on top, fingers interlaced and lifted off the ribs. 7. Compress at a rate of 100 to 120 per minute. 8. Compress to a depth of at least 2 inches, using body weight with straight arms. 9. Let the chest fully recoil after every compression. 10. Keep interruptions in compressions to under 10 seconds at a time. 11. If trained and willing, give breaths at a 30:2 ratio; otherwise continue hands-only compressions continuously. 12. As soon as the AED arrives, turn it on and follow its voice prompts, pausing compressions only as briefly as needed to attach pads and let it analyze. 13. Before it delivers a shock, visually confirm no one — including yourself — is touching the patient. 14. Immediately resume chest compressions after the shock, without pausing to recheck a pulse first.",
+      "key_points": [
+        "checks scene safety before approaching",
+        "taps and shouts to check responsiveness",
+        "calls 911 or directs someone to call and get an AED immediately",
+        "checks for breathing and pulse simultaneously for no more than 10 seconds, recognizing agonal gasps as not normal breathing",
+        "begins chest compressions if there is no normal breathing and no pulse",
+        "places hands on the center of the chest, on the lower half of the sternum",
+        "compresses at a rate of 100 to 120 per minute",
+        "compresses to a depth of at least 2 inches (5 cm) for an adult",
+        "allows full chest recoil between compressions",
+        "minimizes interruptions in compressions to less than 10 seconds",
+        "uses a 30 compressions to 2 breaths ratio if trained and willing to give breaths",
+        "turns on the AED and follows its voice prompts as soon as it arrives",
+        "makes sure no one is touching the patient before the shock is delivered",
+        "resumes chest compressions immediately after the shock is delivered"
+      ],
+      "rubric": {
+        "checks scene safety before approaching": 2,
+        "taps and shouts to check responsiveness": 2,
+        "calls 911 or directs someone to call and get an AED immediately": 4,
+        "checks for breathing and pulse simultaneously for no more than 10 seconds, recognizing agonal gasps as not normal breathing": 3,
+        "begins chest compressions if there is no normal breathing and no pulse": 4,
+        "places hands on the center of the chest, on the lower half of the sternum": 1,
+        "compresses at a rate of 100 to 120 per minute": 3,
+        "compresses to a depth of at least 2 inches (5 cm) for an adult": 3,
+        "allows full chest recoil between compressions": 2,
+        "minimizes interruptions in compressions to less than 10 seconds": 3,
+        "uses a 30 compressions to 2 breaths ratio if trained and willing to give breaths": 2,
+        "turns on the AED and follows its voice prompts as soon as it arrives": 3,
+        "makes sure no one is touching the patient before the shock is delivered": 4,
+        "resumes chest compressions immediately after the shock is delivered": 3
+      }
+    }
+  ],
+  "decision_points": [
+    "Whether to give hands-only compressions or full CPR with rescue breaths, depending on training and willingness",
+    "Whether to call 911 first or start CPR first when alone with no one else nearby",
+    "Whether to move the patient before starting CPR, e.g. if he's in a dangerous spot or on stairs",
+    "Whether to interrupt compressions to reposition an AED pad that isn't sticking properly"
+  ],
+  "failure_modes": [
+    "Spending too long checking for a pulse (over 10 seconds), delaying the start of compressions",
+    "Compressing too shallowly out of fear of hurting the patient's ribs",
+    "Leaning on the chest between compressions and not allowing full recoil",
+    "Stopping compressions for a prolonged period to repeatedly re-check for a pulse",
+    "Applying AED pads to a wet or hairy chest, or over a medication patch, without prepping the skin first"
+  ],
+  "edge_cases": [
+    "Patient is pregnant",
+    "Patient is a drowning victim (asphyxial arrest)",
+    "Patient has a visible medication patch or an implanted pacemaker/defibrillator on the chest",
+    "Patient's chest is wet or very hairy and the AED pads won't stick"
+  ],
+  "probe_bank": [
+    {
+      "probe_type": "sequencing",
+      "target_key_point": "calls 911 or directs someone to call and get an AED immediately",
+      "probe_text": "Walk me through the order of actions once you realize he's not responding — when exactly do you call 911 and send for the AED, relative to checking his breathing and pulse and starting compressions?",
+      "success_criteria": "Should state that activating EMS and getting the AED happens immediately after confirming unresponsiveness — before or simultaneous with the breathing/pulse check — and clearly before starting compressions is delayed for it; explains that putting the call off to keep assessing the patient delays both EMS arrival and defibrillation."
+    },
+    {
+      "probe_type": "how",
+      "target_key_point": "compresses to a depth of at least 2 inches (5 cm) for an adult",
+      "probe_text": "How do you make sure each compression is actually going deep enough?",
+      "success_criteria": "Describes using body weight with straight arms and shoulders positioned directly over the hands, pushing hard enough to reach at least 2 inches, and using available feedback (a feedback device, an audible click on a manikin, or a helper's observation) to confirm depth."
+    },
+    {
+      "probe_type": "how",
+      "target_key_point": "places hands on the center of the chest, on the lower half of the sternum",
+      "probe_text": "How exactly do you position your hands on his chest before you start compressing?",
+      "success_criteria": "Describes placing the heel of one hand on the lower half of the sternum, in the center of the chest between the nipples, with the other hand on top and fingers interlaced or lifted off the ribs."
+    },
+    {
+      "probe_type": "rationale",
+      "target_key_point": "compresses to a depth of at least 2 inches (5 cm) for an adult",
+      "probe_text": "Why does it matter so much that compressions actually reach that depth — what happens if they're too shallow?",
+      "success_criteria": "Explains that shallow compressions fail to generate enough intrathoracic pressure and blood flow to perfuse the brain and heart, so compressions can be happening without meaningfully improving the odds of survival."
+    },
+    {
+      "probe_type": "rationale",
+      "target_key_point": "allows full chest recoil between compressions",
+      "probe_text": "Why is letting the chest fully recoil between compressions important?",
+      "success_criteria": "Explains that incomplete recoil leaves residual pressure in the chest, preventing the heart from refilling with blood between compressions, which lowers cardiac output and coronary perfusion on the next compression."
+    },
+    {
+      "probe_type": "decision",
+      "target_key_point": "uses a 30 compressions to 2 breaths ratio if trained and willing to give breaths",
+      "probe_text": "Suppose you're not trained to give rescue breaths, or you're just not comfortable doing mouth-to-mouth on a stranger — does that change what you do?",
+      "success_criteria": "Correctly decides to perform continuous hands-only (compression-only) CPR at the normal rate rather than stopping or hesitating to act; explains that compression-only CPR is still effective and is the recommended fallback for an untrained or unwilling bystander."
+    },
+    {
+      "probe_type": "decision",
+      "target_key_point": "calls 911 or directs someone to call and get an AED immediately",
+      "probe_text": "What if you were completely alone with him, with no phone on you and nobody else around — what would you decide to do?",
+      "success_criteria": "Explains the correct decision for a sudden adult collapse: briefly leave the patient to call 911 and get an AED before starting CPR, since the likely cause is a shockable rhythm — contrasted with a drowning/asphyxial arrest, where CPR would come first."
+    },
+    {
+      "probe_type": "error",
+      "target_key_point": "compresses at a rate of 100 to 120 per minute",
+      "probe_text": "Say a learner is compressing at only about 60 per minute because they're worried about tiring out before help arrives. What's wrong with that, and what should they do instead?",
+      "success_criteria": "Identifies that a rate that slow reduces cardiac output and blood flow and is well below the recommended range; correct fix is to maintain 100-120/min and rotate rescuers roughly every 2 minutes to manage fatigue, not slow the rate down."
+    },
+    {
+      "probe_type": "error",
+      "target_key_point": "makes sure no one is touching the patient before the shock is delivered",
+      "probe_text": "A learner presses the AED's shock button and says \"clear\" but doesn't actually look to confirm everyone let go of the patient first. What's the danger, and what should they have done instead?",
+      "success_criteria": "Identifies the risk of shocking a bystander or the rescuer themself if they're still in contact with the patient; correct action is to visually scan and confirm no one is touching the patient before pressing the shock button, not just announce it verbally."
+    },
+    {
+      "probe_type": "edge_case",
+      "target_key_point": "calls 911 or directs someone to call and get an AED immediately",
+      "probe_text": "What if he'd just been pulled out of the pool instead of collapsing at the weights — does your approach change?",
+      "success_criteria": "Recognizes that for a drowning or asphyxial arrest, the recommended approach is about 2 minutes of CPR (compressions and rescue breaths) before leaving the patient to call EMS and get the AED, since the arrest is respiratory in origin rather than primarily cardiac."
+    },
+    {
+      "probe_type": "edge_case",
+      "target_key_point": "checks for breathing and pulse simultaneously for no more than 10 seconds, recognizing agonal gasps as not normal breathing",
+      "probe_text": "What if the patient were visibly pregnant — does anything about how you check her, or how you compress, change?",
+      "success_criteria": "States that the responsiveness/breathing/pulse check itself stays the same, but notes the adjustment during compressions: manually displacing the uterus to the left to relieve aortocaval compression, and that hand position may need to shift slightly higher on the sternum to accommodate the enlarged abdomen."
+    }
+  ],
+  "scoring_weights": {
+    "coverage": 0.55,
+    "quality": 0.45
+  },
+  "metadata": {
+    "domain": "emergency medical response / basic life support",
+    "difficulty": "intermediate",
+    "sources": [
+      "2020 American Heart Association Guidelines for CPR and Emergency Cardiovascular Care, Part 3: Adult Basic and Advanced Life Support (Circulation, 2020) - Adult BLS Sequence / Adult BLS Algorithm for Healthcare Providers",
+      "American Heart Association, 2025 CPR & ECC Algorithms - Adult Basic Life Support Algorithm for Lay Rescuers",
+      "American Heart Association, Adult Basic Life Support Algorithm for Healthcare Providers (2020, updated graphic 2020-06-24)"
+    ],
+    "authoring_note": "Deliberately authored with 11 probe_bank entries (above the app's 6-probe cap) to exercise real per-type and truncation logic that was previously only covered by synthetic unit-test dicts. Note: the source requirements doc's '8-10 total' instruction and its per-type minimums (2+2+2+2+2+1=11) are mutually inconsistent; this file satisfies every per-type minimum exactly, landing at 11 total."
+  }
+}

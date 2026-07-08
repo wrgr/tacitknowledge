@@ -279,14 +279,15 @@ def _fix_unescaped_quotes(s):
 
 
 def _extract_json(raw):
-    """Extract the first valid JSON object from an LLM response.
+    """Extract the first valid top-level JSON value (object or array) from an
+    LLM response.
 
-    Handles three common failure modes:
+    Handles four common failure modes:
 
     1. Greedy regex pollution — the old r"{.*}" (re.DOTALL) matched from the
        FIRST { to the LAST }, grabbing surrounding prose (e.g. "evaluation
        {of the transcript}: { ... }") and producing invalid JSON.  raw_decode()
-       stops as soon as a complete object is found, so surrounding text is safe.
+       stops as soon as a complete value is found, so surrounding text is safe.
 
     2. Thinking-model leakage — reasoning models (DeepSeek R1, QWQ, Gemma 4)
        sometimes emit draft JSON inside <think>...</think> while they reason.
@@ -299,12 +300,20 @@ def _extract_json(raw):
        string value without escaping it (e.g. the word "quoted" inside a longer
        value).  If the strict pass fails, _fix_unescaped_quotes repairs these
        and a second parse attempt is made.
+
+    4. Bare top-level arrays — scanning for "{" only (as this used to) finds
+       the first *nested* object inside a bare "[{...}, {...}]" response before
+       ever considering the array's own leading "[", so raw_decode would return
+       just that first element and silently discard the rest of the array.
+       Scanning for either bracket, leftmost first, fixes this: an array's own
+       "[" always precedes anything nested inside it, so the outermost
+       container -- whichever kind it is -- is still whatever this returns.
     """
     cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
     decoder = json.JSONDecoder()
 
     # Pass 1: strict parse on the original text
-    for m in re.finditer(r"\{", cleaned):
+    for m in re.finditer(r"[\{\[]", cleaned):
         try:
             obj, _ = decoder.raw_decode(cleaned, m.start())
             return obj
@@ -313,7 +322,7 @@ def _extract_json(raw):
 
     # Pass 2: repair unescaped inner quotes and retry
     repaired = _fix_unescaped_quotes(cleaned)
-    for m in re.finditer(r"\{", repaired):
+    for m in re.finditer(r"[\{\[]", repaired):
         try:
             obj, _ = decoder.raw_decode(repaired, m.start())
             return obj

@@ -54,6 +54,8 @@ against product-only scores and human annotations.
 | `confidence_calibration` | parsed writing process | Pre/post confidence change after explaining. |
 | `closing_nudge_used` | parsed writing process | Whether the learner added content after the final generic recall checkpoint. Context only; not scored. |
 | `process_caution` | parsed writing process | The report's standing caution that process signals are indirect supporting context, not verdicts. |
+| `process_review_priority` | export pipeline | Advisory triage label (`high`, `medium`, or `low`) for free-response product/process patterns that may deserve human review. Empty for rows without a process overlay and for scenario rows. |
+| `process_review_reason` | export pipeline | Short explanation for the review-priority label, derived from existing process-overlay fields. This is a queueing aid, not a score. |
 
 ### Learner Self-Report
 
@@ -88,6 +90,9 @@ used as comparison data for product-only and process-enriched interpretations.
 - Process columns should not be used alone to infer competence, authorship, or
   effort. The evidence model in `docs/fr_evidence_model.md` defines what each
   signal can and cannot support.
+- `process_review_priority` is a triage convenience for instructors and
+  researchers. It should be read with `process_review_reason` and the underlying
+  report, not treated as an independent judgment.
 - AI-assistance fields are learner declarations. They are useful context, not
   proof that assistance was or was not used.
 - Annotation labels are human judgments and should record reviewer uncertainty
@@ -101,5 +106,7 @@ used as comparison data for product-only and process-enriched interpretations.
 2. Compare process-derived fields against human `annotation_label` values.
 3. Check whether process signals explain cases where similar product scores get
    different human annotations.
-4. Keep AI-assistance declarations separate from writing-process signals when
+4. Use `process_review_priority` to sample likely product/process divergence
+   cases for human review before drawing aggregate conclusions.
+5. Keep AI-assistance declarations separate from writing-process signals when
    analyzing authorship or attribution questions.

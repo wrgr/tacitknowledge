@@ -262,7 +262,7 @@ def _word_count(text):
 # Canonical field list lives in database.py (ASSESSMENT_FIELDS) — the export
 # columns and the assessments table schema are the same thing by construction.
 _RESEARCH_EXPORT_FIELDS = list(db.ASSESSMENT_FIELDS)
-_ASSESSMENT_EXPORT_SCHEMA_VERSION = "2"
+_ASSESSMENT_EXPORT_SCHEMA_VERSION = "3"
 
 _ANNOTATION_LABELS = {"", "correct", "partial", "missing", "needs_expert_review"}
 
@@ -316,6 +316,54 @@ def _save_annotation(username, filename, label, notes, reviewer):
     return annotation
 
 
+def _process_review_signal(score_text, overlay):
+    """Advisory product/process triage for the research export and admin queue."""
+    if not overlay:
+        return "", ""
+
+    try:
+        score = int(str(score_text).strip())
+    except (TypeError, ValueError):
+        score = None
+
+    quadrant = (overlay.get("quadrant_label") or "").lower()
+    authenticity = (overlay.get("authenticity_text") or "").lower()
+    confidence = (overlay.get("confidence_calibration_text") or "").lower()
+    revision = (overlay.get("revision_rating") or "").lower()
+    difficulty_count = len(overlay.get("difficulty_points") or [])
+
+    reasons = []
+    priority = "low"
+
+    if "authenticity review" in quadrant:
+        priority = "high"
+        reasons.append("strong product paired with frictionless or heavily pasted process")
+    if authenticity.startswith(("elevated", "high")):
+        priority = "high"
+        reasons.append("paste/revision authenticity signal present")
+    if score is not None and score >= 80 and "confidence collapse" in confidence:
+        priority = "high"
+        reasons.append("high product score with confidence collapse")
+
+    if priority != "high":
+        if "engaged but under-knowledgeable" in quadrant:
+            priority = "medium"
+            reasons.append("effortful process with weak product score")
+        if difficulty_count >= 2:
+            priority = "medium"
+            reasons.append(f"{difficulty_count} difficulty-point candidates")
+        if "confidence collapse" in confidence:
+            priority = "medium"
+            reasons.append("confidence collapse after explanation")
+        if revision and revision not in {"", "not assessed", "not_assessed", "improved"}:
+            priority = "medium"
+            reasons.append("revision-quality judgment needs review")
+
+    if not reasons:
+        reasons.append("no prominent process/product review flag")
+    return priority, "; ".join(reasons)
+
+
 def _research_rows_for_report(username, user, filename, report):
     annotation = _load_annotation(username, filename)
     base = {
@@ -341,6 +389,7 @@ def _research_rows_for_report(username, user, filename, report):
         overlay = report.get("process_overlay") or {}
         ai = report.get("ai_assistance") or {}
         score = _score_percent(ev.get("score") or (report.get("metadata") or {}).get("score"))
+        process_priority, process_reason = _process_review_signal(score, overlay)
         return [{
             **base,
             "report_type": "free_response",
@@ -367,6 +416,8 @@ def _research_rows_for_report(username, user, filename, report):
                 else ""
             ) if overlay else "",
             "process_caution": overlay.get("caution", "") if overlay else "",
+            "process_review_priority": process_priority,
+            "process_review_reason": process_reason,
             "ai_assistance_used": ai.get("used", ""),
             "ai_assistance_notes": ai.get("notes", ""),
         }]
@@ -399,6 +450,8 @@ def _research_rows_for_report(username, user, filename, report):
             "confidence_calibration": "",
             "closing_nudge_used": "",
             "process_caution": "",
+            "process_review_priority": "",
+            "process_review_reason": "",
             "ai_assistance_used": "",
             "ai_assistance_notes": "",
         })
@@ -587,6 +640,11 @@ def admin_dashboard():
             s["prompt_title"] = title_by_id.get(s["prompt_id"], s["prompt_id"])
     except Exception:
         match_stats = []
+    try:
+        process_review_queue = db.process_review_queue(limit=8)
+    except Exception as e:
+        app.logger.warning("process review queue unavailable: %s", e)
+        process_review_queue = []
 
     return render_template(
         "admin.html",
@@ -595,6 +653,7 @@ def admin_dashboard():
         report_tree=report_tree,
         calibration=calibration,
         match_stats=match_stats,
+        process_review_queue=process_review_queue,
         user_theme=_user_theme(),
     )
 

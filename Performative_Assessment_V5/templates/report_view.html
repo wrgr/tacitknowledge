@@ -561,6 +561,10 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
         <div class="feedback-text">{{ ev.feedback }}</div>
         {% endif %}
 
+        {% if ev.coverage_note %}
+        <div class="profile-note">{{ ev.coverage_note }}</div>
+        {% endif %}
+
         <div class="sg-grid">
           <div class="sg-box strengths">
             <div class="sg-label">Strengths</div>
@@ -730,7 +734,21 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
         <div class="chips-row">{% for p in scn.missed_points %}<span class="chip missed">{{ p }}</span>{% endfor %}</div>
         {% endif %}
 
-        {% if scn.transcript %}
+        {% if scn.recall_transcript or scn.probe_transcript %}
+        <hr class="divider">
+        {% if scn.recall_transcript %}
+        <details class="expert-details">
+          <summary><span class="icon">💬</span> Recall Transcript <span class="chevron">▶</span></summary>
+          <div class="expert-body" style="border-left-color:var(--blue)">{{ scn.recall_transcript }}</div>
+        </details>
+        {% endif %}
+        {% if scn.probe_transcript %}
+        <details class="expert-details" style="margin-top:8px">
+          <summary><span class="icon">💬</span> Probing Phase Transcript <span class="chevron">▶</span></summary>
+          <div class="expert-body" style="border-left-color:var(--blue)">{{ scn.probe_transcript }}</div>
+        </details>
+        {% endif %}
+        {% elif scn.transcript %}
         <hr class="divider">
         <details class="expert-details">
           <summary><span class="icon">💬</span> Conversation Transcript <span class="chevron">▶</span></summary>
@@ -848,6 +866,13 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
         {% if po.confidence_calibration_alternative %}
         <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-top:6px">Alternative: {{ po.confidence_calibration_alternative }}</div>
         {% endif %}
+      </div>
+      {% endif %}
+
+      {% if po.closing_nudge_text %}
+      <div class="summary-section">
+        <div class="summary-section-label">Closing nudge</div>
+        <p class="assessment-text">{{ po.closing_nudge_text }}</p>
       </div>
       {% endif %}
 

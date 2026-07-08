@@ -1273,9 +1273,13 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
     <div style="display:flex;align-items:center;gap:12px">
       {% if is_admin %}
       <!-- TESTING PURPOSES ONLY: admin-only reference dropdown listing this scenario's expert key points, to aid manual testing -->
-      <select id="test-cases-dropdown" title="Reference: expert key points for this scenario (admin testing aid)" style="font-size:.75rem;max-width:220px;border:1px solid #f59e0b;color:#f59e0b;background:transparent;border-radius:6px;padding:3px 6px">
-        <option value="">TEST CASES</option>
-      </select>
+      <div id="test-cases-wrapper" style="position:relative;display:inline-block">
+        <button type="button" id="test-cases-toggle" style="font-size:.75rem;max-width:220px;border:1px solid #f59e0b;color:#f59e0b;background:transparent;border-radius:6px;padding:3px 8px;cursor:pointer" title="Reference: expert key points for this scenario (admin testing aid)">TEST CASES ▾</button>
+        <div id="test-cases-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--bg-card,#1e1e2e);border:1px solid #f59e0b;border-radius:8px;padding:8px 10px;min-width:220px;max-width:320px;max-height:260px;overflow-y:auto;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.4)">
+          <div style="font-size:.7rem;color:#f59e0b;padding:0 0 6px;font-weight:600;letter-spacing:.05em">KEY POINTS (REFERENCE ONLY)</div>
+          <ul id="test-cases-list" style="list-style:none;margin:0;padding:0;font-size:.8rem"></ul>
+        </div>
+      </div>
       {% endif %}
       <span id="assess-meta"></span>
     </div>

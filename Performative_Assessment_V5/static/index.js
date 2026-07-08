@@ -736,16 +736,21 @@ async function startScenario(index, title) {
 
     // TESTING PURPOSES ONLY: populate the admin "TEST CASES" dropdown with this
     // scenario's expert key points so testers have a quick scoring reference.
-    const testCases = $('test-cases-dropdown');
-    if (testCases) {
-      testCases.innerHTML = '<option value="">TEST CASES</option>';
+    // It's a plain display list (not a <select>) so clicking an item never
+    // changes what the dropdown button shows.
+    const testCasesWrapper = $('test-cases-wrapper');
+    const testCasesList    = $('test-cases-list');
+    if (testCasesWrapper && testCasesList) {
+      testCasesList.innerHTML = '';
       const keyPoints = data.debug_key_points || [];
       keyPoints.forEach(kp => {
-        const opt = document.createElement('option');
-        opt.textContent = kp.weight != null ? `${kp.point} (${kp.weight})` : kp.point;
-        testCases.appendChild(opt);
+        const li = document.createElement('li');
+        li.style.cssText = 'padding:4px 2px;border-bottom:1px solid rgba(245,158,11,.15)';
+        li.textContent = kp.weight != null ? `${kp.point} (${kp.weight})` : kp.point;
+        testCasesList.appendChild(li);
       });
-      testCases.style.display = keyPoints.length ? '' : 'none';
+      testCasesWrapper.style.display = keyPoints.length ? 'inline-block' : 'none';
+      $('test-cases-menu').style.display = 'none';
     }
   }
   addBubble('examiner', data.opening);

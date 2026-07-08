@@ -23,6 +23,16 @@ document.querySelectorAll('.autorun-opt').forEach(btn => {
 // Close menu on outside click
 document.addEventListener('click', () => { $('autorun-menu').style.display = 'none'; });
 
+// ── TESTING PURPOSES ONLY: "TEST CASES" reference dropdown (admin only) ──
+// Plain display list of the current scenario's expert key points, for manual
+// testing reference. Purely informational — items are not clickable/selectable.
+$('test-cases-toggle').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = $('test-cases-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', () => { $('test-cases-menu').style.display = 'none'; });
+
 const AUTO_RUN_RESPONSES = {
   gibberish: {
     recall: 'The purple elephant carefully rotates seventeen times before the kitchen sink downloads a bicycle. ' +

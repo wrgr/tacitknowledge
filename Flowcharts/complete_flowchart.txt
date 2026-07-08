@@ -1,0 +1,2122 @@
+================================================================================
+  PERFORMATIVE ASSESSMENT V5  --  VISUAL CODE FLOWCHART
+  Box-and-arrow diagrams, one per major flow or subsystem
+================================================================================
+
+  LEGEND
+  ------
+  +------------------+     processing step or function call
+  |  function()      |
+  +------------------+
+
+  <   condition?   >       decision / branch point
+   /              \
+  YES              NO
+
+  [[ SQLite ]]             database query  (assessments.db)
+  [[ LLM API ]]            network request to model provider
+
+  +=================+      module / subsystem entry boundary
+  |                 |
+  +=================+
+
+  *  *  *                  concurrent / parallel execution
+  (label)                  data flowing along an arrow
+
+
+================================================================================
+  A.  MODULE DEPENDENCY MAP
+================================================================================
+
+                        +=============+
+                        |   app.py    |   Flask app -- 43 routes
+                        |  2078 lines |   session management
+                        +=============+
+                           /   |   \
+                          /    |    \---------------------------+
+                         /     |                                |
+                        v      v                                v
+              +-----------+ +--------+                 +----------------+
+              | engine.py | | auth.py|                 | report_parser  |
+              | (re-export| +--------+                 |     .py        |
+              |  facade)  |     |                      | (regex md      |
+              +-----------+ +--------+                 |  parser,       |
+                   |        |database|<----------+     |  no deps)      |
+                   |        |  .py   |           |     +----------------+
+                   |        +--------+           |
+                   |                             |
+         +---------+---------+---------+------+--+------+-------+
+         |         |         |         |      |         |       |
+         v         v         v         v      v         v       v
+     +------+ +-------+ +-------+ +--------+ +--------+ +-----+ +-------+
+     |runner| |session| |scoring| |thinking| |writing_| |     | |reports|
+     | .py  | | .py   | | .py   | |  .py   | |process | |load-| | .py   |
+     +------+ +-------+ +-------+ +--------+ | .py    | |ers  | +-------+
+        |         |         |         |      +--------+ | .py |     |
+        |         |         |         |          |      +-----+     |
+        |         |         |         |          |                  |
+        +---------+---------+---------+----------+------------------+
+                                      |
+                                      v
+                                  +-------+
+                                  | llm.py|   LLM abstraction layer
+                                  +-------+
+                                      |
+                          +-----------+-----------+
+                          |           |           |
+                          v           v           v
+                    +----------+ +--------+ +---------+
+                    | Anthropic| | OpenAI | | urllib  |
+                    |  SDK     | |  SDK   | | fallback|
+                    | (lazy    | | (lazy  | | (no sdk |
+                    |  import) | |  import| |  needed)|
+                    +----------+ +--------+ +---------+
+
+
+================================================================================
+  B.  APPLICATION STARTUP  (runs once at import time)
+================================================================================
+
+  +==========================================================================+
+  |  Python imports app.py                                                   |
+  +==========================================================================+
+                |
+                v
+  +------------------------------+
+  |  .secret_key file exists?    |
+  +------------------------------+
+                |
+        < file found? >
+        /              \
+      YES               NO
+       |                 |
+  read existing       secrets.token_hex(32)
+  key                 write new file
+       |                 |
+       +---------+-------+
+                 |
+                 v
+  +------------------------------+
+  |  Flask(__name__)             |
+  |  configure:                  |
+  |  - SESSION_COOKIE_HTTPONLY   |
+  |  - SESSION_COOKIE_SAMESITE   |
+  |  - PERMANENT_SESSION_LIFETIME|
+  |  - MAX_CONTENT_LENGTH 16MB   |
+  +------------------------------+
+                |
+                v
+  +------------------------------+
+  |  auth.seed_default_users()   |---> [[ SQLite: CREATE tables ]]
+  |  create admin + 6 students   |     [[ INSERT users if empty ]]
+  |  if users table is empty     |
+  +------------------------------+
+                |
+                v
+  +------------------------------+
+  |  engine.load_scenarios()     |---> read scenarios/*.json
+  |  loaders._migrate_fr_key_    |     parse + fill defaults
+  |  points() per scenario       |     migrate key_point schemas
+  +------------------------------+
+                |
+                v
+  +------------------------------+
+  |  engine.load_prompts()       |---> read prompts/*.json
+  |  loaders._migrate_fr_key_    |     parse + fill defaults
+  |  points() per prompt         |     migrate FR KP schemas
+  +------------------------------+
+                |
+                v
+  +------------------------------+
+  |  engine.get_configured_      |
+  |  providers(config.PROVIDERS) |---> llm_is_available() per key
+  |  filter out placeholder keys |
+  +------------------------------+
+                |
+                v
+  +------------------------------+
+  |  _sync_assessments_table()   |---> [[ SQLite: get known files ]]
+  |  reconcile reports/*.md      |     scan disk for new .md files
+  |  files with assessments.db   |     parse + upsert missing rows
+  +------------------------------+
+                |
+                v
+  +==============================+
+  |   Flask ready, serving       |
+  +==============================+
+
+
+================================================================================
+  C.  AUTHENTICATION FLOW  (POST /login)
+================================================================================
+
+  [ Browser ]  --POST /login-->  [ Flask ]
+                                      |
+                                      v
+                           +--------------------+
+                           | auth.is_admin_     |---> check in-memory
+                           | locked(ip)         |     _rate dict
+                           +--------------------+
+                                      |
+                               < locked? >
+                               /          \
+                             YES           NO
+                              |             |
+                              v             v
+                         redirect      +------------------+
+                         /locked       | CSRF check:      |
+                                       | hmac.compare_    |
+                                       | digest(form_tok, |
+                                       |  session_tok)    |
+                                       +------------------+
+                                                |
+                                         < match? >
+                                         /        \
+                                        NO        YES
+                                        |          |
+                                   abort(400)  +------------------+
+                                               | auth.check_      |
+                                               | limit(ip)        |
+                                               | (10 reqs / 60s)  |
+                                               +------------------+
+                                                        |
+                                                < under limit? >
+                                                /              \
+                                               NO              YES
+                                               |                |
+                                         abort(429)    +------------------+
+                                                       | sanitize_str()   |
+                                                       | strip nulls,     |
+                                                       | cap to 64/128ch  |
+                                                       +------------------+
+                                                                |
+                                                                v
+                                                       +------------------+
+                                                       | auth.load_users()|
+                                                       | db.all_users()   |-->[[ SQLite ]]
+                                                       +------------------+
+                                                                |
+                                                                v
+                                                       +------------------+
+                                                       | auth.authenticate|
+                                                       | db.get_user()    |-->[[ SQLite ]]
+                                                       | check_password_  |
+                                                       |   hash()         |
+                                                       +------------------+
+                                                                |
+                                                      < valid? >
+                                                      /          \
+                                                     NO          YES
+                                                     |            |
+                                            +---------------+  +------------------+
+                                            | record_failed |  | record_success() |
+                                            | (ip, is_admin)|  | reset count      |
+                                            +---------------+  +------------------+
+                                                     |                   |
+                                             < just locked? >   session.clear()
+                                             /             \    set user_id, role,
+                                           YES              NO  theme, display_name
+                                            |               |            |
+                                       redirect         redirect         v
+                                       /locked          /login    redirect to
+                                                        (flash    / or /admin
+                                                         error)
+
+
+================================================================================
+  D.  SCENARIO ASSESSMENT  --  FULL USER JOURNEY
+================================================================================
+
+  ---- D1. START (/api/start) -------------------------------------------------
+
+  +-----------------------------+
+  |  /api/start                 |
+  |  scenario index, provider,  |
+  |  model, api_key             |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _resolve_model()           |
+  |  validate model against     |
+  |  provider's known list      |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  ScenarioRunner.__init__()  |
+  |  phase = "recall"           |
+  |  clear all history lists    |
+  |  probe_queue = []           |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  runner.start()             |
+  |  reset all state            |
+  |  return "Examiner: <situ-   |
+  |   ation>... walk through    |
+  |   what you would do"        |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  Session.__init__()         |
+  |  store: use_llm, model,     |
+  |  api_key, base_url          |
+  |  results = []               |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _register_session()        |
+  |  _state[new_uuid] = entry   |
+  |  evict sessions > 6 hours   |
+  |  cap at 200 active          |
+  +-----------------------------+
+               |
+               v
+  return { session_id, opening_text, phase:"recall" }
+
+
+  ---- D2. RECALL PHASE (each user turn) --------------------------------------
+
+  [ client sends user_input + writing_metrics ]
+               |
+               v
+  +-----------------------------+
+  |  /api/respond               |
+  |  _get_state(data)           |
+  |  ownership check            |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  runner.respond()           |
+  |  append to user_inputs[]    |
+  |  append to writing_metrics[]|
+  +-----------------------------+
+               |
+        < phase == "recall"? >
+        /                    \
+      YES                     (NO: see D4 - Probing)
+       |
+       v
+  +-----------------------------+
+  |  _recall_respond()          |
+  |  append turn to             |
+  |  recall_history + history   |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _get_recall_ack()          |
+  |  build non-leading prompt   |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  llm.llm_generate()         |---> [[ LLM API ]]
+  |  max_tokens=512             |     no retry, no cache
+  |  strip <think> tags         |
+  |  take first sentence only   |
+  +-----------------------------+
+               |
+        < LLM success? >
+        /               \
+      YES                NO
+       |                  |
+  return ack          FALLBACK_RECALL_ACK
+  (first sentence)    (round-robin, 4 options)
+       |                  |
+       +-------+----------+
+               |
+               v
+  return { narration, concluded:false, phase:"recall" }
+
+  (repeat until client calls /api/end-recall)
+
+
+  ---- D3. END RECALL (/api/end-recall) ---------------------------------------
+
+  +-----------------------------+
+  |  /api/end-recall            |
+  |  (optional final text sent) |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  runner.end_recall()        |
+  |  set phase = "probing"      |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _build_probe_queue()       |
+  |  normalise probe_bank dicts |
+  +-----------------------------+
+               |
+        < probe_bank empty? >
+        /                   \
+      YES                    NO
+       |                      |
+       v                      |
+  +-------------------+       |
+  | _generate_dynamic_|       |
+  | probes()          |       |
+  | llm_chat_json()   |-->[[ LLM API ]]
+  | generates 8-12    |
+  | probes across 6   |
+  | probe types       |
+  +-------------------+
+       |                      |
+       +-----------+----------+
+                   |
+                   v
+  +-----------------------------+
+  |  _analyse_coverage()        |
+  |  LLM compares recall text   |
+  |  vs probe_bank to find gaps |
+  |  cached_evaluative_call():  |---> [[ LLM API ]]
+  |  returns coverage_map +     |     [[ SQLite cache ]]
+  |  recall_disordered flag     |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  rank probes by score:      |
+  |  base = type priority       |
+  |  +0.08 if KP missing        |
+  |  +0.04 if KP partial        |
+  |  skip covered probes        |
+  |  cap single-instance types  |
+  |  select top 4               |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _format_probe_delivery()   |
+  |  LLM rephrases first probe  |---> [[ LLM API ]]
+  |  naturally for delivery     |
+  +-----------------------------+
+               |
+               v
+  return { first_probe, probe_count, phase:"probing", concluded:false }
+
+
+  ---- D4. PROBING PHASE (each probe turn) ------------------------------------
+
+  [ client sends user response to probe ]
+               |
+               v
+  +-----------------------------+
+  |  _probe_respond()           |
+  |  append to probe_history    |
+  |  get current_probe from     |
+  |  probe_queue[probe_index]   |
+  +-----------------------------+
+               |
+               v
+  +------------------------------------+
+  |  _generate_next_probe_turn()       |---> [[ LLM API ]]
+  |  ONE LLM call evaluates:           |
+  |  - was learner's answer adequate?  |
+  |  - followup or advance?            |
+  |  - what message to send next?      |
+  +------------------------------------+
+               |
+         < action? >
+         /          \
+   "followup"     "advance"
+        |               |
+        v               v
+  +----------+    +-----------------------------+
+  | mark     |    |  probe_index += 1           |
+  | _followup|    +-----------------------------+
+  | _sent    |                 |
+  | return   |          < more probes? >
+  | message  |          /             \
+  +----------+        YES              NO
+        |              |                |
+        |              v                v
+        |   +--------------------+  phase = "concluded"
+        |   | _format_probe_     |  return closing message
+        |   | delivery()         |  concluded = True
+        |   | LLM rephrases next |---> [[ LLM API ]]
+        |   | probe naturally    |
+        |   +--------------------+
+        |              |
+        +------+--------+
+               |
+               v
+  return { narration, concluded, phase, probe_number, probe_count }
+
+  (repeat until concluded:true)
+
+
+  ---- D5. EVALUATE (/api/evaluate) -------------------------------------------
+
+  +-----------------------------+
+  |  /api/evaluate              |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  Session.evaluate()         |
+  |  for each expert_answer     |
+  |  in scenario:               |
+  +-----------------------------+
+               |
+        < use_llm? >
+        /           \
+      YES             NO
+       |               |
+       v               v
+  +----------+   +-------------+
+  | score_   |   | score_with_ |
+  | with_llm | x | keywords()  |
+  | (recall) | 2 | (no LLM,    |
+  +----------+   |  no cache)  |
+       |         +-------------+
+       v               |
+  +----------+         |
+  | score_   |         |
+  | with_llm |         |
+  | (probe)  |         |
+  +----------+         |
+       |               |
+       v               |
+  +----------+         |
+  | merge_   |         |
+  | phase_   |         |
+  | scores() |         |
+  | (pure    |         |
+  |  Python) |         |
+  +----------+         |
+       |               |
+       +-------+-------+
+               |
+               v
+  return { evaluations, summary:{average_score, total_evaluations} }
+
+
+  ---- D6. THINKING PROFILE (/api/thinking-profile) ---------------------------
+
+  +-----------------------------+
+  |  /api/thinking-profile      |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  analyse_thinking_profile() |---> [[ LLM API ]]
+  |  (thinking.py)              |     [[ SQLite cache ]]
+  |  H&M style + SOLO + probe   |
+  |  improvement, all LLM-judged|
+  +-----------------------------+
+               |
+               v
+  return { honey_mumford_style, solo_level, evidence,
+           probe_phase_improvement, observed_patterns,
+           instructor_note }
+
+
+  ---- D7. GENERATE REPORT (/api/report) --------------------------------------
+
+  +-----------------------------+
+  |  /api/report                |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  engine.generate_report()   |
+  |  build markdown from all    |
+  |  session.results            |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _generate_instructor_      |---> [[ LLM API ]]
+  |  summary()                  |
+  +-----------------------------+
+               |
+        < LLM succeeded? >
+        /                 \
+      YES                  NO
+       |                    |
+  LLM narrative         _instructor_summary_fallback()
+                        (deterministic from score data)
+       |                    |
+       +---------+----------+
+                 |
+                 v
+  +-----------------------------+
+  |  write markdown sections:   |
+  |  - header, date, model      |
+  |  - per-scenario:            |
+  |    _append_scores()         |
+  |    transcripts (blockquoted)|
+  |    expert guidance          |
+  |    strengths / gaps         |
+  |    _append_key_points_with_ |
+  |      attribution()          |
+  |  - Instructor Summary       |
+  |  - _append_thinking_profile |
+  |  - inference boundary note  |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  path.write_text()          |
+  |  reports/<user>/            |
+  |  report_YYYYMMDD_HHMMSS.md  |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _persist_assessment_rows() |
+  |  report_parser.parse_       |---> regex-parse the .md
+  |  report_md()                |
+  |  db.upsert_assessment_rows()|---> [[ SQLite ]]
+  +-----------------------------+
+               |
+               v
+  return { path }
+
+
+================================================================================
+  E.  SCENARIORUNNER STATE MACHINE  (runner.py)
+================================================================================
+
+           +-----------------+
+           |   __init__()    |
+           |  phase="recall" |
+           |  all history=[] |
+           |  probe_queue=[] |
+           +-----------------+
+                    |
+                    v
+           +-----------------+
+           |    start()      |
+           |  reset state    |
+           |  return opening |
+           |  text string    |
+           +-----------------+
+                    |
+                    |
+   .................v.....................................
+   :                                                    :
+   :   +===================+                           :
+   :   |   RECALL PHASE    |<---respond(user_input)    :
+   :   +===================+                           :
+   :          |                                        :
+   :   _recall_respond()                               :
+   :   append to recall_history                        :
+   :          |                                        :
+   :   _get_recall_ack()                               :
+   :   llm_generate() ---> [[ LLM API ]]              :
+   :   take first sentence                             :
+   :          |                                        :
+   :          |  (client calls end_recall())           :
+   :          v                                        :
+   :   +-----------------+                             :
+   :   |  end_recall()   |                             :
+   :   |  phase="probing"|                             :
+   :   |  _build_probe_  |                             :
+   :   |   queue()       |                             :
+   :   |  [LLM: coverage |                             :
+   :   |   analysis +    |                             :
+   :   |   dynamic probe |                             :
+   :   |   generation]   |---> [[ LLM API ]]          :
+   :   |  _format_probe_ |     [[ SQLite cache ]]     :
+   :   |   delivery()    |---> [[ LLM API ]]          :
+   :   +-----------------+                             :
+   :          |                                        :
+   :...........v............................................
+               |
+   .............v......................................
+   :                                                  :
+   :   +===================+                          :
+   :   |  PROBING PHASE    |<---respond(user_input)   :
+   :   +===================+                          :
+   :          |                                       :
+   :   _probe_respond()                               :
+   :   _generate_next_probe_turn()                    :
+   :   ---> [[ LLM API ]]                            :
+   :          |                                       :
+   :   < action == "followup"? >                      :
+   :   /                      \                       :
+   : YES                       NO                     :
+   :  |                         |                     :
+   : return message          probe_index += 1         :
+   : loop back               < more probes? >         :
+   :                         /             \          :
+   :                       YES              NO        :
+   :                        |                |        :
+   :               _format_probe_     phase="concluded"
+   :               delivery() [LLM]        |
+   :               return next probe       v
+   :               loop back        +=================+
+   :                                |   CONCLUDED     |
+   :                                |  all respond()  |
+   :                                |  calls return   |
+   :                                |  "", True       |
+   :                                +=================+
+
+
+================================================================================
+  F.  FREE RESPONSE FLOW  --  FULL USER JOURNEY
+================================================================================
+
+  ---- F1. SUBMIT (/api/fr/submit) --------------------------------------------
+
+  +-----------------------------+
+  |  /api/fr/submit             |
+  |  prompt_id, text (<=8000ch) |
+  |  pre_rating, writing_metrics|
+  |  ai_assistance flag         |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  find prompt_data from      |
+  |  in-memory prompts list     |
+  +-----------------------------+
+               |
+        < use_llm? >
+        /           \
+      YES             NO
+       |               |
+       v               v
+  +----------+   +----------------+
+  | score_   |   | score_free_    |
+  | free_    |   | response_with_ |
+  | response_|   | keywords()     |
+  | with_llm |   | (pure Python   |
+  | ()       |   |  phrase match) |
+  | [LLM +   |   +----------------+
+  |  cache]  |         |
+  +----------+         |
+       |               |
+       +------+--------+
+              |
+              v
+  +-----------------------------+
+  |  for each novel_equivalent: |
+  |  db.log_novel_equivalent()  |---> [[ SQLite ]]
+  |  status = "pending"         |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  for each matched point:    |
+  |  db.log_fr_match()          |---> [[ SQLite ]]
+  |  ("exemplar" or             |
+  |   "novel_equivalent")       |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _register_session()        |
+  |  _fr_state[new_uuid] =      |
+  |  { prompt, evaluation,      |
+  |    writing_metrics,         |
+  |    pre_rating,              |
+  |    post_rating=None,        |
+  |    model, api_key }         |
+  +-----------------------------+
+               |
+               v
+  return { session_id, evaluation:{ score, feedback,
+           matched_points, missed_points } }
+
+
+  ---- F2. POST-RATING (optional, /api/fr/post-rating) ------------------------
+
+  +-----------------------------+
+  |  /api/fr/post-rating        |
+  |  learner self-rates after   |
+  |  seeing score results       |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _fr_state[sid]             |
+  |  ["post_rating"] = value    |
+  |  _coerce_fr_rating():       |
+  |  int if 1-10, else None     |
+  +-----------------------------+
+               |
+               v
+  return { ok: true }
+
+
+  ---- F3. THINKING PROFILE (/api/fr/thinking-profile) ------------------------
+
+  +-----------------------------+
+  |  /api/fr/thinking-profile   |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _compute_fr_thinking_      |
+  |  profile()                  |
+  +-----------------------------+
+               |
+               v
+  +--------------------------------------------+
+  |  thinking.derive_fr_solo_level()            |
+  |  NO LLM -- reads evaluation already scored |
+  |                                             |
+  |  matched_count = len(matched_points)        |
+  |  mean_quality  = mean(quality_ratings)      |
+  |                                             |
+  |    matched_count == 0  -> Prestructural     |
+  |    matched_count == 1  -> Unistructural     |
+  |    mean_quality >= 1.0 -> Relational        |
+  |    else                -> Multistructural   |
+  |                                             |
+  |  (Extended Abstract: never returned --      |
+  |   scope limitation, not an oversight)       |
+  +--------------------------------------------+
+               |
+               v
+  return { solo_level, matched_count, mean_quality }
+
+
+  ---- F4. FR REPORT (/api/fr/report) -----------------------------------------
+
+  +-----------------------------+
+  |  /api/fr/report             |
+  +-----------------------------+
+               |
+               v
+  +============================================+
+  |  ThreadPoolExecutor(max_workers=2)         |
+  |  fire BOTH tasks concurrently              |
+  +============================================+
+       *                              *
+       |                              |
+       v                              v
+  +-------------------+    +-------------------------+
+  |  _compute_fr_     |    |  engine.analyze_writing |
+  |  thinking_        |    |  _process()             |
+  |  profile()        |    |                         |
+  |  (derive_fr_solo_ |    |  compute_effort_profile |
+  |   level, no LLM)  |    |  find_difficulty_points |
+  +-------------------+    |  compute_authenticity   |
+       |                   |  compute_trajectory     |
+       |                   |  classify_quadrant      |
+       |                   |  assess_revision_toward |
+       |                   |  _quality() [LLM+cache] |---> [[ LLM API ]]
+       |                   +-------------------------+
+       |                              |
+       +----------+-------------------+
+                  |
+                  v  (both futures resolved)
+  +-----------------------------+
+  |  compute_confidence_        |
+  |  calibration(pre, post)     |
+  |  delta = post - pre         |
+  |  (<=-2 collapse, >=+2 rise) |
+  |  pure arithmetic, no LLM    |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  engine.generate_fr_report()|
+  |  build full markdown:       |
+  |  - Prompt section           |
+  |  - Learner's Submission     |
+  |  - AI Assistance Declaration|
+  |  - Evaluation + scores      |
+  |  - Key points + pools       |
+  |  - Instructor Summary [LLM] |---> [[ LLM API ]]
+  |  - SOLO (deterministic)     |
+  |  - Writing Process overlay  |
+  |  path.write_text(markdown)  |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _encode_process_log()      |
+  |  delta-encode snapshots:    |
+  |  each = {prefix_len,        |
+  |           changed_suffix}   |
+  |  write .trace.json sidecar  |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _persist_assessment_rows() |---> report_parser.parse_report_md()
+  |  parse + upsert to SQLite   |---> [[ SQLite ]]
+  +-----------------------------+
+               |
+               v
+  return { path }
+
+
+================================================================================
+  G.  LLM DISPATCH CHAIN  (llm.py)
+================================================================================
+
+  Entry points:
+  +--------------------------------------------+
+  | llm_generate()    short, no retry, 512 tok |
+  | llm_chat()        full, with retry, 8192   |
+  | llm_chat_json()   full, JSON mode, 8192    |
+  +--------------------------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _with_retry()              |
+  |  up to 3 attempts           |
+  |  on LLMRateLimitError:      |
+  |    sleep 5s -> 10s -> raise |
+  |  on ConnectionError: same   |
+  |  (llm_generate bypasses)    |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _cap_max_tokens()          |
+  |  check host-specific caps   |
+  |  (models.github.ai -> 4000) |
+  +-----------------------------+
+               |
+               v
+       < base_url contains
+       "api.anthropic.com"? >
+       /                    \
+     YES                     NO
+      |                       |
+      v                  < import openai? >
+  +----------+           /               \
+  | Anthropic|         YES                NO
+  |  SDK     |          |                  |
+  | messages.|          v                  v
+  | create() |    +----------+    +------------------+
+  +----------+    | OpenAI   |    | _raw_chat()      |
+      |           |  SDK     |    | pure urllib      |
+      |           | chat.    |    |                  |
+      |           | complete.|    | try POST         |
+      |           | create() |    | /chat/completions|
+      |           +----------+    | if 404: try      |
+      |                |          | Ollama native    |
+      |                |          | /api/chat        |
+      |                |          +------------------+
+      |                |                  |
+      +-------+--------+------------------+
+              |
+              v
+  +-----------------------------+
+  |  extract text from response |
+  |  format differs per SDK /   |
+  |  raw path                   |
+  +-----------------------------+
+              |
+       < HTTP error? >
+       /             \
+    HTTP 429          other
+       |                 |
+       v                 v
+  LLMRateLimitError   LLMError
+  (caller retries)    (propagate up)
+
+
+================================================================================
+  H.  EVALUATIVE CACHE  (cached_evaluative_call in llm.py)
+================================================================================
+
+    caller: scoring / thinking / writing_process
+               |
+               v
+  +-----------------------------+
+  |  cached_evaluative_call()   |
+  |  args: model, base_url,     |
+  |         prompt_version,     |
+  |         system, prompt,     |
+  |         call_fn             |
+  +-----------------------------+
+               |
+        < bypass_cache OR
+          DISABLE_EVAL_CACHE
+          env var set? >
+          /            \
+        YES              NO
+         |                |
+         v                v
+     call_fn()    +-------------------+
+     (skip cache) | _eval_cache_key() |
+     return       | sha256(model +    |
+     result       |   base_url +      |
+                  |   prompt_version +|
+                  |   system + prompt)|
+                  +-------------------+
+                           |
+                           v
+                  +-------------------+
+                  |  db.eval_cache_   |
+                  |  get(key)         |---> [[ SQLite ]]
+                  +-------------------+
+                           |
+                    < hit? >
+                    /        \
+                  YES          NO
+                   |            |
+                   v            v
+            json.loads()    call_fn()
+            return cached   ---> [[ LLM API ]]
+            result               |
+                            db.eval_cache_set()
+                            ---> [[ SQLite ]]
+                                 |
+                         < count > 2000? >
+                         /               \
+                       YES                NO
+                        |                  |
+                 DELETE oldest           done
+                 rows to trim
+                        |
+                        v
+                   return result
+
+
+================================================================================
+  I.  SCENARIO SCORING PIPELINE  (scoring.py)
+================================================================================
+
+  ---- I-a.  Keyword path (score_with_keywords) --------------------------------
+
+  +-----------------------------+
+  |  score_with_keywords()      |
+  |  no LLM, no cache           |
+  +-----------------------------+
+               |
+               v
+  For each key_point in expert_answer:
+
+  +-----------------------------+
+  |  _phrase_in_text()          |
+  |  strip parentheticals       |
+  |  split "/" for OR logic     |
+  |  remove stop words          |
+  |  60% significant-word match |
+  |  bidirectional prefix check |
+  +-----------------------------+
+               |
+        < found in text? >
+        /                \
+      YES                 NO
+       |                   |
+  matched_set           missed_set
+       |
+       v
+  +-----------------------------+
+  |  _compute_coverage_score()  |
+  |  if rubric: weighted sum    |
+  |  else: matched / total      |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _determine_point_sources() |
+  |  "recall" if phrase in      |
+  |  recall_transcript, else    |
+  |  "probe"                    |
+  +-----------------------------+
+               |
+               v
+  return { coverage_score, quality_score=0.0,
+           score, matched_points, missed_points }
+
+
+  ---- I-b.  LLM path (score_with_llm) ----------------------------------------
+
+  +-----------------------------+
+  |  score_with_llm()           |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _extract_evidence()        |
+  |  pre-pass: compress the     |
+  |  transcript to per-KP       |
+  |  evidence bullets           |
+  |  cached_evaluative_call()   |---> [[ LLM API ]]
+  |  (or fallback: clip(3000))  |     [[ SQLite cache ]]
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  build grading prompt:      |
+  |  key_points + weights +     |
+  |  evidence + quality scale   |
+  |  (Chi: 0=recall,            |
+  |   1=elaborated, 2=mech.)    |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  cached_evaluative_call()   |
+  +-----------------------------+
+               |
+        < SELF_CONSISTENCY_SCORING? >
+        /                           \
+      YES                            NO
+       |                              |
+       v                              v
+  call LLM N times              call LLM once
+  _aggregate_grading_           ---> [[ LLM API ]]
+  samples() majority
+  vote per key_point
+       |                              |
+       +-----------+------------------+
+                   |
+                   v
+  +-----------------------------+
+  |  _resolve_llm_matches_      |
+  |  with_quotes()              |
+  |  map raw LLM strings back   |
+  |  to canonical key_point text|
+  +-----------------------------+
+               |
+               v
+  For each matched point:
+
+  +-----------------------------+
+  |  _quote_supported()         |
+  |  normalize both strings     |
+  |  exact substring check      |
+  |  fuzzy: ratio >= 0.9        |
+  |  window >= 8 chars          |
+  +-----------------------------+
+               |
+        < grounded? >
+        /            \
+      YES              NO
+       |                |
+    keep             demote to missed
+    match            log warning
+       |
+       v
+  +-----------------------------+
+  |  _find_narrative_           |
+  |  contradictions()           |
+  |  scan sentences for negation|
+  |  patterns near matched text |
+  +-----------------------------+
+               |
+        < contradicted? >
+        /               \
+      YES                NO
+       |                  |
+  demote to            keep
+  missed               match
+               |
+               v
+  +-----------------------------+
+  |  _compute_coverage_score()  |
+  |  _compute_quality_score()   |
+  |    mean(quality_ratings)/2  |
+  |  _compute_combined_score()  |
+  |    cw*coverage + qw*quality |
+  |    clamped to [0,1]         |
+  +-----------------------------+
+               |
+               v
+  return { coverage_score, quality_score, score,
+           matched_points, missed_points,
+           quality_ratings, point_sources,
+           feedback, strengths, gaps }
+
+
+  ---- I-c.  Merge phase scores (merge_phase_scores) --------------------------
+
+  +--------------------+       +--------------------+
+  | recall_evaluation  |       | probe_evaluation   |
+  | { matched, quality,|       | { matched, quality,|
+  |   score }          |       |   score }          |
+  +--------------------+       +--------------------+
+           |                             |
+           +-------------+---------------+
+                         |
+                         v
+         +------------------------------+
+         |  union of both matched sets  |
+         |  per-point quality =         |
+         |    max(recall, probe)        |
+         |  NO LLM CALL                 |
+         +------------------------------+
+                         |
+                         v
+         +------------------------------+
+         |  _compute_coverage_score()   |
+         |  _compute_quality_score()    |
+         |  _compute_combined_score()   |
+         |  (all pure Python arithmetic)|
+         +------------------------------+
+                         |
+                         v
+         return merged dict
+         (includes per-phase breakdowns)
+
+
+================================================================================
+  J.  FREE RESPONSE SCORING PIPELINE  (scoring.py)
+================================================================================
+
+  ---- J-a.  Keyword path (score_free_response_with_keywords) -----------------
+
+  +-----------------------------+
+  |  score_free_response_       |
+  |  with_keywords()            |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _fr_flatten_matchable()    |
+  |  standalone KPs             |
+  |  pool members (get pool_id  |
+  |  injected as ephemeral copy)|
+  +-----------------------------+
+               |
+               v
+  For each matchable KP:
+  +-----------------------------+
+  |  _phrase_in_text() against  |
+  |  each exemplar in KP list   |
+  |  first match wins           |
+  +-----------------------------+
+               |
+        < found? >
+        /         \
+      YES           NO
+       |             |
+  matched          missed
+               |
+               v
+  +-----------------------------+
+  |  _compute_fr_coverage()     |
+  |  _score_fr_pools():         |
+  |    per pool:                |
+  |    credit = min(matched,    |
+  |                required)    |
+  |    weight by importance     |
+  |  standalone + pool totals   |
+  +-----------------------------+
+               |
+               v
+  return { score, matched_points, missed_points, pools }
+
+
+  ---- J-b.  LLM path (score_free_response_with_llm) -------------------------
+
+  +-----------------------------+
+  |  score_free_response_       |
+  |  with_llm()                 |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _fr_flatten_matchable()    |
+  |  build kp_lines for prompt  |
+  |  (id, construct, exemplars, |
+  |   importance per KP)        |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  check_for_injection_       |
+  |  patterns()                 |
+  |  log-only tripwire,         |
+  |  never blocks scoring       |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _delimit_submission()      |
+  |  wrap text in markers:      |
+  |  <<<LEARNER_SUBMISSION_     |
+  |    START/END>>>             |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  cached_evaluative_call()   |
+  +-----------------------------+
+               |
+        < SELF_CONSISTENCY? >
+        /                   \
+      YES                    NO
+       |                      |
+  N samples,             single call
+  _aggregate_fr_         ---> [[ LLM API ]]
+  grading_samples()
+  majority per kp_id
+       |                      |
+       +-----------+----------+
+                   |
+                   v
+  For each match in LLM result:
+
+  +-----------------------------+
+  |  _spans_supported()         |
+  |  filter evidence_spans to   |
+  |  only those present verbatim|
+  |  in submission text         |
+  +-----------------------------+
+               |
+        < spans empty after filter? >
+        /                           \
+      YES                            NO
+       |                              |
+  demote to                    < novel_equivalent? >
+  missed                        /                  \
+                               YES                  NO
+                                |                    |
+                     +------------------+        keep as
+                     |  _justification_ |        exemplar match
+                     |  is_substantive()|
+                     |  reject if:      |
+                     |  - empty         |
+                     |  - boilerplate   |
+                     |  - copies        |
+                     |    construct     |
+                     |  - under 5 words |
+                     +------------------+
+                                |
+                         < substantive? >
+                         /               \
+                       YES                NO
+                        |                  |
+                  keep as novel        demote to missed
+                  equivalent           log warning
+                        |
+                  db.log_novel_
+                  equivalent()
+                  ---> [[ SQLite ]]
+               |
+               v
+  +-----------------------------+
+  |  _find_narrative_           |
+  |  contradictions()           |
+  |  negation scan on matched   |
+  |  points vs narrative text   |
+  +-----------------------------+
+               |
+        < contradicted? >
+        /               \
+      YES                NO
+       |                  |
+  demote               keep
+               |
+               v
+  +-----------------------------+
+  |  _compute_fr_coverage()     |
+  |  (standalone + pools)       |
+  +-----------------------------+
+               |
+               v
+  return { score, matched_points, missed_points,
+           novel_equivalent_matches, pools,
+           feedback, strengths, gaps }
+
+
+================================================================================
+  K.  WRITING PROCESS ANALYSIS PIPELINE  (writing_process.py)
+================================================================================
+
+  +==========================================+
+  |  analyze_writing_process()               |
+  |  orchestrator -- calls all signal fns    |
+  |  inputs: process_log, writing_metrics,   |
+  |          essay_text, product_score,      |
+  |          model, api_key, use_llm         |
+  +==========================================+
+      |         |         |         |        |
+      v         v         v         v        v
+  +-------+ +--------+ +--------+ +------+ +-------+
+  |compute| | find_  | |compute | |compu-| |compu- |
+  |_effort| |diffi-  | |_authen-| |te_   | |te_    |
+  |_profil| |culty_  | |ticity()| |traje-| |confid-|
+  |e()    | |points()| |        | |ctory | |ence_  |
+  +-------+ +--------+ +--------+ +------+ |calibr-|
+      |         |         |         |      |ation()|
+      |         |         |         |      +-------+
+      v         |         |         |          |
+  +-------------------+   |         |          |
+  | effort result:    |   |         |          |
+  | pause_ratio       |   |         |          |
+  | revision_density  |   |         |          |
+  | revision_count    |   |         |          |
+  | longest_pause     |   |         |          |
+  | (location label)  |   |         |          |
+  +-------------------+   |         |          |
+      |                   |         |          |
+      v                   v         v          v
+  +-----------------------------------------------------+
+  |  classify_quadrant()                                |
+  |                                                     |
+  |  is_frictionless = elevated authenticity            |
+  |                    OR (linear + low density         |
+  |                        + low pause ratio)           |
+  |                                                     |
+  |  is_effortful    = iterative OR high density        |
+  |                    OR high pause ratio              |
+  |                                                     |
+  |  product_strong  = score >= 0.7                     |
+  |                                                     |
+  |  strong + effortful   -> "genuine_engaged_reasoning"|
+  |  strong + frictionless -> "authenticity_review"     |
+  |  weak   + effortful   -> "engaged_under_knowledge" |
+  |  weak   + frictionless -> "disengaged_shallow_     |
+  |                            confident"              |
+  +-----------------------------------------------------+
+               |
+       < use_llm AND model/api_key provided? >
+       /                                     \
+     YES                                      NO
+      |                                        |
+      v                                        v
+  +-----------------------------+         rating =
+  |  assess_revision_toward_   |         "not_assessed"
+  |  quality()                 |
+  |  filter revision_events    |
+  |  with removed/inserted text|
+  |  ONE LLM call judges:      |
+  |  - conditional moves?      |
+  |  - goal-linked moves?      |
+  |  - consequence-aware?      |
+  |  cached_evaluative_call()  |---> [[ LLM API ]]
+  |                            |     [[ SQLite cache ]]
+  |  returns:                  |
+  |  { rating: none/some/clear |
+  |    evidence: [{before,     |
+  |               after}]      |
+  |    alternative_explanation }
+  +-----------------------------+
+               |
+               v
+  return { effort_profile, difficulty_points, authenticity,
+           trajectory, revision_toward_quality, quadrant }
+
+
+  ---- Difficulty points detail ------------------------------------------------
+
+  +-----------------------------+
+  |  find_difficulty_points()   |
+  +-----------------------------+
+               |
+               v
+  For each pause in process_log:
+  +-----------------------------+
+  |  scan revision_events       |
+  |  within PROXIMITY_CHARS=100 |
+  |  AND within PROXIMITY_S=60  |
+  |  changed chars >= 15        |
+  +-----------------------------+
+               |
+        < nearby revision found? >
+        /                        \
+      YES                         NO
+       |                           |
+  add difficulty point           skip pause
+  { char_position,
+    pause_duration_s,
+    note, alternative }
+               |
+               v
+  return list of difficulty points
+
+
+  ---- Authenticity signals detail ---------------------------------------------
+
+  +-----------------------------+
+  |  compute_authenticity()     |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  | total_pasted = sum of       |
+  | all paste lengths           |
+  | pasted_fraction =           |
+  |   total / essay_len         |
+  +-----------------------------+
+               |
+               v
+  For each paste >= 200 chars:
+  +-----------------------------+
+  |  any revision within 60s?   |
+  +-----------------------------+
+               |
+        < revised? >
+        /           \
+      YES             NO
+       |               |
+   (not flagged)  unrevised_large
+                  _pastes += 1
+               |
+               v
+  +------------------------------------------+
+  |  level classification:                   |
+  |                                          |
+  |  "elevated":  pasted_fraction >= 0.40   |
+  |               OR (unrevised large > 0    |
+  |                   AND fraction >= 0.15)  |
+  |                                          |
+  |  "low":       some pastes AND frac>=0.10 |
+  |                                          |
+  |  "none":      no paste events            |
+  +------------------------------------------+
+
+
+================================================================================
+  L.  THINKING PROFILE ANALYSIS  (thinking.py)
+================================================================================
+
+  ---- L-a.  Scenario mode (analyse_thinking_profile) -------------------------
+
+  +-----------------------------+
+  |  analyse_thinking_profile() |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _format_process_section()  |
+  |  per-turn from writing_     |
+  |  metrics:                   |
+  |  latency_s, wpm,            |
+  |  deletion_count,            |
+  |  paste_count, pause_count   |
+  |  _word_choice_metrics():    |
+  |    unique_word_ratio        |
+  |    avg_word_length          |
+  |    hedging_count            |
+  +-----------------------------+
+               |
+        < recall AND probe
+          transcripts both present? >
+          /                       \
+        YES                        NO
+         |                          |
+  build split transcript       use single
+  section with labelled        transcript block
+  recall / probe parts
+  + probe_comparison_note
+         |                          |
+         +-----------+--------------+
+                     |
+                     v
+  +-----------------------------+
+  |  build LLM prompt:          |
+  |  - scenario title           |
+  |  - transcript(s)            |
+  |  - process section          |
+  |  - H&M framework guidance   |
+  |  - SOLO taxonomy guidance   |
+  |  - evidence requirements    |
+  |  - exact JSON schema        |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  cached_evaluative_call()   |
+  |  llm_chat_json()            |
+  |  temp=0.0, seed=42          |---> [[ LLM API ]]
+  |                             |     [[ SQLite cache ]]
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _strip_md() on all prose   |
+  |  fields: remove **bold**,   |
+  |  _italic_, stray $          |
+  +-----------------------------+
+               |
+               v
+  return { honey_mumford_style, honey_mumford_evidence,
+           honey_mumford_reasoning, honey_mumford_confidence,
+           solo_level, solo_evidence, solo_reasoning,
+           solo_confidence, probe_phase_improvement,
+           observed_patterns, instructor_note }
+
+
+  ---- L-b.  FR mode (derive_fr_solo_level) -- NO LLM -------------------------
+
+  +-----------------------------+
+  |  derive_fr_solo_level()     |
+  |  reads evaluation dict      |
+  |  already computed by scoring|
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  matched = matched_points   |
+  |    filtered to dicts only   |
+  |  matched_count = len(matched|
+  |  mean_quality = mean of     |
+  |    quality_rating (0-2)     |
+  +-----------------------------+
+               |
+               v
+       < matched_count >
+       |      |       \      \
+       0      1      >=2    >=2 + mean_quality >= 1.0
+       |      |       |          |
+       v      v       v          v
+  Pre-    Uni-    Multi-     Relational
+  struct  struct  structural
+  -ural   -ural
+               |
+               v
+  return { solo_level, matched_count, mean_quality }
+
+  Note: Extended Abstract is never returned.
+  FR Coverage/Quality scoring is scoped strictly
+  to authored key points within the given task.
+  Generalising beyond the task cannot be detected
+  without a new ungrounded LLM call -- which is
+  the exact problem derive_fr_solo_level exists
+  to avoid.
+
+
+================================================================================
+  M.  REPORT GENERATION  (reports.py)
+================================================================================
+
+  ---- M-a.  Scenario report (generate_report) --------------------------------
+
+  +-----------------------------+
+  |  generate_report()          |
+  |  inputs: session, model,    |
+  |          api_key, output_dir|
+  |          thinking_profile   |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  output_dir.mkdir()         |
+  |  path = report_TIMESTAMP.md |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  build summary_prompt:      |
+  |  all scenario scores, gaps, |
+  |  and matched points         |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _generate_instructor_      |
+  |  summary()                  |---> [[ LLM API ]]
+  +-----------------------------+
+               |
+        < LLM succeeded? >
+        /                 \
+      YES                  NO
+       |                    |
+  use LLM text         _instructor_summary_fallback()
+                       deterministic from score data:
+                       "Overall: X%. Coverage: Y%..."
+       |                    |
+       +---------+----------+
+                 |
+                 v
+  +=========================================+
+  |  Build markdown line by line:           |
+  +=========================================+
+      |                                     |
+      v                                     v
+  Header section:            For each (scenario, evaluations):
+  - title, date, model,      - "## Scenario N: title"
+    scenarios completed,     - _append_scores()
+    average score            - recall transcript (blockquoted)
+                             - probe transcript (blockquoted)
+                             - expert guidance
+                             - learner feedback
+                             - _append_key_points_with_
+                               attribution()
+                               (volunteered) or
+                               (surfaced via probe)
+                 |
+                 v
+  +-----------------------------+
+  |  "## Instructor Summary"    |
+  |  overall_assessment         |
+  |  learning_gaps              |
+  |  recommendations            |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  if thinking_profile:       |
+  |  _append_thinking_profile() |
+  |  H&M style, SOLO level,     |
+  |  probe_phase_improvement,   |
+  |  observed_patterns,         |
+  |  instructor_note            |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  inference boundary note    |
+  |  path.write_text(markdown)  |
+  +-----------------------------+
+               |
+               v
+  return path
+
+
+  ---- M-b.  FR report (generate_fr_report) -----------------------------------
+
+  +-----------------------------+
+  |  generate_fr_report()       |
+  |  inputs: prompt_data,       |
+  |          evaluation,        |
+  |          thinking_profile,  |
+  |          process_overlay,   |
+  |          ai_assistance      |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _generate_instructor_      |
+  |  summary() [LLM / fallback] |---> [[ LLM API ]]
+  +-----------------------------+
+               |
+               v
+  +======================================+
+  |  Markdown sections built in order:  |
+  +======================================+
+
+  ## Prompt
+  (prompt_text or description + constraints)
+            |
+            v
+  ## Learner's Submission
+  (full text, blockquoted)
+            |
+            v
+  ## AI Assistance Declaration
+  (used: yes/no + notes, if provided)
+            |
+            v
+  ## Evaluation
+  +-----------------------------+
+  |  _append_scores()           |
+  |  Coverage, Quality, Overall |
+  |  + FR calibration note      |
+  |  feedback, strengths, gaps  |
+  |  _append_fr_key_points()    |
+  |    for each standalone KP:  |
+  |    _fr_match_bullet_lines() |
+  |    construct, match_type,   |
+  |    quality, evidence spans  |
+  |    justification (if novel) |
+  |  expert reference answer    |
+  |  _append_fr_pools()         |
+  |    per pool:                |
+  |    matched N of M required  |
+  |    each matched member      |
+  |    not-matched list         |
+  +-----------------------------+
+            |
+            v
+  ## Instructor Summary
+  (LLM-generated or fallback)
+            |
+            v
+  ## Learner Thinking Profile
+  +-----------------------------+
+  |  _append_fr_solo()          |
+  |  SOLO level (deterministic) |
+  |  matched_count, mean_quality|
+  |  scope limitation note      |
+  +-----------------------------+
+            |
+            v
+  ## Writing Process
+  +-----------------------------+
+  |  _append_process_overlay()  |
+  |  quadrant label +           |
+  |    interpretation +         |
+  |    alternative              |
+  |  effort: active_mins,       |
+  |    revision phrase,         |
+  |    pause phrase             |
+  |  revision_toward_quality:   |
+  |    rating, before/after     |
+  |    pairs, alternative       |
+  |  difficulty_points:         |
+  |    per point: char position,|
+  |    note, alternative        |
+  |  authenticity:              |
+  |    level, evidence,         |
+  |    alternative              |
+  |  confidence calibration:    |
+  |    pre/post ratings, delta, |
+  |    finding, note            |
+  |  closing_nudge (if present) |
+  |  interpretation caution     |
+  +-----------------------------+
+            |
+            v
+  path.write_text(markdown)
+  return path
+
+
+================================================================================
+  N.  REPORT PARSER  (report_parser.py)
+================================================================================
+
+  +-----------------------------+
+  |  parse_report_md(content)   |
+  |  split lines                |
+  |  read first line for type   |
+  +-----------------------------+
+               |
+        < "Free Response" in
+          title line? >
+          /            \
+        YES              NO
+         |                |
+         v                v
+
+  +------------------+    +------------------+
+  |  FR report path  |    |  Scenario path   |
+  +------------------+    +------------------+
+         |                         |
+         v                         v
+  _split_sections()          _split_sections()
+  by "## " headings          by "## " headings
+         |                         |
+         v                         v
+  +------------------+    +------------------+
+  | _parse_metadata()|    | _parse_metadata()|
+  | **Key:** Value   |    | Date, Model,     |
+  | pattern match    |    | Avg score        |
+  +------------------+    +------------------+
+         |                         |
+         v                         v
+  parse sections:            for each
+  - "Prompt"                 "## Scenario N:":
+  - "Learner's Submission"   +------------------+
+    (_parse_blockquote)      | _parse_scenario()|
+  - "AI Assistance           | scores, transcripts
+    Declaration"             | key_points, missed
+  - "Evaluation":            | feedback         |
+    score, feedback,         +------------------+
+    matched_points,
+    missed_points,           parse:
+    evidence_spans,          - "Instructor Summary"
+    justifications           - "Learner Thinking Profile"
+  - "Pools":                   (H&M + SOLO sections)
+    _parse_fr_pools()
+    per-pool: matched/req,
+    member bullets
+  - "Instructor Summary"
+  - "Learner Thinking Profile"
+    (SOLO level only for FR)
+  - "Writing Process":
+    _parse_process_overlay()
+    quadrant, effort,
+    revision_toward_quality,
+    difficulty_points,
+    authenticity,
+    confidence_calibration
+         |                         |
+         +-----------+-------------+
+                     |
+                     v
+  return { type, title, metadata,
+           scenarios OR evaluation + pools,
+           thinking_profile, process_overlay,
+           instructor_summary }
+
+
+================================================================================
+  O.  DATABASE FLOWS  (database.py)
+================================================================================
+
+  ---- O-a.  Startup: init_db -------------------------------------------------
+
+  +-----------------------------+
+  |  init_db()                  |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _conn()                    |
+  |  sqlite3.connect(DB_FILE)   |
+  |  row_factory=sqlite3.Row    |
+  |  PRAGMA journal_mode=WAL    |
+  +-----------------------------+
+               |
+               v
+  [[ CREATE TABLE IF NOT EXISTS users ]]
+               |
+               v
+  [[ CREATE TABLE IF NOT EXISTS llm_eval_cache ]]
+               |
+               v
+  [[ CREATE TABLE IF NOT EXISTS novel_equivalent_review ]]
+               |
+               v
+  [[ CREATE TABLE IF NOT EXISTS fr_match_log ]]
+               |
+               v
+  [[ CREATE TABLE IF NOT EXISTS assessments
+     (34 columns from ASSESSMENT_FIELDS) ]]
+               |
+               v
+  [[ PRAGMA table_info(assessments) ]]
+  For any ASSESSMENT_FIELDS column missing:
+  [[ ALTER TABLE ADD COLUMN ]]
+               |
+               v
+  done
+
+
+  ---- O-b.  Eval cache read/write flow ---------------------------------------
+
+  +-----------------------------+
+  |  eval_cache_get(key)        |
+  |  init_db() first            |
+  +-----------------------------+
+               |
+  [[ SELECT response FROM
+     llm_eval_cache WHERE key=? ]]
+               |
+        < row found? >
+        /            \
+      YES              NO
+       |                |
+  return response     return None
+
+
+  +-----------------------------+
+  |  eval_cache_set(key,        |
+  |  response)                  |
+  +-----------------------------+
+               |
+  [[ INSERT OR REPLACE INTO
+     llm_eval_cache ]]
+               |
+  [[ SELECT COUNT(*) FROM
+     llm_eval_cache ]]
+               |
+        < count > 2000? >
+        /               \
+      YES                NO
+       |                  |
+  [[ DELETE oldest       done
+     rows (excess) ]]
+
+
+  ---- O-c.  Novel-equivalent review queue ------------------------------------
+
+  FR scoring finds novel_equivalent
+               |
+               v
+  [[ INSERT INTO novel_equivalent_review
+     (status='pending') ]]
+               |
+               v
+  admin visits /api/admin/novel-equivalents
+               |
+               v
+  [[ SELECT * WHERE status='pending' ]]
+               |
+        < admin decision >
+        /                 \
+  "promote"            "dismiss"
+        |                    |
+        v                    v
+  find KP or pool      [[ UPDATE status=
+  in prompt JSON       'dismissed' ]]
+  add new member or
+  new exemplar
+        |
+        v
+  write updated prompt
+  JSON back to disk
+        |
+        v
+  reload prompts from disk
+        |
+        v
+  [[ UPDATE status=
+     'promoted' ]]
+
+
+  ---- O-d.  Assessment upsert flow -------------------------------------------
+
+  report .md written to disk
+               |
+               v
+  +-----------------------------+
+  |  _persist_assessment_rows() |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  report_parser.             |
+  |  parse_report_md()          |
+  |  regex-based section parser |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  auth.load_users()          |
+  |  get display_name, role     |---> [[ SQLite ]]
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  _load_annotation()         |
+  |  read _annotations/         |
+  |  <username>_<file>.json     |
+  |  sidecar file (if present)  |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  build 34-field row dict    |
+  |  matching ASSESSMENT_FIELDS |
+  +-----------------------------+
+               |
+               v
+  [[ INSERT OR REPLACE INTO
+     assessments
+     UNIQUE(username, report_file,
+            task_title) ]]
+
+
+================================================================================
+  P.  LOADERS -- SCHEMA MIGRATION  (loaders.py)
+================================================================================
+
+  +-----------------------------+
+  |  load_prompt(path)  OR      |
+  |  load_scenario(path)        |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  json.load(open(path))      |
+  |  fill default fields:       |
+  |  id, description, word_     |
+  |  limit, constraints,        |
+  |  metadata, etc.             |
+  +-----------------------------+
+               |
+               v
+  For each expert_answer:
+
+  +-----------------------------+
+  |  _migrate_fr_key_points()   |
+  +-----------------------------+
+               |
+               v
+  For each item in key_points:
+
+        < type? >
+        /         \
+    string        dict
+       |              |
+       v              v
+  +----------+   +----------+
+  | convert  |   | normalise|
+  | to dict: |   | existing |
+  | {id,     |   | dict:    |
+  |  construct   | fill id  |
+  |  exemplars,| | from slug|
+  |  importance} | fill     |
+  +----------+   | exemplars|
+       |         | fill     |
+       |         | importance
+       |         +----------+
+       +---------+
+           |
+           v
+  +-----------------------------+
+  |  de-duplicate ids:          |
+  |  if collision append _2 _3  |
+  +-----------------------------+
+               |
+               v
+  For each pool in ea["pools"]:
+  +-----------------------------+
+  |  normalise pool:            |
+  |  pool_id, importance,       |
+  |  required_count             |
+  |  (default: len(members))    |
+  |  normalise each member      |
+  +-----------------------------+
+               |
+               v
+  +-----------------------------+
+  |  ea.pop("rubric")           |
+  |  drop legacy rubric from    |
+  |  FR prompts (not used)      |
+  +-----------------------------+
+               |
+               v
+  return normalised prompt / scenario data
+
+
+================================================================================
+  Q.  AUTH RATE LIMITING  (auth.py)
+================================================================================
+
+  [_rate]  =  {}  (in-memory, keyed by IP string)
+
+  Per IP entry:
+  +-----------------------------+
+  |  { count: int,              |
+  |    window_start: float,     |
+  |    admin_attempts: int,     |
+  |    admin_locked_until: float}
+  +-----------------------------+
+
+  On each request:
+
+  +-----------------------------+
+  |  _ip_state(ip)              |
+  |  lazy-init entry if missing |
+  +-----------------------------+
+               |
+               v
+        < window_start > 60s ago? >
+        /                          \
+      YES                           NO
+       |                             |
+  reset count=0                 use existing
+  reset window_start=now        count
+               |
+               v
+        < is admin attempt? >
+        /                    \
+      YES                     NO
+       |                       |
+  count admin_attempts     skip admin
+  if >= 3:                 tracking
+    admin_locked_until =
+    now + 900s
+    return "just_locked"
+               |
+               v
+  count += 1
+
+  On success:
+  +-----------------------------+
+  |  record_success(ip, is_admin|
+  |  count = 0                  |
+  |  if admin: admin_attempts=0 |
+  +-----------------------------+
+
+
+================================================================================
+  END OF VISUAL CODE FLOWCHART
+================================================================================

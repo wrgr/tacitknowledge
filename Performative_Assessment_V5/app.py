@@ -139,6 +139,16 @@ def _user_theme():
     return session.get("theme", "light")
 
 
+@app.template_global()
+def static_v(filename):
+    """Cache-busting query value for static assets: the file's mtime, so
+    browsers re-fetch app JS whenever it changes but cache it otherwise."""
+    try:
+        return int((Path(app.static_folder) / filename).stat().st_mtime)
+    except OSError:
+        return 0
+
+
 def _resolve_model(provider_name, requested, provider_cfg):
     """Pick a valid model for the provider.
 

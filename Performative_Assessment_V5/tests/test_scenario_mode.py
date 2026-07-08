@@ -298,6 +298,62 @@ class ProbeQueueSizeCapTests(unittest.TestCase):
         self.assertEqual(len(queue), runner.MAX_PROBE_QUEUE_SIZE)
 
 
+class ProbeQueueAboveCapPriorityAndTypeCapTests(unittest.TestCase):
+    """Phase 1.2 Part C: with more genuine high-priority candidates than fit in
+    the (now larger) queue, confirm the selection is still exactly
+    MAX_PROBE_QUEUE_SIZE, still ordered by priority, and the error/edge_case
+    single-instance caps still hold -- i.e. raising the overall cap let more
+    how/decision/rationale probes in, not a relaxation of the per-type caps.
+
+    This is distinct from ProbeQueueSizeCapTests: that test uses a single probe
+    type (decision) to show truncation happens at all; this one mixes types with
+    more than MAX_PROBE_QUEUE_SIZE candidates so it can also assert per-type caps
+    survive the larger cap and that the specific candidates truncated away are the
+    lowest-priority ones, not an arbitrary subset."""
+
+    def test_more_than_max_candidates_selects_exactly_max_respecting_type_caps_and_priority(self):
+        probe_bank = [
+            {"probe_type": "how",       "target_key_point": "how_target", "probe_text": "how?",  "success_criteria": ""},
+            {"probe_type": "decision",  "target_key_point": "d",          "probe_text": "d?",     "success_criteria": ""},
+            {"probe_type": "error",     "target_key_point": "e1",         "probe_text": "e1?",    "success_criteria": ""},
+            {"probe_type": "error",     "target_key_point": "e2",         "probe_text": "e2?",    "success_criteria": ""},
+            {"probe_type": "edge_case", "target_key_point": "x1",         "probe_text": "x1?",    "success_criteria": ""},
+            {"probe_type": "edge_case", "target_key_point": "x2",         "probe_text": "x2?",    "success_criteria": ""},
+            {"probe_type": "rationale", "target_key_point": "r1",         "probe_text": "r1?",    "success_criteria": ""},
+            {"probe_type": "rationale", "target_key_point": "r2",         "probe_text": "r2?",    "success_criteria": ""},
+            {"probe_type": "rationale", "target_key_point": "r3",         "probe_text": "r3?",    "success_criteria": ""},
+        ]
+        # 9 candidates > MAX_PROBE_QUEUE_SIZE (6). All "missing" so priority is
+        # purely type-ordered: how > decision > error > edge_case > rationale.
+        # None of the rationale probes share how_target's target, so none fold.
+        self.assertGreater(len(probe_bank), runner.MAX_PROBE_QUEUE_SIZE)
+        scenario = _minimal_scenario(probe_bank)
+        r = _make_runner(scenario, "recall text")
+
+        with patch.object(runner, "llm_chat_json", return_value=_coverage_response(["missing"] * len(probe_bank))):
+            queue = r._build_probe_queue()
+
+        self.assertEqual(len(queue), runner.MAX_PROBE_QUEUE_SIZE)
+
+        types = [c["probe_type"] for c in queue]
+        self.assertLessEqual(types.count("error"), 1)
+        self.assertLessEqual(types.count("edge_case"), 1)
+
+        # Priority ordering preserved end to end.
+        scores = [c["priority_score"] for c in queue]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+
+        # The specific probes selected are the highest-priority ones once the
+        # per-type caps are applied: how, decision, one error, one edge_case,
+        # and the two highest-priority rationale probes (r1, r2) -- r3 is the
+        # one candidate that the raised-but-still-finite cap excludes.
+        self.assertEqual(types.count("how"), 1)
+        self.assertEqual(types.count("decision"), 1)
+        self.assertEqual(types.count("rationale"), 2)
+        selected_texts = {c["probe_text"] for c in queue}
+        self.assertEqual(selected_texts, {"how?", "d?", "e1?", "x1?", "r1?", "r2?"})
+
+
 class ProbeQueueEmptyPathTests(unittest.TestCase):
     """Part B7: when nothing survives filtering, the queue comes back empty and
     end_recall() jumps straight to "concluded" without ever entering "probing".

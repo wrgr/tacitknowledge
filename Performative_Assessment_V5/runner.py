@@ -26,8 +26,11 @@ _PROMPT_VERSION_COVERAGE_ANALYSIS = "coverage_analysis_v1"
 FALLBACK_RECALL_ACK = ["Go on.", "Continue.", "What next?", "Anything else?"]
 FALLBACK_PROBE = "Can you tell me more about that?"
 
-# SMALL VALUE FOR TESTING -- CHANGE IN FUTURE
-MAX_PROBE_QUEUE_SIZE = 4
+# TUNABLE -- raised from the original testing value of 4 to 6, pending validation
+# against real sessions (see Phase 1.3/1.4: does raising this actually surface more
+# genuine gaps, or was 4 already sufficient for the scenarios currently authored?).
+# Do not treat 6 as final until that validation has run.
+MAX_PROBE_QUEUE_SIZE = 6
 
 # Priority score by probe type (higher = selected first)
 _PROBE_TYPE_PRIORITY = {

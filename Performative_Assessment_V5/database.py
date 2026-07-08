@@ -49,6 +49,8 @@ ASSESSMENT_FIELDS = [
     "confidence_calibration",
     "closing_nudge_used",
     "process_caution",
+    "process_review_priority",
+    "process_review_reason",
     "thinking_honey_mumford",
     "thinking_solo",
     "ai_assistance_used",
@@ -525,6 +527,31 @@ def all_assessment_rows():
     with _conn() as c:
         rows = c.execute(
             "SELECT * FROM assessments ORDER BY username, timestamp, report_file, task_title"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def process_review_queue(limit: int = 10):
+    """FR rows whose product/process pattern deserves human review first.
+
+    The priority is an advisory triage signal computed at export time. It never
+    changes the learner score; it just keeps likely divergence cases visible to
+    instructors and researchers.
+    """
+    init_db()
+    limit = max(1, min(int(limit or 10), 100))
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT username, report_file, task_title, timestamp, product_score_percent, "
+            "       process_quadrant, process_review_priority, process_review_reason, "
+            "       annotation_label "
+            "FROM assessments "
+            "WHERE report_type='free_response' "
+            "  AND process_review_priority IN ('high','medium') "
+            "ORDER BY CASE process_review_priority WHEN 'high' THEN 0 ELSE 1 END, "
+            "         timestamp DESC, username ASC "
+            "LIMIT ?",
+            (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
 

@@ -70,6 +70,9 @@ INSTRUCTOR TOOLING (Admin Dashboard)
   - Grading Reliability panel: LLM-vs-instructor agreement rate, average LLM
     score per annotation label (over/under-crediting signal), per-task
     agreement, recent annotations, and novel-equivalent match reliability.
+  - Process Review queue: surfaces free-response reports with high- or medium-
+    priority product/process divergence signals for human review. The queue is
+    advisory context only; it never changes the learner's score.
   - Novel-equivalent review queue: promote or dismiss novel FR matches;
     promotion into a key point's exemplar list is always a human action.
   - Research export: /admin/research-export.csv -- one row per assessed task,

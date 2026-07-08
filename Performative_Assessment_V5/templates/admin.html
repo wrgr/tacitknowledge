@@ -503,6 +503,8 @@ main {
 .cal-bar.lbl-partial, .cal-chip.lbl-partial { background: var(--amber); }
 .cal-bar.lbl-missing, .cal-chip.lbl-missing { background: #dc2626; }
 .cal-bar.lbl-needs_expert_review, .cal-chip.lbl-needs_expert_review { background: var(--blue-dk); }
+.cal-chip.priority-high { background: #dc2626; }
+.cal-chip.priority-medium { background: var(--amber); }
 .cal-label-n { width: 32px; text-align: right; font-size: .8rem; font-weight: 700; flex-shrink: 0; }
 .cal-label-avg { width: 150px; font-size: .73rem; color: var(--muted); flex-shrink: 0; }
 
@@ -673,6 +675,7 @@ main {
         <a href="#overview" class="active" data-nav><span class="dot"></span> Overview</a>
         <a href="#directory" data-nav><span class="dot"></span> User Directory <span class="count">{{ users|length }}</span></a>
         <a href="#calibration" data-nav><span class="dot"></span> Grading Reliability{% if calibration and calibration.annotated %} <span class="count">{{ calibration.annotated }}</span>{% endif %}</a>
+        <a href="#process-review" data-nav><span class="dot"></span> Process Review{% if process_review_queue %} <span class="count">{{ process_review_queue|length }}</span>{% endif %}</a>
       </nav>
     </div>
 
@@ -842,6 +845,38 @@ main {
         {% endfor %}
 
         <div class="empty-state" id="empty-state">No users match your search.</div>
+      </div>
+    </section>
+
+    <section class="panel" id="process-review">
+      <div class="panel-head">
+        <div class="panel-title">Process Review <span>Â· product/process triage</span></div>
+      </div>
+      <div class="cal-body">
+      {% if process_review_queue %}
+        <table class="cal-table">
+          <thead><tr><th>Priority</th><th>Student</th><th>Task</th><th>Score</th><th>Process signal</th><th>Reason</th><th>Annotation</th></tr></thead>
+          <tbody>
+            {% for r in process_review_queue %}
+            <tr>
+              <td><span class="cal-chip priority-{{ r.process_review_priority }}">{{ r.process_review_priority }}</span></td>
+              <td><a class="cal-link" href="/admin/report/{{ r.username }}/{{ r.report_file }}" target="_blank" rel="noopener">{{ r.username }}</a></td>
+              <td class="cal-task">{{ r.task_title or 'â€”' }}</td>
+              <td>{{ r.product_score_percent }}{% if r.product_score_percent %}%{% endif %}</td>
+              <td>{{ r.process_quadrant or 'â€”' }}</td>
+              <td>{{ r.process_review_reason }}</td>
+              <td>{{ r.annotation_label.replace('_',' ') if r.annotation_label else 'unreviewed' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="cal-note">This queue is advisory. It highlights cases where process evidence may explain, complicate, or contextualize the product score; it does not change the score.</p>
+      {% else %}
+        <p class="cal-empty">
+          No process/product review flags yet. Free-response reports with process overlays
+          will appear here when the export detects a high- or medium-priority review signal.
+        </p>
+      {% endif %}
       </div>
     </section>
 

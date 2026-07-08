@@ -1,0 +1,23 @@
+#!/bin/bash
+# Launch the app with Google OAuth sign-in enabled.
+#
+# Setup:
+#   1. cp run_oauth.sh.example run_oauth.sh      (run_oauth.sh is gitignored)
+#   2. Fill in your OAuth client credentials below
+#      (Google Cloud Console -> APIs & Services -> Credentials -> OAuth client ID,
+#       type "Web application", redirect URI http://localhost:5001/auth/google/callback)
+#   3. chmod +x run_oauth.sh && ./run_oauth.sh
+#
+# NEVER commit run_oauth.sh itself -- it contains your client secret.
+
+export GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+export GOOGLE_CLIENT_SECRET="your-client-secret"
+
+# Comma-separated emails that get the admin role on first sign-in:
+export GOOGLE_ADMIN_EMAILS="you@example.edu"
+
+# Optional: restrict sign-in to one email domain (empty = any Google account):
+# export GOOGLE_ALLOWED_DOMAIN="example.edu"
+
+cd "$(dirname "$0")"
+exec python3 app.py

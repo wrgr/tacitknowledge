@@ -16,3 +16,5 @@ reports/
 
 #venv
 /.venv
+# Local OAuth launcher (contains client secret)
+run_oauth.sh

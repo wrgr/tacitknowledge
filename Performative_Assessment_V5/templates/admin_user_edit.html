@@ -161,6 +161,12 @@ main { max-width: 560px; margin: 32px auto; padding: 0 20px 60px; }
         </select>
       </div>
 
+      {% if user.auth_provider == 'google' %}
+      <div class="field">
+        <label>Password</label>
+        <div class="hint">This account signs in with Google{{ ' (' ~ user.email ~ ')' if user.email }} and has no password.</div>
+      </div>
+      {% else %}
       <div class="field">
         <label for="new_password">New password</label>
         <input type="password" id="new_password" name="new_password"
@@ -168,6 +174,7 @@ main { max-width: 560px; margin: 32px auto; padding: 0 20px 60px; }
                autocomplete="new-password" minlength="8">
         <div class="hint">Minimum 8 characters. Leave empty to keep the existing password.</div>
       </div>
+      {% endif %}
 
       <div class="actions">
         <a class="btn btn-ghost" href="/admin">Cancel</a>

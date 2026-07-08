@@ -90,6 +90,8 @@ def authenticate(username, password):
     user = db.get_user(username)
     if not user:
         return None
+    if not user.get("password_hash"):
+        return None   # OAuth-provisioned account — has no password to check
     if not check_password_hash(user["password_hash"], password):
         return None
     return user

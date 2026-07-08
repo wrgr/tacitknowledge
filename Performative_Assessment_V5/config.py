@@ -59,3 +59,23 @@ SELF_CONSISTENCY_SCORING = False
 # when SELF_CONSISTENCY_SCORING is enabled. Higher = more reliable,
 # more cost/latency.
 SELF_CONSISTENCY_SAMPLES = 3
+
+# ── Google OAuth sign-in (optional) ───────────────────────────────────────────
+# Enabled only when GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set in the
+# environment (create an OAuth 2.0 "Web application" client in Google Cloud
+# Console; redirect URI: http://localhost:5001/auth/google/callback).
+# Password login always keeps working alongside it.
+import os as _os
+
+GOOGLE_CLIENT_ID     = _os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = _os.environ.get("GOOGLE_CLIENT_SECRET", "")
+
+# Access policy for Google sign-in:
+#  - GOOGLE_ALLOWED_DOMAIN: only emails @this-domain may sign in ("" = any
+#    verified Google account — fine for development, not for data collection).
+#  - GOOGLE_ADMIN_EMAILS: comma-separated emails that get the admin role;
+#    everyone else who passes the domain gate becomes a student.
+GOOGLE_ALLOWED_DOMAIN = _os.environ.get("GOOGLE_ALLOWED_DOMAIN", "")
+GOOGLE_ADMIN_EMAILS   = {e.strip().lower()
+                         for e in _os.environ.get("GOOGLE_ADMIN_EMAILS", "").split(",")
+                         if e.strip()}

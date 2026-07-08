@@ -33,6 +33,27 @@ DEFAULT LOGIN CREDENTIALS
   Admin Dashboard: User Directory -> expand a user -> "Configure account".
 
 
+GOOGLE SIGN-IN (optional)
+-------------------------
+  Password login always works. To additionally enable "Sign in with Google":
+
+  1. In Google Cloud Console, create an OAuth 2.0 Client ID (type: Web
+     application) with redirect URI  http://localhost:5001/auth/google/callback
+     (add your HTTPS URL for production).
+  2. Set environment variables before starting the app:
+
+       GOOGLE_CLIENT_ID=...          # from the OAuth client
+       GOOGLE_CLIENT_SECRET=...      # from the OAuth client
+       GOOGLE_ALLOWED_DOMAIN=uni.edu # optional: restrict sign-in to one domain
+       GOOGLE_ADMIN_EMAILS=a@x,b@y   # optional: these emails get the admin role
+
+  First Google sign-in provisions an account automatically (role: student
+  unless the email is in GOOGLE_ADMIN_EMAILS; changeable later via Configure
+  account). Google accounts have no password; their username is derived from
+  the email and stays stable. Without the env vars, the button is hidden and
+  the OAuth routes are disabled.
+
+
 ROLES
 -----
   admin   -- logs in to the Admin Dashboard (/admin).

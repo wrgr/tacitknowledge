@@ -52,13 +52,30 @@ app = Flask(__name__)
 app.secret_key = _SECRET
 app.config.update(
     SESSION_COOKIE_HTTPONLY    = True,
-    SESSION_COOKIE_SAMESITE    = "Strict",
+    # Lax (not Strict): the Google OAuth callback is a cross-site top-level
+    # redirect, and with Strict the cookie holding the OAuth state isn't sent,
+    # which breaks sign-in. Lax still blocks cross-site subrequests/POSTs.
+    SESSION_COOKIE_SAMESITE    = "Lax",
     SESSION_COOKIE_SECURE      = False,   # set True when serving over HTTPS
     PERMANENT_SESSION_LIFETIME = 3600,
     MAX_CONTENT_LENGTH         = 16 * 1024 * 1024,   # reject oversized bodies (FR process_log)
 )
 
 auth.seed_default_users()
+
+# ── Google OAuth (optional — enabled when GOOGLE_CLIENT_ID/SECRET are set) ────
+_google_oauth = None
+if config.GOOGLE_CLIENT_ID and config.GOOGLE_CLIENT_SECRET:
+    from authlib.integrations.flask_client import OAuth
+    _oauth = OAuth(app)
+    _google_oauth = _oauth.register(
+        name="google",
+        client_id=config.GOOGLE_CLIENT_ID,
+        client_secret=config.GOOGLE_CLIENT_SECRET,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+app.jinja_env.globals["google_oauth_enabled"] = _google_oauth is not None
 
 
 # ── Prevent browser caching of HTML pages ─────────────────────────────────────
@@ -571,6 +588,54 @@ def login():
     session["preferred_provider"]  = user.get("preferred_provider", "")
     session["preferred_model"]     = user.get("preferred_model", "")
 
+    return _post_login_redirect()
+
+
+@app.route("/login/google")
+def login_google():
+    if _google_oauth is None:
+        abort(404)
+    if "user_id" in session:
+        return _post_login_redirect()
+    return _google_oauth.authorize_redirect(url_for("google_callback", _external=True))
+
+
+@app.route("/auth/google/callback")
+def google_callback():
+    if _google_oauth is None:
+        abort(404)
+    try:
+        token = _google_oauth.authorize_access_token()   # validates state + id_token
+    except Exception:
+        return render_template("login.html",
+                               error="Google sign-in failed. Please try again.",
+                               csrf_token=_new_csrf(), username_val="")
+
+    info  = token.get("userinfo") or {}
+    email = (info.get("email") or "").lower()
+    if not info.get("sub") or not email or not info.get("email_verified"):
+        return render_template("login.html",
+                               error="Google account could not be verified.",
+                               csrf_token=_new_csrf(), username_val="")
+
+    # Access policy: optional domain gate; admin allowlist decides the role.
+    domain = config.GOOGLE_ALLOWED_DOMAIN.lstrip("@").lower()
+    if domain and not email.endswith("@" + domain):
+        return render_template("login.html",
+                               error=f"Google sign-in is restricted to @{domain} accounts.",
+                               csrf_token=_new_csrf(), username_val="")
+    role = "admin" if email in config.GOOGLE_ADMIN_EMAILS else "student"
+
+    user = db.get_or_create_google_user(
+        info["sub"], email, auth.sanitize_str(info.get("name") or "", 128), role)
+
+    session.clear()
+    session["user_id"]             = user["username"]
+    session["role"]                = user["role"]
+    session["display_name"]        = user.get("display_name", user["username"])
+    session["theme"]               = user.get("theme", "light")
+    session["preferred_provider"]  = user.get("preferred_provider", "")
+    session["preferred_model"]     = user.get("preferred_model", "")
     return _post_login_redirect()
 
 

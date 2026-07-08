@@ -88,9 +88,22 @@ def init_db():
                 display_name       TEXT NOT NULL,
                 theme              TEXT NOT NULL DEFAULT 'light',
                 preferred_provider TEXT NOT NULL DEFAULT '',
-                preferred_model    TEXT NOT NULL DEFAULT ''
+                preferred_model    TEXT NOT NULL DEFAULT '',
+                email              TEXT NOT NULL DEFAULT '',
+                google_sub         TEXT NOT NULL DEFAULT '',
+                auth_provider      TEXT NOT NULL DEFAULT 'password'
             )
         """)
+        # CREATE TABLE IF NOT EXISTS doesn't alter existing databases, so add
+        # the Google-OAuth columns to older DBs in place.
+        existing = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+        for col, ddl in (("email",         "TEXT NOT NULL DEFAULT ''"),
+                         ("google_sub",    "TEXT NOT NULL DEFAULT ''"),
+                         ("auth_provider", "TEXT NOT NULL DEFAULT 'password'")):
+            if col not in existing:
+                c.execute(f"ALTER TABLE users ADD COLUMN {col} {ddl}")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub "
+                  "ON users(google_sub) WHERE google_sub != ''")
         c.execute("""
             CREATE TABLE IF NOT EXISTS llm_eval_cache (
                 key        TEXT PRIMARY KEY,
@@ -615,3 +628,53 @@ def assessment_calibration_stats():
         "by_task":        by_task,
         "recent":         recent,
     }
+
+
+# ── Google OAuth users ─────────────────────────────────────────────────────────
+
+def get_user_by_google_sub(sub: str):
+    if not sub:
+        return None
+    with _conn() as c:
+        row = c.execute("SELECT * FROM users WHERE google_sub=?", (sub,)).fetchone()
+        return dict(row) if row else None
+
+
+def _unique_username(c, base: str) -> str:
+    """Derive a stable, unused username from an email local part."""
+    import re as _re
+    base = _re.sub(r'[^a-z0-9_\-]', '', base.lower())[:56] or "user"
+    if len(base) < 3:
+        base = (base + "user")[:56]
+    candidate, n = base, 1
+    while c.execute("SELECT 1 FROM users WHERE username=?", (candidate,)).fetchone():
+        n += 1
+        candidate = f"{base}{n}"
+    return candidate
+
+
+def get_or_create_google_user(sub: str, email: str, display_name: str, role: str):
+    """Look up a Google account by its stable `sub`; provision it on first login.
+
+    The generated username never changes afterwards (it keys reports/<username>/
+    and the assessments rows), even if the Google display name or email does —
+    those are refreshed on each login.
+    """
+    with _conn() as c:
+        row = c.execute("SELECT * FROM users WHERE google_sub=?", (sub,)).fetchone()
+        if row:
+            c.execute("UPDATE users SET email=?, display_name=? WHERE google_sub=?",
+                      (email, display_name or row["display_name"], sub))
+            c.commit()
+            return get_user_by_google_sub(sub)
+
+        username = _unique_username(c, email.split("@")[0])
+        c.execute(
+            "INSERT INTO users (username, password_hash, role, display_name, theme, "
+            "preferred_provider, preferred_model, email, google_sub, auth_provider) "
+            "VALUES (?, '', ?, ?, 'light', '', '', ?, ?, 'google')",
+            (username, role if role in ("admin", "student") else "student",
+             display_name or username, email, sub),
+        )
+        c.commit()
+        return get_user_by_google_sub(sub)

@@ -4,6 +4,7 @@
 # ── Core (required) ──────────────────────────────────────────────────────────
 Flask>=3.0,<4.0
 Werkzeug>=3.0,<4.0          # used directly for password hashing (werkzeug.security)
+Authlib>=1.3                # Google OAuth sign-in (only used when GOOGLE_CLIENT_ID is set)
 
 # ── Optional LLM provider SDKs ───────────────────────────────────────────────
 # The app talks to OpenAI-compatible providers (OpenAI, Groq, Mistral, and

@@ -860,12 +860,6 @@ function _buildProfileHTML(p) {
 
   html += `<div class="profile-frameworks">
     <div class="profile-card">
-      <div class="profile-card-label">Honey &amp; Mumford</div>
-      <div class="profile-card-value">${p.honey_mumford_style || '—'} ${confBadge(p.honey_mumford_confidence)}</div>
-      ${evidenceHTML(p.honey_mumford_evidence)}
-      ${p.honey_mumford_reasoning ? `<div class="profile-card-reasoning">${p.honey_mumford_reasoning}</div>` : ''}
-    </div>
-    <div class="profile-card">
       <div class="profile-card-label">SOLO Level</div>
       <div class="profile-card-value">${p.solo_level || '—'} ${confBadge(p.solo_confidence)}</div>
       ${evidenceHTML(p.solo_evidence)}
@@ -894,9 +888,9 @@ function renderProfile(p) {
 
 // FR thinking-profile fix: FR gets its own render function rather than reusing
 // _buildProfileHTML above, which stays scenario-mode-only and unchanged. FR's
-// profile is a single deterministic SOLO level (no LLM call) -- no Honey & Mumford
-// (dropped entirely) and no invented confidence tag (the actual inputs -- matched
-// point count and mean quality -- are shown instead).
+// profile is a single deterministic SOLO level (no LLM call) -- no invented
+// confidence tag (the actual inputs -- matched point count and mean quality --
+// are shown instead).
 function _buildFrProfileHTML(p) {
   return `<div class="profile-frameworks">
     <div class="profile-card">
@@ -2367,10 +2361,9 @@ function _renderAnalysis(aggregate) {
   btn.textContent    = 'Generate AI Analysis';
   noteEl.textContent = canGenerate ? '' : 'Configure an LLM provider above to enable AI analysis.';
 
-  // Side-by-side profile cards — mirrors the post-assessment Thinking Profile layout
+  // Mirrors the post-assessment Thinking Profile layout
   let html = '<div class="profile-frameworks">';
-  html += _buildAggregateCard('Honey &amp; Mumford', aggregate.hm_entries || [], 'style');
-  html += _buildAggregateCard('SOLO Taxonomy',       aggregate.solo_entries || [], 'level');
+  html += _buildAggregateCard('SOLO Taxonomy', aggregate.solo_entries || [], 'level');
   html += '</div>';
 
   const patterns = aggregate.all_patterns || [];
@@ -2461,13 +2454,6 @@ function _renderAiNarrative(a, reportCount) {
 
   if (a.overall_narrative) {
     html += `<div class="narrative-overall">${a.overall_narrative}</div>`;
-  }
-
-  if (a.learning_style_summary) {
-    html += `<div class="narrative-section">
-      <div class="narrative-section-label">Learning Style</div>
-      <div class="narrative-body">${a.learning_style_summary}</div>
-    </div>`;
   }
 
   if (a.cognitive_development) {

@@ -80,8 +80,11 @@ used as comparison data for product-only and process-enriched interpretations.
 
 | Column | Source | Meaning |
 |---|---|---|
-| `thinking_honey_mumford` | parsed report | Generated Honey & Mumford style label, if present. Scenario reports only — FR reports never populate this column. Older FR reports generated before the FR thinking-profile fix may still carry a value here; new FR reports leave it blank. See `docs/fr_evidence_model.md` for why FR dropped this signal. |
 | `thinking_solo` | parsed report | Generated SOLO taxonomy label, if present. For scenario reports this is an LLM classification; for FR reports it is a deterministic derivation from Coverage/Quality data (see `docs/fr_evidence_model.md`) — the label values are comparable across both, but the two are not computed the same way and FR's derivation never returns `Extended Abstract`. |
+
+Export schema v4 dropped the `thinking_honey_mumford` column (a learning-style label
+removed system-wide — see `docs/fr_evidence_model.md`). Exports generated under schema
+v3 or earlier may still have that column; the label itself was never a validated signal.
 
 ## Interpretation Cautions
 

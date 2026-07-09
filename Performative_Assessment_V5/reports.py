@@ -32,7 +32,7 @@ _FR_COVERAGE_CALIBRATION_NOTE = (
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _append_thinking_profile(lines, thinking_profile):
-    if not (thinking_profile.get("honey_mumford_style") or thinking_profile.get("solo_level")):
+    if not thinking_profile.get("solo_level"):
         return
 
     lines.append("## Learner Thinking Profile")
@@ -41,22 +41,6 @@ def _append_thinking_profile(lines, thinking_profile):
     insufficient = thinking_profile.get("insufficient_data_note")
     if insufficient:
         lines.append("> **Note — limited evidence:** " + insufficient)
-        lines.append("")
-
-    hm         = thinking_profile.get("honey_mumford_style", "")
-    hm_conf    = thinking_profile.get("honey_mumford_confidence", "")
-    hm_ev      = thinking_profile.get("honey_mumford_evidence", "")
-    hm_reason  = thinking_profile.get("honey_mumford_reasoning", "")
-    if hm:
-        conf_tag = (" _(confidence: " + hm_conf + ")_") if hm_conf else ""
-        lines.append("**Honey & Mumford style:** " + hm + conf_tag)
-        if isinstance(hm_ev, list):
-            for item in hm_ev:
-                lines.append("  - _\"" + item + "\"_")
-        elif hm_ev:
-            lines.append("  - _" + hm_ev + "_")
-        if hm_reason:
-            lines.append("  > " + hm_reason)
         lines.append("")
 
     solo        = thinking_profile.get("solo_level", "")
@@ -99,12 +83,10 @@ def _append_thinking_profile(lines, thinking_profile):
 
 
 # FR thinking-profile fix: FR's Learner Thinking Profile section is a single
-# deterministic SOLO level (thinking.derive_fr_solo_level) -- no Honey & Mumford
-# (weak validity even in its own validated instrument, inferred here from a much
-# thinner basis -- see the brief), no probe_phase_improvement (FR has no probe
-# phase), and no invented LLM-style confidence tag (the actual inputs are shown
-# instead). Scenario mode keeps the original holistic LLM classification above,
-# rendered by _append_thinking_profile(), completely unchanged.
+# deterministic SOLO level (thinking.derive_fr_solo_level) -- no probe_phase_improvement
+# (FR has no probe phase), and no invented LLM-style confidence tag (the actual inputs
+# are shown instead). Scenario mode keeps the original holistic LLM classification
+# above, rendered by _append_thinking_profile(), completely unchanged.
 _FR_SOLO_SCOPE_NOTE = (
     "Derived from the Coverage/Quality data above (see Key points covered) -- a "
     "reading of already-graded evidence, not a new judgment. Does not detect "

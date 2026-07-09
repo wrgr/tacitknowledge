@@ -146,7 +146,7 @@ FILE STRUCTURE
   runner.py          -- scenario conversation flow (recall -> probing)
   scoring.py         -- keyword + LLM scoring (construct/exemplar evidence model)
   writing_process.py -- writing-process (trace) analysis for FR submissions
-  thinking.py        -- Honey & Mumford / SOLO thinking-profile analysis
+  thinking.py        -- SOLO thinking-profile analysis
   reports.py         -- report generation (scenario + free-response)
   report_parser.py   -- parses generated report markdown back into data
   llm.py             -- LLM provider dispatch, retries, JSON repair, eval cache

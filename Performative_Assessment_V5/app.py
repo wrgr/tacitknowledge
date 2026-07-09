@@ -214,8 +214,8 @@ def _compute_fr_thinking_profile(st):
 
     As of the FR thinking-profile fix, this is a deterministic SOLO-level derivation
     from already-computed Coverage/Quality data (see thinking.derive_fr_solo_level) --
-    no LLM call, no Honey & Mumford, no probe_phase_improvement (FR has no probe
-    phase). Both /api/fr/thinking-profile (fired asynchronously right after submit)
+    no LLM call, no probe_phase_improvement (FR has no probe phase). Both
+    /api/fr/thinking-profile (fired asynchronously right after submit)
     and /api/fr/report (fired when the user clicks Generate Report) need the profile;
     since this is now cheap and instant rather than an LLM call, simple memoization is
     enough -- no cross-request locking is needed to avoid a duplicate expensive call.
@@ -279,7 +279,7 @@ def _word_count(text):
 # Canonical field list lives in database.py (ASSESSMENT_FIELDS) — the export
 # columns and the assessments table schema are the same thing by construction.
 _RESEARCH_EXPORT_FIELDS = list(db.ASSESSMENT_FIELDS)
-_ASSESSMENT_EXPORT_SCHEMA_VERSION = "3"
+_ASSESSMENT_EXPORT_SCHEMA_VERSION = "4"
 
 _ANNOTATION_LABELS = {"", "correct", "partial", "missing", "needs_expert_review"}
 
@@ -396,9 +396,7 @@ def _research_rows_for_report(username, user, filename, report):
         "annotation_updated_at": annotation.get("updated_at", ""),
     }
     profile = report.get("thinking_profile") or {}
-    hm = profile.get("honey_mumford") or {}
     solo = profile.get("solo") or {}
-    base["thinking_honey_mumford"] = hm.get("style", "")
     base["thinking_solo"] = solo.get("level", "")
 
     if report.get("type") == "fr":
@@ -1946,7 +1944,6 @@ def api_learning_profile():
 
     user_dir = REPORTS_BASE / username
     reports:      list = []
-    hm_entries:   list = []
     solo_entries: list = []
     all_patterns: list = []
     all_gaps:     list = []
@@ -1999,18 +1996,6 @@ def api_learning_profile():
             # collect aggregate analysis data
             tp = parsed.get("thinking_profile")
             if tp:
-                hm = tp.get("honey_mumford")
-                if hm and hm.get("style"):
-                    ev = hm.get("evidence", [])
-                    hm_entries.append({
-                        "style":      hm["style"],
-                        "confidence": hm.get("confidence", ""),
-                        "evidence":   ev if isinstance(ev, list) else ([ev] if ev else []),
-                        "reasoning":  hm.get("reasoning", ""),
-                        "date":       date_str,
-                        "type":       rtype,
-                        "score":      score,
-                    })
                 solo = tp.get("solo")
                 if solo and solo.get("level"):
                     ev = solo.get("evidence", [])
@@ -2062,11 +2047,10 @@ def api_learning_profile():
             "trend":          trend,
         },
         "aggregate": {
-            "hm_entries":   hm_entries,
             "solo_entries": solo_entries,
             "all_patterns": all_patterns[:12],
             "all_gaps":     all_gaps[:12],
-            "has_data":     bool(hm_entries or solo_entries or all_patterns or all_gaps),
+            "has_data":     bool(solo_entries or all_patterns or all_gaps),
         },
     })
 
@@ -2153,12 +2137,6 @@ def api_learning_profile_analysis():
             lines.append(f"  Recommendations: {', '.join(s['recommendations'])}")
         tp = e["profile"]
         if tp:
-            hm = tp.get("honey_mumford")
-            if hm and hm.get("style"):
-                conf = f" ({hm['confidence']} confidence)" if hm.get("confidence") else ""
-                lines.append(f"  Learning style (Honey & Mumford): {hm['style']}{conf}")
-                if hm.get("reasoning"):
-                    lines.append(f"    Reasoning: {hm['reasoning']}")
             solo = tp.get("solo")
             if solo and solo.get("level"):
                 conf = f" ({solo['confidence']} confidence)" if solo.get("confidence") else ""
@@ -2176,8 +2154,6 @@ def api_learning_profile_analysis():
         "Respond ONLY with valid JSON (no markdown, no extra text):",
         "{",
         '  "overall_narrative": "<2-3 sentence overarching summary of who this learner is>",',
-        '  "learning_style_summary": "<paragraph on their Honey & Mumford style consistency, '
-        'what it reveals about how they prefer to engage with tasks, and any evolution across assessments>",',
         '  "cognitive_development": "<paragraph on SOLO level progression and what it reveals '
         'about depth of understanding and conceptual integration>",',
         '  "consistent_strengths": ["<strength 1>", "<strength 2>"],',
@@ -2200,7 +2176,6 @@ def api_learning_profile_analysis():
         if not result:
             result = {
                 "overall_narrative":     raw,
-                "learning_style_summary": "",
                 "cognitive_development":  "",
                 "consistent_strengths":   [],
                 "development_areas":      [],

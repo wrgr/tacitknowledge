@@ -101,12 +101,14 @@ class DeriveFrSoloLevelTests(unittest.TestCase):
 
 
 class ScenarioModeUnaffectedTests(unittest.TestCase):
-    """Scope guard: scenario mode's holistic LLM classifier -- Honey & Mumford, LLM
-    SOLO, and probe_phase_improvement -- must be completely untouched by the FR fix."""
+    """Scope guard: scenario mode's holistic LLM classifier -- LLM SOLO and
+    probe_phase_improvement -- must be completely untouched by the FR fix, and
+    Honey & Mumford must not exist anywhere in the codebase (removed system-wide)."""
 
-    def test_analyse_thinking_profile_still_has_honey_mumford_and_ppi(self):
+    def test_analyse_thinking_profile_has_no_honey_mumford_but_keeps_ppi(self):
         source = inspect.getsource(thinking.analyse_thinking_profile)
-        self.assertIn("honey_mumford_style", source)
+        self.assertNotIn("honey_mumford", source)
+        self.assertNotIn("Honey", source)
         self.assertIn("probe_phase_improvement", source)
         self.assertIn("Extended Abstract", source)
 
@@ -114,19 +116,19 @@ class ScenarioModeUnaffectedTests(unittest.TestCase):
         source = inspect.getsource(reports.generate_report)
         self.assertIn("_append_thinking_profile(lines, thinking_profile)", source)
 
-    def test_original_append_thinking_profile_still_renders_honey_mumford_and_ppi(self):
+    def test_original_append_thinking_profile_renders_solo_and_ppi_not_honey_mumford(self):
         lines = []
         reports._append_thinking_profile(lines, {
-            "honey_mumford_style": "Theorist",
-            "honey_mumford_confidence": "high",
             "solo_level": "Relational",
             "solo_confidence": "medium",
             "probe_phase_improvement": True,
             "probe_phase_improvement_note": "richer under probing",
         })
         joined = "\n".join(lines)
-        self.assertIn("**Honey & Mumford style:** Theorist", joined)
+        self.assertIn("**SOLO level:** Relational", joined)
         self.assertIn("**Probe phase improvement:** Yes", joined)
+        self.assertNotIn("Honey", joined)
+        self.assertNotIn("Mumford", joined)
 
 
 class FrReportRenderingTests(unittest.TestCase):
@@ -210,7 +212,7 @@ class ReportParserRoundTripTests(unittest.TestCase):
             parsed = report_parser.parse_report_md(path.read_text(encoding="utf-8"))
 
         tp = parsed["thinking_profile"]
-        self.assertIsNone(tp["honey_mumford"])
+        self.assertNotIn("honey_mumford", tp)
         self.assertIsNone(tp["probe_phase_improvement"])
         self.assertEqual(tp["solo"]["level"], "Multistructural")
         self.assertEqual(tp["solo"]["matched_count"], 3)
@@ -218,8 +220,11 @@ class ReportParserRoundTripTests(unittest.TestCase):
         self.assertEqual(tp["solo"]["confidence"], "")  # never an invented confidence tag
 
     def test_old_format_fr_report_still_parses_without_error(self):
-        # Backward compatibility (Part E): an already-generated FR report with the old
-        # Honey & Mumford / LLM-SOLO / probe-phase-improvement lines must still parse.
+        # Backward compatibility: an already-generated report on disk from before Honey
+        # & Mumford was removed system-wide still has a "Honey & Mumford style" line.
+        # The parser must not crash on it, must silently ignore that section (the field
+        # no longer exists anywhere), and must still parse the SOLO / probe-phase-
+        # improvement lines that follow it correctly.
         old_report = (
             "# Free Response Assessment — Instructor Report\n\n"
             "**Date:** 2025-01-01 10:00  \n"
@@ -241,8 +246,7 @@ class ReportParserRoundTripTests(unittest.TestCase):
         )
         parsed = report_parser.parse_report_md(old_report)  # must not raise
         tp = parsed["thinking_profile"]
-        self.assertEqual(tp["honey_mumford"]["style"], "Theorist")
-        self.assertEqual(tp["honey_mumford"]["confidence"], "high")
+        self.assertNotIn("honey_mumford", tp)
         self.assertEqual(tp["solo"]["level"], "Relational")
         self.assertEqual(tp["solo"]["confidence"], "medium")
         self.assertTrue(tp["probe_phase_improvement"])
@@ -253,15 +257,14 @@ class ReportParserRoundTripTests(unittest.TestCase):
 
 class EvidenceModelDocTests(unittest.TestCase):
     """Part D: the evidence model must carry a row for the SOLO derivation, and no
-    Honey & Mumford row for FR (there never was one -- that absence is the reason it
-    was removed rather than retrofitted)."""
+    Honey & Mumford row anywhere (H&M was removed system-wide, not just from FR)."""
 
     def test_solo_row_present(self):
         doc = (APP_DIR / "docs" / "fr_evidence_model.md").read_text(encoding="utf-8")
         self.assertIn("SOLO level (derived from Coverage/Quality)", doc)
         self.assertIn("Extended-Abstract-level generalization", doc)
 
-    def test_no_honey_mumford_table_row_for_fr(self):
+    def test_no_honey_mumford_table_row(self):
         doc = (APP_DIR / "docs" / "fr_evidence_model.md").read_text(encoding="utf-8")
         table_lines = [l for l in doc.splitlines() if l.startswith("|")]
         self.assertFalse(any("Honey" in l for l in table_lines))

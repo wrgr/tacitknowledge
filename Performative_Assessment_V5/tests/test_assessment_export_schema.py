@@ -131,7 +131,7 @@ class AssessmentExportDictionaryTests(unittest.TestCase):
     def test_research_rows_populate_closing_nudge_and_process_caution(self):
         source = (APP_DIR / "app.py").read_text(encoding="utf-8")
 
-        self.assertIn('_ASSESSMENT_EXPORT_SCHEMA_VERSION = "3"', source)
+        self.assertIn('_ASSESSMENT_EXPORT_SCHEMA_VERSION = "4"', source)
         self.assertIn('"export_schema_version": _ASSESSMENT_EXPORT_SCHEMA_VERSION', source)
         self.assertIn('"closing_nudge_used": (', source)
         self.assertIn('"process_caution": overlay.get("caution", "") if overlay else ""', source)

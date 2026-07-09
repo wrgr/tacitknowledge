@@ -30,16 +30,17 @@ than a signal needing its own audit. It gets no exemption from the rule above: a
 key point is evidence of non-production under single-pass conditions, not proof of absent
 knowledge.
 
-FR previously rendered a Honey & Mumford (Activist/Reflector/Theorist/Pragmatist)
-learning-style classification with no row in this table — a violation of the rule
-above, and the reason it was removed rather than given one after the fact. Honey &
-Mumford has weak validity even in its own validated (80-item self-report) instrument
-(Coffield et al., 2004), and was being inferred here from a single short paragraph plus
-a few keystroke metrics, a much thinner basis than the original instrument. Pashler,
-McDaniel, Rohrer & Bjork (2008) additionally found no credible evidence that acting on a
-learning-style label improves outcomes. It does not appear in this table because it does
-not exist in FR at all, not because it was overlooked. Scenario mode still computes and
-renders it (`thinking.analyse_thinking_profile`), unaffected — this table covers FR only.
+This system previously rendered a four-category learning-style classification
+(Activist/Reflector/Theorist/Pragmatist) with no row in this table — a violation of the
+rule above, and the reason it was removed rather than given one after the fact. That
+class of learning-style instrument has weak validity even in its own validated
+(80-item self-report) form (Coffield et al., 2004), and it was being inferred here from
+a single short paragraph plus a few keystroke metrics, a much thinner basis than the
+original instrument. Pashler, McDaniel, Rohrer & Bjork (2008) additionally found no
+credible evidence that acting on a learning-style label improves outcomes. It has been
+removed system-wide — both FR and scenario mode (`thinking.analyse_thinking_profile`)
+— not just from FR, so it does not appear in this table because it no longer exists
+anywhere, not because it was overlooked.
 
 ## Language audit
 

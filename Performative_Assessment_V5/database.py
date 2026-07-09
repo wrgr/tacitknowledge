@@ -51,7 +51,6 @@ ASSESSMENT_FIELDS = [
     "process_caution",
     "process_review_priority",
     "process_review_reason",
-    "thinking_honey_mumford",
     "thinking_solo",
     "ai_assistance_used",
     "ai_assistance_notes",
@@ -536,10 +535,17 @@ def update_assessment_annotation(username: str, report_file: str,
 
 
 def all_assessment_rows():
-    """Every persisted assessment row, ordered for the research export."""
+    """Every persisted assessment row, ordered for the research export.
+
+    Selects only ASSESSMENT_FIELDS explicitly (not SELECT *) so a database that
+    still has a stale column from a prior schema (ALTER TABLE only adds columns,
+    never drops them) doesn't leak an unexpected key into the row dicts.
+    """
+    cols = ", ".join(ASSESSMENT_FIELDS)
     with _conn() as c:
         rows = c.execute(
-            "SELECT * FROM assessments ORDER BY username, timestamp, report_file, task_title"
+            f"SELECT {cols} FROM assessments "
+            "ORDER BY username, timestamp, report_file, task_title"
         ).fetchall()
         return [dict(r) for r in rows]
 

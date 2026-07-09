@@ -471,7 +471,6 @@ def _parse_thinking_profile(lines):
 
     profile = {
         'insufficient_data_note': '',
-        'honey_mumford': None,
         'solo': None,
         'patterns': [],
         'instructor_note': '',
@@ -480,7 +479,6 @@ def _parse_thinking_profile(lines):
     }
     state = None
     in_patterns = False
-    hm   = {'style': '', 'confidence': '', 'evidence': [], 'reasoning': ''}
     solo = {'level': '', 'confidence': '', 'evidence': [], 'reasoning': ''}
 
     for line in lines:
@@ -489,14 +487,6 @@ def _parse_thinking_profile(lines):
             profile['insufficient_data_note'] = re.sub(
                 r'.*\*\*Note — limited evidence:\*\*\s*', '', stripped
             )
-        elif stripped.startswith('**Honey & Mumford style:**'):
-            state = 'hm'; in_patterns = False
-            rest = stripped[len('**Honey & Mumford style:**'):].strip()
-            m = re.match(r'(.+?)\s*_\(confidence:\s*(.+?)\)_', rest)
-            if m:
-                hm['style'], hm['confidence'] = m.group(1).strip(), m.group(2).strip()
-            else:
-                hm['style'] = rest
         elif stripped.startswith('**SOLO level:**'):
             state = 'solo'; in_patterns = False
             rest = stripped[len('**SOLO level:**'):].strip()
@@ -515,13 +505,6 @@ def _parse_thinking_profile(lines):
             state = None; in_patterns = False
             note = re.sub(r'\*\*Instructor note:\*\*\s*', '', stripped)
             profile['instructor_note'] = note.strip('_')
-        elif state == 'hm':
-            m_ev = re.match(r'^\s+-\s+_"(.+)"_', line)
-            m_rs = re.match(r'^\s+>\s+(.*)', line)
-            if m_ev:
-                hm['evidence'].append(m_ev.group(1))
-            elif m_rs:
-                hm['reasoning'] = m_rs.group(1)
         elif state == 'ppi':
             m_rs = re.match(r'^\s+>\s+(.*)', line)
             if m_rs:
@@ -546,12 +529,10 @@ def _parse_thinking_profile(lines):
             elif stripped.startswith('**') and not stripped.startswith('**Observed'):
                 in_patterns = False
 
-    if hm['style']:
-        profile['honey_mumford'] = hm
     if solo['level']:
         profile['solo'] = solo
 
-    if not profile['honey_mumford'] and not profile['solo']:
+    if not profile['solo']:
         return None
 
     return profile

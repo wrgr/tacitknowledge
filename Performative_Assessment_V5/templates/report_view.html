@@ -897,25 +897,6 @@ details[open].expert-details summary .chevron { transform: rotate(90deg); }
 
       <div class="profile-grid">
 
-        {% if tp.honey_mumford %}
-        {% set hm = tp.honey_mumford %}
-        <div class="profile-box">
-          <div class="profile-box-label">Honey &amp; Mumford Style</div>
-          <div class="profile-style-name">{{ hm.style }}</div>
-          {% if hm.confidence %}
-          <span class="conf-badge {{ hm.confidence }}">{{ hm.confidence }} confidence</span>
-          {% endif %}
-          {% if hm.evidence %}
-          <ul class="evidence-list">
-            {% for e in hm.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-          {% endif %}
-          {% if hm.reasoning %}
-          <div class="reasoning-text">{{ hm.reasoning }}</div>
-          {% endif %}
-        </div>
-        {% endif %}
-
         {% if tp.solo %}
         {% set solo = tp.solo %}
         <div class="profile-box">

@@ -510,12 +510,12 @@
   +-----------------------------+
   |  analyse_thinking_profile() |---> [[ LLM API ]]
   |  (thinking.py)              |     [[ SQLite cache ]]
-  |  H&M style + SOLO + probe   |
-  |  improvement, all LLM-judged|
+  |  SOLO + probe improvement,  |
+  |  all LLM-judged             |
   +-----------------------------+
                |
                v
-  return { honey_mumford_style, solo_level, evidence,
+  return { solo_level, evidence,
            probe_phase_improvement, observed_patterns,
            instructor_note }
 
@@ -1534,9 +1534,7 @@
   +-----------------------------+
                |
                v
-  return { honey_mumford_style, honey_mumford_evidence,
-           honey_mumford_reasoning, honey_mumford_confidence,
-           solo_level, solo_evidence, solo_reasoning,
+  return { solo_level, solo_evidence, solo_reasoning,
            solo_confidence, probe_phase_improvement,
            observed_patterns, instructor_note }
 

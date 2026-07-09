@@ -1,15 +1,15 @@
 """
-thinking.py — Honey & Mumford / SOLO taxonomy analysis of learner responses.
+thinking.py — SOLO taxonomy analysis of learner responses.
 
-analyse_thinking_profile() below is scenario mode's holistic LLM classifier: Honey &
-Mumford style, LLM-judged SOLO level, and probe_phase_improvement (whether the learner
-demonstrated notably richer or more specific knowledge under structured probing than in
-free recall). It is scenario-mode-only -- FR does not have a probe phase, and per the
-FR thinking-profile fix, does not use this function at all.
+analyse_thinking_profile() below is scenario mode's holistic LLM classifier: LLM-judged
+SOLO level and probe_phase_improvement (whether the learner demonstrated notably richer
+or more specific knowledge under structured probing than in free recall). It is
+scenario-mode-only -- FR does not have a probe phase, and per the FR thinking-profile
+fix, does not use this function at all.
 
 derive_fr_solo_level() below is FR's replacement: a deterministic, LLM-free SOLO
 derivation from data the FR scoring pipeline already computed. See its docstring for
-why FR dropped Honey & Mumford and the LLM SOLO judgment entirely.
+why FR dropped the LLM SOLO judgment in favour of this.
 """
 
 import re
@@ -95,10 +95,8 @@ def _format_process_section(writing_metrics, user_inputs):
 
     lines.append(
         "\nInterpretation guide (supporting signals only — always ground classification in the transcript):\n"
-        "  - Low latency + high WPM → Activist tendency (acts before reflecting)\n"
-        "  - High latency + pauses → Reflector tendency (thinks before committing)\n"
         "  - High revision ratio (>30%) → active self-monitoring or uncertainty\n"
-        "  - Rich hedging language → possible Reflector or Theorist, or domain uncertainty\n"
+        "  - Rich hedging language → cautious phrasing or domain uncertainty\n"
         "  - Low unique-word ratio → narrow vocabulary or tightly focused reasoning\n"
         "  - Paste events → text may not reflect real-time thinking; flag in observed_patterns"
     )
@@ -127,7 +125,7 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
                              recall_transcript="", probe_transcript="", bypass_cache=False):
     system = (
         "You are an educational psychologist. "
-        "Classify a learner's response using two established frameworks. "
+        "Classify a learner's response using an established framework. "
         "Base your analysis on HOW they responded — language, sequencing, depth — not on their score. "
         "When writing process data is provided, treat it as supporting behavioural evidence: "
         "hesitation, heavy revision, rapid typing, and hedging language are all interpretable signals. "
@@ -142,28 +140,21 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
     # Build transcript section — show phases separately when available
     if recall_transcript and probe_transcript:
         transcript_section = (
-            "RECALL TRANSCRIPT (use for H&M style — shows how the learner spontaneously "
-            "organises and expresses knowledge without any prompting):\n"
+            "RECALL TRANSCRIPT (shows how the learner spontaneously organises and "
+            "expresses knowledge without any prompting; use as supporting context):\n"
             + clip(recall_transcript) + "\n\n"
             "PROBING TRANSCRIPT (Socratic dialogue — examiner asked WHY, WHAT WOULD HAPPEN, "
-            "and HOW THE LEARNER DECIDED; use for SOLO level and as additional H&M evidence):\n"
+            "and HOW THE LEARNER DECIDED; use for SOLO level):\n"
             + clip(probe_transcript)
         )
         probe_comparison_note = (
             "\n## Using Both Transcripts for Classification\n"
             "The probing phase was Socratic — the examiner asked about reasoning, not missing facts. "
             "This means probe responses are direct evidence of thinking depth:\n\n"
-            "H&M style signals in probe responses:\n"
-            "- Conditional or hedged answers ('it depends...', 'usually, but...') → Reflector\n"
-            "- Explains mechanisms, goals, or underlying principles ('the purpose is...', "
-            "'because otherwise...') → Theorist\n"
-            "- Short, action-focused answers with no elaboration → Activist or Pragmatist\n"
-            "- 'What works in practice' framing without theory → Pragmatist\n\n"
             "SOLO level — probe responses are especially diagnostic here:\n"
             "- Relational: explains WHY steps connect, what consequences follow, conditional reasoning\n"
             "- Extended Abstract: raises edge cases or principles unprompted in their probe answers\n"
             "- Multistructural ceiling: even when asked WHY, gives another list instead of reasoning\n\n"
-            "Use recall as the primary H&M signal (spontaneous style). "
             "Use probe responses as primary SOLO evidence (reasoning depth under direct questioning). "
             "Set probe_phase_improvement: true if reasoning in probe responses was notably richer "
             "than what the recall transcript alone would have suggested.\n"
@@ -177,16 +168,7 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
         + transcript_section + "\n\n"
         + (process_section + "\n\n" if process_section else "")
         + probe_comparison_note
-        + "## Framework 1 — Honey & Mumford Learning Style\n"
-        "Choose exactly one:\n"
-        "- Activist: dives straight in, action-first, minimal planning, energetic language\n"
-        "- Reflector: considers options before acting, hedged language, weighs consequences; "
-        "may give richer answers when specifically asked (more under probing than in recall)\n"
-        "- Theorist: explains the reasoning and underlying rules, logical and sequential; "
-        "likely to explain WHY steps matter when prompted by rationale/decision probes\n"
-        "- Pragmatist: practical and direct, skips theory, focuses on what works\n\n"
-
-        "## Framework 2 — SOLO Taxonomy (depth of understanding)\n"
+        + "## SOLO Taxonomy (depth of understanding)\n"
         "Choose exactly one. Base this primarily on the PROBING transcript, since the Socratic "
         "questions directly test reasoning depth ('why?', 'what would happen?', 'how do you decide?'):\n"
         "- Prestructural: misses the point, irrelevant or no response to the task\n"
@@ -202,9 +184,6 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
         "behind them when probed is Multistructural, not Relational.\n\n"
 
         "## Evidence and reasoning requirements\n"
-        "- honey_mumford_evidence: list 2-3 direct quotes or close paraphrases from the transcript\n"
-        "- honey_mumford_reasoning: explain WHY the evidence points to this style and not an adjacent one\n"
-        "- honey_mumford_confidence: 'high' if ≥2 distinct signals; 'medium' if only one or adjacent style plausible; 'low' if barely enough\n"
         "- solo_evidence: list 2-3 specific transcript moments showing depth\n"
         "- solo_reasoning: explain WHY these place the learner at this SOLO level, not above or below\n"
         "- solo_confidence: same scale\n"
@@ -218,10 +197,6 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
 
         "Return this JSON exactly — no markdown, no extra text:\n"
         "{\n"
-        '  "honey_mumford_style":            "<Activist | Reflector | Theorist | Pragmatist>",\n'
-        '  "honey_mumford_evidence":         [<2-3 direct quotes or close paraphrases>],\n'
-        '  "honey_mumford_reasoning":        "<explanation>",\n'
-        '  "honey_mumford_confidence":       "<high | medium | low>",\n'
         '  "solo_level":                     "<Prestructural | Unistructural | Multistructural | Relational | Extended Abstract>",\n'
         '  "solo_evidence":                  [<2-3 specific transcript moments>],\n'
         '  "solo_reasoning":                 "<explanation>",\n'
@@ -242,7 +217,6 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
                                     system, prompt, _call, bypass_cache=bypass_cache)
 
     _prose_fields = (
-        "honey_mumford_evidence", "honey_mumford_reasoning",
         "solo_evidence", "solo_reasoning",
         "insufficient_data_note", "observed_patterns", "instructor_note",
         "probe_phase_improvement_note",
@@ -258,11 +232,9 @@ def analyse_thinking_profile(scenario, transcript, model, api_key, base_url,
 # FR SOLO LEVEL — deterministic derivation (no LLM call)
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# FR thinking-profile fix: for FR specifically, Honey & Mumford and the holistic
-# LLM-judged SOLO level above are dropped in favour of this function. H&M has weak
-# validity even in its own validated instrument (Coffield et al., 2004) and is being
-# inferred here from a much thinner basis; the LLM SOLO judgment duplicates, and can
-# silently contradict, what Explanation Quality already measures via Chi's
+# FR thinking-profile fix: for FR specifically, the holistic LLM-judged SOLO level
+# above is dropped in favour of this function. The LLM SOLO judgment duplicates, and
+# can silently contradict, what Explanation Quality already measures via Chi's
 # conditional/goal-linked/consequence-aware markers, with no evidence-span grounding
 # or reconciliation against the Quality score it substantially overlaps with.
 #

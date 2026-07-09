@@ -987,7 +987,7 @@
     --> for each turn: format latency_s, wpm, deletion_count/revision_ratio,
         paste_count, pause_count, total_time_s
     --> _word_choice_metrics(text): word_count, unique_word_ratio, hedging_count
-    --> include interpretation guide (low latency=Activist, high pause=Reflector, etc.)
+    --> include interpretation guide (high revision ratio=self-monitoring, etc.)
     --> return joined string or ""
 
   _strip_md(val)
@@ -997,7 +997,7 @@
                            writing_metrics=None, user_inputs=None,
                            recall_transcript="", probe_transcript="",
                            bypass_cache=False)
-    --> system: "educational psychologist classifying Honey & Mumford + SOLO"
+    --> system: "educational psychologist classifying SOLO"
     --> _format_process_section(writing_metrics, user_inputs)
     if recall_transcript AND probe_transcript:
       --> transcript_section = recall + probe labelled separately
@@ -1005,8 +1005,7 @@
     else:
       --> transcript_section = full transcript
     --> build large prompt:
-        "## Framework 1 — Honey & Mumford" (Activist/Reflector/Theorist/Pragmatist)
-        "## Framework 2 — SOLO Taxonomy"   (5 levels)
+        "## SOLO Taxonomy"   (5 levels)
         evidence requirements + JSON schema
     --> def _call():
           llm_chat_json(model, system, prompt, api_key, base_url,
@@ -1016,8 +1015,6 @@
                                         system, prompt, _call)  *~
     --> _strip_md() on prose fields
     --> return {
-          honey_mumford_style, honey_mumford_evidence, honey_mumford_reasoning,
-          honey_mumford_confidence,
           solo_level, solo_evidence, solo_reasoning, solo_confidence,
           insufficient_data_note, observed_patterns, instructor_note,
           probe_phase_improvement, probe_phase_improvement_note
@@ -1309,7 +1306,7 @@
           extract: key_points (covered bullets), key_points_missed (comma list)
           extract: feedback_for_learner
     --> extract Instructor Summary section (overall_assessment, gaps, recommendations)
-    --> extract Honey & Mumford + SOLO from "## Learner Thinking Profile"
+    --> extract SOLO from "## Learner Thinking Profile"
     --> return { type:"scenario", metadata, scenarios:[], thinking_profile }
 
   _parse_fr_report(text)

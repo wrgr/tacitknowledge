@@ -127,7 +127,7 @@ SECURITY FEATURES
     session state is TTL-bounded and capped.
   - Request bodies are size-limited; free-response submissions are length-capped.
   - Reports are stored in separate per-user sub-folders (reports/<username>/).
-  - Session cookies are HttpOnly and SameSite=Strict.
+  - Session cookies are HttpOnly and SameSite=Lax.
     (Set SESSION_COOKIE_SECURE = True in app.py when serving over HTTPS.)
   - All HTML pages are served with Cache-Control: no-store so pressing the browser
     back button after logout cannot reveal cached pages -- the session is always
@@ -153,8 +153,10 @@ FILE STRUCTURE
   auth.py            -- authentication, rate limiting, input sanitisation
   database.py        -- SQLite layer: users, assessments results table,
                         LLM eval cache, novel-equivalent review, match log
-  app.py             -- web server, routes, session handling
+  app.py             -- web server, routes, session handling, Google OAuth routes
   cli.py             -- terminal interface (no login required)
+  run_oauth.sh.example-- template launcher for Google OAuth (copy to run_oauth.sh,
+                        gitignored, fill in your client secret, never commit it)
   assessments.db     -- SQLite database (auto-created on first run, do not commit)
   .secret_key        -- Flask session secret (auto-generated, do not delete)
   requirements.txt   -- Python dependencies
@@ -177,6 +179,7 @@ FILE STRUCTURE
 
   tests/               -- pytest suite (scoring, calibration, prompt inventory)
   docs/                -- research export data dictionary, testing guide
+  example_reports/     -- sample generated free-response reports for reference
 
   reports/<username>/
     report_YYYYMMDD_HHMMSS.md           -- scenario assessment reports
@@ -258,7 +261,7 @@ SCENARIOS
 
 REQUIREMENTS
 ------------
-  pip install -r requirements.txt        # Flask + Werkzeug (required)
+  pip install -r requirements.txt        # Flask + Werkzeug + Authlib (required)
 
   Optional provider SDKs:
     pip install openai      # official SDK path for OpenAI-compatible providers
